@@ -1,0 +1,80 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:sys="clr-namespace:System;assembly=netstandard"
+             x:Class="TravelGuide.MainPage"
+             BackgroundColor="White"
+             NavigationPage.HasNavigationBar="False">
+
+    <Grid>
+        <ScrollView>
+            <VerticalStackLayout Spacing="0">
+                <Grid HeightRequest="250">
+                    <Image Source="travel.jpg" Aspect="AspectFill"/>
+                    <BoxView VerticalOptions="End" HeightRequest="60">
+                        <BoxView.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="Transparent" Offset="0"/>
+                                <GradientStop Color="White" Offset="1"/>
+                            </LinearGradientBrush>
+                        </BoxView.Background>
+                    </BoxView>
+                </Grid>
+
+                <VerticalStackLayout Padding="25" Spacing="15" Margin="0,-30,0,0">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Chào mừng bạn!" FontSize="28" FontAttributes="Bold" TextColor="#1E88E5"/>
+                        <Label Text="Thiết lập hành trình của riêng bạn" FontSize="14" TextColor="Gray"/>
+                    </VerticalStackLayout>
+
+                    <Grid>
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="Ngôn ngữ sử dụng" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                            <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
+                                <Entry x:Name="LanguageEntry" Placeholder="Gõ ngôn ngữ..." TextChanged="OnLanguageSearch" VerticalOptions="Center"/>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <Border x:Name="LanguageListFrame" IsVisible="False" 
+                                StrokeShape="RoundRectangle 10" BackgroundColor="White" 
+                                Stroke="#D1D1D1" HeightRequest="150" VerticalOptions="Start" 
+                                Margin="0,70,0,0" ZIndex="1">
+                            <CollectionView x:Name="LanguageCollection" SelectionMode="Single" SelectionChanged="OnLanguageSelected">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Label Text="{Binding .}" Padding="15,10" FontSize="14" TextColor="#333333"/>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </Border>
+                    </Grid>
+
+                    <Grid>
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="Đơn vị tiền tệ" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                            <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
+                                <Entry x:Name="CurrencyEntry" Placeholder="Gõ mã (vd: VND...)" TextChanged="OnCurrencySearch" VerticalOptions="Center"/>
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <Border x:Name="CurrencyListFrame" IsVisible="False" 
+                                StrokeShape="RoundRectangle 10" BackgroundColor="White" 
+                                Stroke="#D1D1D1" HeightRequest="150" VerticalOptions="Start" 
+                                Margin="0,70,0,0" ZIndex="1">
+                            <CollectionView x:Name="CurrencyCollection" SelectionMode="Single" SelectionChanged="OnCurrencySelected">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Label Text="{Binding .}" Padding="15,10" FontSize="14" TextColor="#333333"/>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </Border>
+                    </Grid>
+
+                    <Button Text="Tiếp tục" Clicked="GoHome" BackgroundColor="#1E88E5" TextColor="White" 
+                            CornerRadius="25" HeightRequest="50" FontAttributes="Bold" Margin="0,10,0,20"/>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>
