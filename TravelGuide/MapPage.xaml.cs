@@ -1,25 +1,33 @@
-﻿using Microsoft.Maui.Devices.Sensors;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using Microsoft.Maui.Devices.Sensors;
 using Microsoft.Maui.Media;
-using TravelGuide.Models;
 using System.Text;
-using CommunityToolkit.Mvvm.Messaging; // Dùng Messenger cho hiện đại
+using TravelGuide.Models;
 
 namespace TravelGuide;
 
 public partial class MapPage : ContentPage
 {
-    public MapPage()
+    // Phải khai báo biến này để dùng được Database
+    private readonly DatabaseService _dbService;
+
+    public MapPage(DatabaseService dbService)
     {
         InitializeComponent();
+        _dbService = dbService; // Gán service vào biến local
 
-        // ĐĂNG KÝ NHẬN VỊ TRÍ (Dùng Messenger thay cho MessagingCenter lỗi thời)
+        // ĐĂNG KÝ NHẬN VỊ TRÍ
         WeakReferenceMessenger.Default.Register<LocationMessage>(this, (r, m) =>
         {
             MainThread.BeginInvokeOnMainThread(async () => {
                 if (mapView != null && m.Value != null)
                 {
+                    // Cập nhật vị trí người dùng trên bản đồ
                     string jsCode = $"updateLocation({m.Value.Longitude}, {m.Value.Latitude});";
                     await mapView.EvaluateJavaScriptAsync(jsCode);
+
+                    // Tùy chọn: Gọi lại LoadMap() nếu muốn marker tự hiện ra khi đi tới vùng mới
+                    // await LoadMap(); 
                 }
             });
         });
@@ -55,28 +63,40 @@ public partial class MapPage : ContentPage
                 await mapView.EvaluateJavaScriptAsync(jsCode);
             }
         }
-        catch { /* Xử lý lỗi GPS nếu cần */ }
+        catch { }
     }
 
-    void LoadMap()
+    async void LoadMap()
     {
-        // Token của bạn
         string token = "pk.eyJ1IjoicGh3bmlpMTk5IiwiYSI6ImNtbXE3MzBiYjBwN2UyeHB6aTAweDY5bnUifQ.allfFmkZfixY6rEIanjhYQ";
 
-        // ĐỒNG BỘ: Lấy dữ liệu từ kho chung DataService
-        var places = DataService.GetPlaces();
+        // 1. Lấy vị trí hiện tại
+        var userLocation = await Geolocation.Default.GetLastKnownLocationAsync()
+                           ?? await Geolocation.Default.GetLocationAsync();
+
+        // 2. Lấy dữ liệu từ SQLite
+        var allPlaces = await _dbService.GetPlacesAsync();
         StringBuilder sbMarkers = new StringBuilder();
 
-        foreach (var p in places)
+        foreach (var p in allPlaces)
         {
-            // Tự động chọn màu: Đỏ cho quán ăn, Xanh cho di tích
-            string color = (p.Name.Contains("Phở") || p.Name.Contains("Bánh mì")) ? "red" : "blue";
+            // 3. Tính khoảng cách (mét)
+            double distance = Location.CalculateDistance(
+                userLocation.Latitude, userLocation.Longitude,
+                p.Latitude, p.Longitude,
+                DistanceUnits.Kilometers) * 1000;
 
-            // Escape chuỗi để tránh lỗi JS khi có dấu nháy đơn
-            string safeName = p.Name.Replace("'", "\\'");
-            string safeDesc = p.Description.Replace("'", "\\'");
+            // 4. CHỈ THÊM MARKER TRONG PHẠM VI 1KM
+            if (distance <= 1000)
+            {
+                // Màu đỏ cho quán ăn (Radius nhỏ), xanh cho di tích
+                string color = p.Radius <= 100 ? "#F44336" : "#2196F3";
 
-            sbMarkers.AppendLine($"addPlace({p.Longitude}, {p.Latitude}, '{safeName}', '{safeDesc}', '{color}');");
+                string safeName = p.Name.Replace("'", "\\'");
+                string safeDesc = p.Description.Replace("'", "\\'");
+
+                sbMarkers.AppendLine($"addPlace({p.Longitude}, {p.Latitude}, '{safeName}', '{safeDesc}', '{color}');");
+            }
         }
 
         string html = $@"
@@ -101,7 +121,7 @@ public partial class MapPage : ContentPage
         const map = new mapboxgl.Map({{ 
             container:'map', 
             style:'mapbox://styles/mapbox/streets-v12', 
-            center:[106.6990, 10.7797], 
+            center:[{userLocation.Longitude}, {userLocation.Latitude}], 
             zoom:14 
         }});
         
@@ -113,7 +133,6 @@ public partial class MapPage : ContentPage
             const popup = new mapboxgl.Popup({{ offset: 25 }}).setHTML('<b>'+name+'</b><p style=""font-size:12px"">'+desc+'</p>');
             new mapboxgl.Marker({{color:color}}).setLngLat([lng,lat]).setPopup(popup).addTo(map);
             
-            // Sự kiện khi người dùng nhấn vào Marker trên bản đồ
             popup.on('open', function(){{ 
                 speak(name + '. ' + desc); 
             }});
@@ -121,17 +140,15 @@ public partial class MapPage : ContentPage
 
         function updateLocation(lng, lat){{
             if(userMarker) userMarker.remove();
-            userMarker = new mapboxgl.Marker({{color:'green'}}).setLngLat([lng,lat]).setPopup(new mapboxgl.Popup().setHTML('Bạn đang ở đây')).addTo(map);
+            userMarker = new mapboxgl.Marker({{color:'#4CAF50'}}).setLngLat([lng,lat]).setPopup(new mapboxgl.Popup().setHTML('Bạn đang ở đây')).addTo(map);
             map.flyTo({{ center:[lng,lat], zoom:15, speed: 1.2 }});
         }}
 
         document.getElementById('locateBtn').addEventListener('click',()=>{{ window.location.href = 'app://locate'; }});
 
-        // Chèn các Marker từ C#
         {sbMarkers.ToString()}
 
-        // Tự động định vị sau 5 giây
-        setTimeout(()=>{{ window.location.href = 'app://locate'; }}, 5000);
+        setTimeout(()=>{{ window.location.href = 'app://locate'; }}, 2000);
     </script>
 </body>
 </html>";

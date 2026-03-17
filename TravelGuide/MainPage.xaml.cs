@@ -117,6 +117,12 @@ public partial class MainPage : ContentPage
 
     async void GoHome(object sender, EventArgs e)
     {
-        await Navigation.PushAsync(new HomePage());
+        // Lấy HomePage từ hệ thống Service đã được tiêm sẵn DatabaseService
+        var homePage = Handler.MauiContext.Services.GetService<HomePage>();
+
+        if (homePage != null)
+        {
+            await Navigation.PushAsync(homePage);
+        }
     }
 }

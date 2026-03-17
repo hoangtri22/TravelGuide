@@ -4,38 +4,74 @@ namespace TravelGuide;
 
 public partial class HomePage : ContentPage
 {
-    public HomePage()
+    private readonly DatabaseService _dbService;
+    private List<TouristPlace> _allPlaces = new();
+
+    // Sử dụng Dependency Injection để lấy DatabaseService đã đăng ký
+    public HomePage(DatabaseService dbService)
     {
         InitializeComponent();
-        // Để đổ dữ liệu ngay khi khởi tạo
-        LoadData();
+        _dbService = dbService;
     }
 
-    private void LoadData()
+    // Mỗi khi quay lại trang chủ, cập nhật lại dữ liệu mới nhất
+    protected override async void OnAppearing()
     {
-        // Lấy dữ liệu tập trung từ DataService giúp đồng bộ
-        PlacesCollection.ItemsSource = DataService.GetPlaces();
+        base.OnAppearing();
+        await LoadData();
     }
 
-    // Mở trang Bản đồ
+    private async Task LoadData()
+    {
+        // Lấy toàn bộ 30+ địa điểm từ SQLite
+        _allPlaces = await _dbService.GetPlacesAsync();
+
+        // 1. Lấy 5 địa điểm ngẫu nhiên để hiển thị mặc định
+        var random5 = _allPlaces.OrderBy(x => Guid.NewGuid()).Take(5).ToList();
+
+        PlacesCollection.ItemsSource = random5;
+    }
+
+    // 2. Xử lý tìm kiếm (Search)
+    private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
+    {
+        var searchTerm = e.NewTextValue?.ToLower() ?? "";
+
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            // Nếu xóa thanh tìm kiếm, quay lại hiển thị 5 cái ngẫu nhiên ban đầu
+            var random5 = _allPlaces.OrderBy(x => Guid.NewGuid()).Take(5).ToList();
+            PlacesCollection.ItemsSource = random5;
+        }
+        else
+        {
+            // Tìm kiếm dựa trên tên địa danh (không phân biệt hoa thường)
+            var results = _allPlaces
+                .Where(p => p.Name.ToLower().Contains(searchTerm))
+                .ToList();
+
+            PlacesCollection.ItemsSource = results;
+        }
+    }
+
+    // Mở bản đồ
+    // Mở bản đồ
     private async void OpenMap(object sender, EventArgs e)
     {
-        // Mở bản đồ chung
-        await Navigation.PushAsync(new MapPage());
+        // Lấy MapPage từ hệ thống Service (đã có sẵn dbService bên trong)
+        var mapPage = Handler.MauiContext.Services.GetService<MapPage>();
+        await Navigation.PushAsync(mapPage);
     }
 
     // Chuyển sang trang chi tiết
     private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
     {
-        // Tránh lỗi khi CurrentSelection rỗng
         var selectedPlace = e.CurrentSelection.FirstOrDefault() as TouristPlace;
 
         if (selectedPlace != null)
         {
-            // Điều hướng sang trang chi tiết và truyền dữ liệu
             await Navigation.PushAsync(new PlaceDetailPage(selectedPlace));
 
-            // Quan trọng: Reset lại để có thể chọn lại chính địa danh đó ngay lập tức
             if (sender is CollectionView collectionView)
             {
                 collectionView.SelectedItem = null;

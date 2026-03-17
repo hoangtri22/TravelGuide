@@ -21,7 +21,9 @@ public static class MauiProgram
 #if DEBUG
         builder.Logging.AddDebug();
 #endif
-
+        builder.Services.AddSingleton<DatabaseService>();
+        builder.Services.AddTransient<HomePage>();
+        builder.Services.AddTransient<MapPage>();
         return builder.Build();
     }
 }

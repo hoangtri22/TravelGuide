@@ -35,7 +35,8 @@
             </VerticalStackLayout>
 
             <Border StrokeShape="RoundRectangle 20" Padding="5" BackgroundColor="White" Stroke="#E0E0E0" StrokeThickness="1">
-                <SearchBar Placeholder="Tìm địa danh..." BackgroundColor="Transparent"/>
+                <SearchBar Placeholder="Tìm kiếm địa điểm..." 
+                    TextChanged="OnSearchBarTextChanged" />
             </Border>
 
             <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween">
