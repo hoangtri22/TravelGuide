@@ -1,346 +1,92 @@
 ﻿[
   {
-    "Name": "Chùa Một Cột - Hà Nội",
-    "Description": "Chào mừng bạn đến với biểu tượng ngàn năm của thủ đô. Ngôi chùa có kiến trúc độc đáo tựa như một đóa sen nở trên mặt nước, nơi lưu giữ nét đẹp tâm linh và triết lý nhân sinh sâu sắc của người Việt xưa.",
-    "Latitude": 21.0358,
-    "Longitude": 105.8335,
+    "NameVi": "Cổng chào Phố Ẩm thực Vĩnh Khánh",
+    "NameEn": "Vinh Khanh Food Street Welcome Gate",
+    "Latitude": 10.7595,
+    "Longitude": 106.7012,
+    "DescVi": "Chào mừng bạn đến với phố ẩm thực Vĩnh Khánh, Quận 4. Đây là thiên đường đồ ăn đêm nổi tiếng nhất Sài Gòn với hàng trăm quán ốc và hải sản tươi ngon.",
+    "DescEn": "Welcome to Vinh Khanh Food Street, District 4. This is Saigon's most famous night food paradise with hundreds of fresh snail and seafood stalls.",
     "Radius": 150,
-    "ImageUrl": "chuamotcot.jpg"
+    "ImagePath": "gatevinhkhanh.jpg"
   },
   {
-    "Name": "Chùa Thiên Mụ - Huế",
-    "Description": "Bạn đang đứng trước ngôi chùa cổ kính và thơ mộng nhất xứ Thần Kinh. Với tháp Phước Duyên 7 tầng soi bóng bên dòng sông Hương, nơi đây là biểu tượng cho vẻ đẹp bình yên và tâm linh của vùng đất cố đô.",
-    "Latitude": 16.4527,
-    "Longitude": 107.5448,
-    "Radius": 150,
-    "ImageUrl": "chuathienmu.jpg"
-  },
-  {
-    "Name": "Chùa Linh Ứng - Đà Nẵng",
-    "Description": "Chào mừng bạn đến với 'cõi Phật' giữa lòng hạ giới. Tượng Phật Bà Quan Thế Âm cao nhất Việt Nam tại đây không chỉ là điểm tựa tâm linh của ngư dân mà còn là nơi bạn có thể ngắm trọn vẹn vẻ đẹp của biển Sơn Trà.",
-    "Latitude": 16.1001,
-    "Longitude": 108.2775,
-    "Radius": 150,
-    "ImageUrl": "chualinhung.jpg"
-  },
-  {
-    "Name": "Nhà Thờ Đức Bà - TP.HCM",
-    "Description": "Bạn đang đứng trước trái tim của Sài Gòn. Với kiến trúc Roman pha lẫn Gothic tuyệt đẹp bằng gạch nung đỏ rực rỡ, nhà thờ là minh chứng lịch sử sống động cho sự giao thoa văn hóa Đông - Tây suốt hơn một thế kỷ qua.",
-    "Latitude": 10.7797,
-    "Longitude": 106.6990,
-    "Radius": 150,
-    "ImageUrl": "nhathoducba.jpg"
-  },
-  {
-    "Name": "Chùa Vĩnh Nghiêm - TP.HCM",
-    "Description": "Chào mừng bạn đến với một trong những ngôi chùa lớn và nổi tiếng nhất Sài Gòn. Mang phong cách kiến trúc chùa miền Bắc truyền thống nhưng được xây dựng bằng bê tông cốt thép hiện đại, đây là trung tâm Phật giáo quan trọng của thành phố.",
-    "Latitude": 10.7934,
-    "Longitude": 106.6826,
-    "Radius": 150,
-    "ImageUrl": "chuavinhnghiem.jpg"
-  },
-  {
-    "Name": "Chùa Ngọc Hoàng (Phước Hải) - TP.HCM",
-    "Description": "Bạn đang ghé thăm ngôi chùa cổ kính nổi tiếng với sự linh thiêng, từng đón tiếp cựu Tổng thống Mỹ Obama. Những bức tượng chạm khắc gỗ tinh xảo và không gian trầm mặc nơi đây sẽ khiến bạn cảm thấy vô cùng thư thái.",
-    "Latitude": 10.7918,
-    "Longitude": 106.6981,
-    "Radius": 150,
-    "ImageUrl": "chuangochoang.jpg"
-  },
-  {
-    "Name": "Chùa Phổ Quang - TP.HCM",
-    "Description": "Một không gian xanh mát và yên tĩnh giữa lòng Tân Bình sầm uất. Ngôi chùa không chỉ là nơi chiêm bái tâm linh mà còn là điểm dừng chân lý tưởng để bạn gạt bỏ những lo toan của cuộc sống thường nhật.",
-    "Latitude": 10.8037,
-    "Longitude": 106.6669,
-    "Radius": 150,
-    "ImageUrl": "chuaphoquang.jpg"
-  },
-  {
-    "Name": "Miếu Nổi Phù Châu - TP.HCM",
-    "Description": "Bạn đang đứng trước một ngôi miếu độc đáo nằm biệt lập giữa dòng sông Vàm Thuật. Để đến được đây, bạn sẽ được trải nghiệm đi đò ngắn, một nét văn hóa sông nước thú vị ngay trong lòng thành phố hiện đại.",
-    "Latitude": 10.8251,
-    "Longitude": 106.6934,
-    "Radius": 150,
-    "ImageUrl": "mieunoi.jpg"
-  },
-  {
-    "Name": "Chùa Bà Thiên Hậu - TP.HCM",
-    "Description": "Chào mừng bạn đến với một trong những ngôi chùa cổ nhất của người Hoa tại Chợ Lớn. Hãy chiêm ngưỡng những phù điêu gốm tinh xảo trên mái chùa và hít hà hương nhang vòng đặc trưng lan tỏa trong không gian tâm linh này.",
-    "Latitude": 10.7523,
-    "Longitude": 106.6611,
-    "Radius": 150,
-    "ImageUrl": "chuabathienhau.jpg"
-  },
-  {
-    "Name": "Chùa Ông (Nghĩa An Hội Quán) - TP.HCM",
-    "Description": "Nằm ngay trung tâm Quận 5, ngôi chùa gây ấn tượng bởi phong cách kiến trúc Triều Châu đậm nét. Đây là nơi người dân thường đến cầu nguyện cho sự bình an, may mắn và chiêm ngưỡng những tác phẩm điêu khắc gỗ cực kỳ giá trị.",
-    "Latitude": 10.7521,
-    "Longitude": 106.6631,
-    "Radius": 150,
-    "ImageUrl": "chuaong.jpg"
-  },
-  {
-    "Name": "Chả Cá Lã Vọng - Hà Nội",
-    "Description": "Chào mừng bạn đến với nơi khai sinh ra món chả cá lừng danh thế giới. Những miếng cá lăng nướng vàng ươm trên chảo nóng, hòa quyện cùng mùi thơm của hành hoa và thì là, tạo nên một hương vị tinh tế khó quên giữa lòng phố cổ.",
-    "Latitude": 21.0354,
-    "Longitude": 105.8483,
-    "Radius": 100,
-    "ImageUrl": "chaca_lavong.jpg"
-  },
-  {
-    "Name": "Bún Bò Huế O Xuân - Huế",
-    "Description": "Bạn đang đứng trước cửa hàng bún bò mang đậm tâm hồn của người miền Trung. Nước dùng cay nồng mùi sả, đậm đà vị mắm ruốc phối hợp cùng sợi bún to đặc trưng sẽ đưa bạn lạc vào hành trình ẩm thực cố đô ngay lập tức.",
-    "Latitude": 16.4633,
-    "Longitude": 107.5851,
-    "Radius": 100,
-    "ImageUrl": "bunbohue.jpg"
-  },
-  {
-    "Name": "Cơm Tấm Ba Ghiền - TP.HCM",
-    "Description": "Địa chỉ cơm tấm 'huyền thoại' mà bất kỳ ai đến Sài Gòn cũng nên thử qua một lần. Hãy thưởng thức miếng sườn nướng khổng lồ được tẩm ướp đậm đà, nướng thơm nức trên than hồng, ăn kèm với mỡ hành béo ngậy và nước mắm chua ngọt đặc trưng.",
-    "Latitude": 10.7967,
-    "Longitude": 106.6708,
-    "Radius": 100,
-    "ImageUrl": "comtambaghien.jpg"
-  },
-  {
-    "Name": "Bánh Xèo Ăn Là Ghiền - TP.HCM",
-    "Description": "Chào mừng bạn đến với thế giới bánh xèo Nam Bộ. Những chiếc bánh vàng giòn rụm với nhân tôm thịt tươi ngon, cuốn kèm với rổ rau rừng phong phú sẽ mang đến cho bạn một trải nghiệm ẩm thực dân dã nhưng vô cùng tinh tế của người dân phương Nam.",
-    "Latitude": 10.7845,
-    "Longitude": 106.6852,
-    "Radius": 100,
-    "ImageUrl": "banhxeohcm.jpg"
-  },
-  {
-    "Name": "Hủ Tiếu Nam Vang Thành Đạt - TP.HCM",
-    "Description": "Bạn đang đứng trước tiệm hủ tiếu Nam Vang nức tiếng Sài Gòn. Với nước dùng ngọt thanh từ xương ống, tôm mực tươi ngon và sợi hủ tiếu dai dai, đây chính là món ăn sáng 'quốc dân' làm nên linh hồn của ẩm thực đường phố nơi đây.",
-    "Latitude": 10.7712,
-    "Longitude": 106.6914,
-    "Radius": 100,
-    "ImageUrl": "hutieuthanhdat.jpg"
-  },
-  {
-    "Name": "Phở Hòa Pasteur - TP.HCM",
-    "Description": "Một trong những thương hiệu phở lâu đời và nổi tiếng nhất Sài Gòn với phong cách phục vụ đậm chất truyền thống. Nước phở béo ngậy, bát phở đầy đặn cùng đĩa quẩy giòn rụm sẽ giúp bạn hiểu tại sao nơi đây luôn thu hút hàng ngàn du khách mỗi ngày.",
-    "Latitude": 10.7891,
-    "Longitude": 106.6833,
-    "Radius": 100,
-    "ImageUrl": "phohoa.jpg"
-  },
-  {
-    "Name": "Bánh Mì Huỳnh Hoa - TP.HCM",
-    "Description": "Được mệnh danh là 'ổ bánh mì đắt nhất Sài Gòn' nhưng hoàn toàn xứng đáng với chất lượng. Với lớp nhân thịt nguội, pate và bơ dày đặc được kẹp trong vỏ bánh mì nóng giòn, đây chắc chắn là món ăn mà bạn không thể bỏ qua khi dạo quanh khu vực Quận 1.",
-    "Latitude": 10.7719,
-    "Longitude": 106.6918,
-    "Radius": 100,
-    "ImageUrl": "banhmihuynhhoa.jpg"
-  },
-  {
-    "Name": "Lẩu Cua Khôi - TP.HCM",
-    "Description": "Chào mừng bạn đến với địa điểm thưởng thức hải sản tươi sống chất lượng cao. Món lẩu cua với nước dùng ngọt lịm từ gạch cua, thịt cua chắc nịch và hương thơm nồng nàn sẽ làm nức lòng ngay cả những thực khách khó tính nhất.",
-    "Latitude": 10.7758,
-    "Longitude": 106.6905,
-    "Radius": 100,
-    "ImageUrl": "laucuakhoi.jpg"
-  },
-  {
-    "Name": "Bún Mắm 444 - TP.HCM",
-    "Description": "Bạn đang đứng trước tiệm bún mắm mang trọn vẹn hương vị miền Tây sông nước. Sự kết hợp giữa vị đậm đà của mắm cá linh, cá sặc cùng hải sản tươi ngon và các loại rau đồng nội sẽ mang đến cho bạn một cảm nhận ẩm thực vô cùng phong phú.",
-    "Latitude": 10.8031,
-    "Longitude": 106.7032,
-    "Radius": 100,
-    "ImageUrl": "bunmam444.jpg"
-  },
-  {
-    "Name": "Cà Phê Vợt Phan Đình Phùng - TP.HCM",
-    "Description": "Dừng chân tại góc phố mang hơi thở Sài Gòn xưa với quán cà phê vợt hơn 60 năm tuổi không bao giờ tắt lửa. Hãy thử một ly cà phê đậm đà, được pha chế theo phương thức thủ công bằng chiếc vợt vải để cảm nhận sự tĩnh lặng và hoài cổ giữa lòng phố thị sầm uất.",
-    "Latitude": 10.7963,
-    "Longitude": 106.6804,
-    "Radius": 100,
-    "ImageUrl": "caphevot.jpg"
-  },
-  {
-    "Name": "Bảo tàng Chứng tích Chiến tranh",
-    "Description": "Chào mừng bạn đến với nơi lưu giữ những thước phim tư liệu và hiện vật sống động về thời kỳ chiến tranh Việt Nam. Một không gian trầm mặc giúp chúng ta hiểu thêm về giá trị của hòa bình và sự kiên cường của dân tộc.",
-    "Latitude": 10.7795,
-    "Longitude": 106.6921,
-    "Radius": 200,
-    "ImageUrl": "baotangchungtich.jpg"
-  },
-  {
-    "Name": "Bảo tàng Lịch sử TP.HCM",
-    "Description": "Khám phá dòng chảy lịch sử Việt Nam từ thời tiền sử đến nay qua hàng ngàn cổ vật quý giá. Ngôi nhà mang kiến trúc Indochine độc đáo này là nơi hội tụ tinh hoa văn hóa phương Đông đặc sắc.",
-    "Latitude": 10.7877,
-    "Longitude": 106.7045,
-    "Radius": 200,
-    "ImageUrl": "baotanglichsu.jpg"
-  },
-  {
-    "Name": "Bảo tàng Mỹ thuật TP.HCM",
-    "Description": "Dừng chân tại tòa dinh thự lộng lẫy mang phong cách kiến trúc Pháp - Hoa. Nơi đây không chỉ trưng bày những tác phẩm nghệ thuật giá trị mà bản thân mỗi góc nhỏ của tòa nhà đều là một kiệt tác điêu khắc.",
-    "Latitude": 10.7699,
-    "Longitude": 106.6976,
-    "Radius": 200,
-    "ImageUrl": "baotangmythuat.jpg"
-  },
-  {
-    "Name": "Nhà hát Thành phố",
-    "Description": "Chiêm ngưỡng vẻ đẹp uy nghi của Nhà hát Thành phố, một công trình kiến trúc đặc trưng của Pháp. Đây là trung tâm nghệ thuật cao cấp, nơi diễn ra những buổi biểu diễn văn hóa lớn của Sài Gòn.",
-    "Latitude": 10.7766,
-    "Longitude": 106.7032,
-    "Radius": 200,
-    "ImageUrl": "nhahatthanhpho.jpg"
-  },
-  {
-    "Name": "Phố đi bộ Nguyễn Huệ",
-    "Description": "Chào mừng bạn đến với quảng trường đi bộ hiện đại nhất thành phố. Nơi đây là không gian văn hóa cộng đồng sôi động, rực rỡ ánh đèn về đêm và là điểm hẹn yêu thích của giới trẻ Sài Thành.",
-    "Latitude": 10.7741,
-    "Longitude": 106.7029,
-    "Radius": 200,
-    "ImageUrl": "nguyenhue.jpg"
-  },
-  {
-    "Name": "Chợ Bến Thành",
-    "Description": "Biểu tượng giao thương lâu đời của Sài Gòn. Hãy cùng hòa mình vào không khí nhộn nhịp, khám phá những gian hàng thủ công mỹ nghệ và thưởng thức ẩm thực đường phố đa dạng ngay tại đây.",
-    "Latitude": 10.7725,
-    "Longitude": 106.6980,
-    "Radius": 200,
-    "ImageUrl": "chobenthanh.jpg"
-  },
-  {
-    "Name": "Bảo tàng Thành phố Hồ Chí Minh",
-    "Description": "Từng là Dinh Gia Long, tòa nhà mang vẻ đẹp Phục Hưng này sẽ dẫn dắt bạn qua những câu chuyện về sự hình thành và phát triển của vùng đất Sài Gòn - Gia Định xưa.",
-    "Latitude": 10.7761,
-    "Longitude": 106.6997,
-    "Radius": 200,
-    "ImageUrl": "baotangtphcm.jpg"
-  },
-  {
-    "Name": "Hồ Con Rùa",
-    "Description": "Vòng xoay giao thông kết hợp quảng trường nổi tiếng. Với thiết kế đài phun nước độc đáo, đây là điểm dừng chân lý tưởng để bạn thưởng thức các món ăn vặt vỉa hè 'trứ danh' của Sài Gòn.",
-    "Latitude": 10.7827,
-    "Longitude": 106.6959,
-    "Radius": 200,
-    "ImageUrl": "hoconrua.jpg"
-  },
-  {
-    "Name": "Công viên 23 tháng 9",
-    "Description": "Lá phổi xanh nằm ngay trung tâm thành phố. Không gian rộng lớn này là nơi diễn ra nhiều lễ hội văn hóa và là điểm nghỉ ngơi thư giãn yêu thích của người dân sau những giờ làm việc căng thẳng.",
-    "Latitude": 10.7695,
-    "Longitude": 106.6934,
-    "Radius": 200,
-    "ImageUrl": "congvien23th9.jpg"
-  },
-  {
-    "Name": "Thảo Cầm Viên Sài Gòn",
-    "Description": "Một trong những vườn thú lâu đời nhất thế giới. Hãy cùng khám phá hệ sinh thái thực vật và động vật phong phú, nằm giữa không gian rừng cổ thụ xanh mát ngay lòng thành phố.",
-    "Latitude": 10.7875,
-    "Longitude": 106.7053,
-    "Radius": 200,
-    "ImageUrl": "thaocamvien.jpg"
-  },
-  {
-    "Name": "Tượng đài Chủ tịch Hồ Chí Minh",
-    "Description": "Bức tượng uy nghi nằm trước trụ sở UBND thành phố, hướng ra phố đi bộ. Đây là địa điểm thiêng liêng để người dân và du khách thể hiện lòng kính yêu đối với vị lãnh tụ vĩ đại của dân tộc.",
-    "Latitude": 10.7758,
+    "NameVi": "Ốc Oanh",
+    "NameEn": "Oc Oanh Restaurant",
+    "Latitude": 10.7588,
     "Longitude": 106.7018,
-    "Radius": 150,
-    "ImageUrl": "tuongdaibac.jpg"
-  },
-  {
-    "Name": "Trụ sở UBND Thành phố",
-    "Description": "Một trong những tòa nhà cổ đẹp nhất Sài Gòn với phong cách kiến trúc thời Phục Hưng. Điểm nhấn lộng lẫy này khiến góc phố Nguyễn Huệ và Lê Thánh Tôn trở nên cổ kính và sang trọng.",
-    "Latitude": 10.7764,
-    "Longitude": 106.7010,
-    "Radius": 200,
-    "ImageUrl": "ubndtphcm.jpg"
-  },
-  {
-    "Name": "Nhà thờ Tân Định",
-    "Description": "Chiêm ngưỡng 'Nhà thờ màu hồng' nổi tiếng thu hút mọi ánh nhìn trên đường Hai Bà Trưng. Một sự kết hợp độc đáo giữa kiến trúc Gothic và sắc hồng trẻ trung, lãng mạn.",
-    "Latitude": 10.7884,
-    "Longitude": 106.6908,
-    "Radius": 200,
-    "ImageUrl": "nhathotandinh.jpg"
-  },
-  {
-    "Name": "Bến Nhà Rồng",
-    "Description": "Nơi người thanh niên Nguyễn Tất Thành đã ra đi tìm đường cứu nước năm 1911. Tòa nhà mang kiến trúc độc đáo với đôi rồng trên mái, biểu tượng cho khát vọng của dân tộc bên dòng sông Sài Gòn.",
-    "Latitude": 10.7681,
-    "Longitude": 106.7067,
-    "Radius": 200,
-    "ImageUrl": "bennharong.jpg"
-  },
-  {
-    "Name": "Công viên Tao Đàn",
-    "Description": "Được mệnh danh là khu vườn đẹp nhất Sài Gòn với những hàng cây cổ thụ hàng trăm năm tuổi. Nơi đây là điểm hẹn văn hóa với vườn hoa rực rỡ và khu đền thờ vua Hùng trang nghiêm.",
-    "Latitude": 10.7752,
-    "Longitude": 106.6917,
-    "Radius": 200,
-    "ImageUrl": "taodan.jpg"
-  },
-  {
-    "Name": "Phố Tây Bùi Viện",
-    "Description": "Chào mừng bạn đến với khu phố không ngủ sôi động bậc nhất Sài Gòn. Nơi giao thoa của nhiều nền văn hóa quốc tế với các dịch vụ giải trí, ẩm thực đường phố náo nhiệt về đêm.",
-    "Latitude": 10.7675,
-    "Longitude": 106.6936,
-    "Radius": 150,
-    "ImageUrl": "buivien.jpg"
-  },
-  {
-    "Name": "Đường sách Nguyễn Văn Bình",
-    "Description": "Góc phố yên bình dành cho những người yêu sách. Hãy cùng dạo bước dưới bóng mát, thưởng thức cà phê và tìm kiếm những trang sách hay trong không gian đậm chất văn hóa này.",
-    "Latitude": 10.7801,
-    "Longitude": 106.6998,
+    "DescVi": "Bạn đang ở gần Ốc Oanh, quán ốc đông khách bậc nhất con phố này. Đừng bỏ lỡ món càng ghẹ rang muối và các loại ốc xào bơ tỏi thơm nức mũi nhé.",
+    "DescEn": "You are near Oc Oanh, one of the busiest snail restaurants on this street. Don't miss the salt-roasted crab claws and various snails stir-fried with garlic butter.",
     "Radius": 100,
-    "ImageUrl": "duongsach.jpg"
+    "ImagePath": "ocoanh.jpg"
   },
   {
-    "Name": "Cầu Ba Son",
-    "Description": "Biểu tượng mới của TP.HCM kết nối trung tâm Quận 1 với khu đô thị Thủ Thiêm. Với thiết kế dây văng hiện đại, đây là điểm check-in tuyệt vời để ngắm nhìn toàn cảnh thành phố bên sông.",
-    "Latitude": 10.7785,
-    "Longitude": 106.7088,
-    "Radius": 200,
-    "ImageUrl": "caubason.jpg"
+    "NameVi": "Cafe Era",
+    "NameEn": "Era Coffee",
+    "Latitude": 10.7585,
+    "Longitude": 106.7025,
+    "DescVi": "Phía trước là Cafe Era. Một không gian cà phê ấm cúng và yên tĩnh, rất thích hợp để bạn dừng chân nghỉ ngơi sau khi dạo quanh phố ẩm thực.",
+    "DescEn": "Ahead is Era Coffee. A cozy and quiet cafe space, perfect for a break after wandering around the food street.",
+    "Radius": 80,
+    "ImagePath": "cafeera.jpg"
   },
   {
-    "Name": "Bến Bạch Đằng",
-    "Description": "Quần thể công viên ven sông mang lại tầm nhìn thoáng đãng về phía bán đảo Thủ Thiêm. Nơi đây là điểm dừng chân lý tưởng để hóng gió và chiêm ngưỡng sự phát triển vượt bậc của thành phố.",
-    "Latitude": 10.7735,
+    "NameVi": "Ốc Đào 2",
+    "NameEn": "Oc Dao 2 Restaurant",
+    "Latitude": 10.7582,
+    "Longitude": 106.7032,
+    "DescVi": "Bạn đang đi ngang qua Ốc Đào 2, một chi nhánh của thương hiệu ốc nổi tiếng Sài Gòn. Nơi đây thu hút thực khách bởi nước sốt đậm đà và hải sản rất tươi.",
+    "DescEn": "You are passing by Oc Dao 2, a branch of a famous snail brand in Saigon. This place attracts diners with its rich sauces and very fresh seafood.",
+    "Radius": 100,
+    "ImagePath": "ocdao.jpg"
+  },
+  {
+    "NameVi": "Sủi cảo Tân Tòng Lợi",
+    "NameEn": "Tan Tong Loi Dumplings",
+    "Latitude": 10.7580,
+    "Longitude": 106.7038,
+    "DescVi": "Bên tay trái bạn là Sủi cảo Tân Tòng Lợi. Nếu đã chán đồ biển, hãy thử món sủi cảo tôm thịt chuẩn vị người Hoa tại đây, rất thơm ngon và đậm đà.",
+    "DescEn": "On your left is Tan Tong Loi Dumplings. If you're tired of seafood, try the authentic Chinese shrimp and pork dumplings here, very delicious and flavorful.",
+    "Radius": 100,
+    "ImagePath": "suicao.jpg"
+  },
+  {
+    "NameVi": "Lẩu bò Khu Nhà Cháy",
+    "NameEn": "Khu Nha Chay Beef Hotpot",
+    "Latitude": 10.7575,
+    "Longitude": 106.7045,
+    "DescVi": "Chào mừng bạn đến với Lẩu bò Khu Nhà Cháy. Đây là điểm dừng chân lý tưởng cho những tín đồ lẩu bò với nước dùng thanh ngọt và các loại topping phong phú.",
+    "DescEn": "Welcome to Khu Nha Chay Beef Hotpot. This is an ideal stop for beef hotpot lovers with its sweet broth and diverse toppings.",
+    "Radius": 120,
+    "ImagePath": "laubo.jpg"
+  },
+  {
+    "NameVi": "Ốc Vũ",
+    "NameEn": "Oc Vu Restaurant",
+    "Latitude": 10.7568,
     "Longitude": 106.7058,
-    "Radius": 200,
-    "ImageUrl": "benbachdang.jpg"
+    "DescVi": "Bạn đang ở gần Ốc Vũ. Quán nổi tiếng với không gian rộng rãi, thoáng mát và thực đơn đa dạng từ các loại ốc bình dân đến hải sản cao cấp.",
+    "DescEn": "You are near Oc Vu. The restaurant is famous for its spacious, airy atmosphere and a diverse menu ranging from affordable snails to premium seafood.",
+    "Radius": 100,
+    "ImagePath": "ocvu.jpg"
   },
   {
-    "Name": "Tháp tài chính Bitexco",
-    "Description": "Tòa tháp có hình dáng búp sen vươn cao, biểu tượng cho khát vọng hội nhập của Việt Nam. Sân đỗ trực thăng vươn ra ngoài tòa nhà là điểm nhấn kiến trúc ấn tượng nhất giữa trung tâm thành phố.",
-    "Latitude": 10.7716,
-    "Longitude": 106.7044,
-    "Radius": 200,
-    "ImageUrl": "bitexco.jpg"
+    "NameVi": "Ốc Linh",
+    "NameEn": "Oc Linh Restaurant",
+    "Latitude": 10.7562,
+    "Longitude": 106.7065,
+    "DescVi": "Phía trước là Ốc Linh, một quán ăn vỉa hè đúng chất Sài Gòn. Đồ ăn ở đây giá cả rất phải chăng nhưng chất lượng lại không hề thua kém các quán lớn.",
+    "DescEn": "Ahead is Oc Linh, an authentic Saigon street-style eatery. The food here is very reasonably priced but the quality is as good as larger restaurants.",
+    "Radius": 100,
+    "ImagePath": "oclinh.jpg"
   },
   {
-    "Name": "Nhà Thờ Đức Bà Sài Gòn",
-    "Description": "Chào mừng bạn đến với Vương cung thánh đường Chính tòa Đức Bà Sài Gòn – biểu tượng bất biến của thành phố hơn 300 năm tuổi. Công trình là một kiệt tác kiến trúc Roman pha trộn Gothic tuyệt đẹp, được khánh thành vào năm 1880. Toàn bộ vật liệu xây dựng từ gạch Marseille đỏ rực đến hệ thống kính màu đều được vận chuyển trực tiếp từ Pháp sang. Trải qua gần 150 năm, sắc đỏ của gạch vẫn nguyên vẹn như minh chứng cho sự trường tồn của lịch sử giữa lòng đô thị hiện đại.",
-    "Latitude": 10.7797,
-    "Longitude": 106.6990,
-    "ImageUrl": "nhathoducba.jpg",
-    "Radius": 200
-  },
-  {
-    "Name": "Bưu Điện Trung Tâm Thành Phố",
-    "Description": "Trước mắt bạn là Bưu điện Trung tâm Sài Gòn, công trình mang phong cách kiến trúc Phục Hưng độc đáo được xây dựng từ năm 1886. Bước vào bên trong, bạn sẽ choáng ngợp trước hệ thống vòm cung cao vút gợi nhớ đến các nhà ga cổ điển tại châu Âu, cùng hai bản đồ lịch sử được vẽ tay tỉ mỉ trên tường. Nơi đây không chỉ là một bưu điện đang hoạt động mà còn là sợi dây kết nối giữa quá khứ lẫy lừng và nhịp sống sôi động của Hòn ngọc Viễn Đông.",
-    "Latitude": 10.7799,
-    "Longitude": 106.6999,
-    "ImageUrl": "buudienthanhpho.jpg",
-    "Radius": 200
-  },
-  {
-    "Name": "Dinh Độc Lập",
-    "Description": "Bạn đang đứng trước Dinh Độc Lập, di tích quốc gia đặc biệt mang đậm dấu ấn lịch sử dân tộc. Công trình là sự kết hợp hài hòa giữa kiến trúc hiện đại phương Tây và triết lý phương Đông do kiến trúc sư Ngô Viết Thụ chắp bút. Với khuôn viên xanh mát rộng 12 héc-ta, nơi đây ghi dấu thời khắc lịch sử trưa ngày 30 tháng 4 năm 1975, khi chiếc xe tăng 843 húc đổ cổng chính, mở ra một chương mới cho sự thống nhất đất nước.",
-    "Latitude": 10.7770,
-    "Longitude": 106.6953,
-    "ImageUrl": "dinhdoclap.jpg",
-    "Radius": 200
+    "NameVi": "Cuối đường Vĩnh Khánh",
+    "NameEn": "End of Vinh Khanh Street",
+    "Latitude": 10.7555,
+    "Longitude": 106.7072,
+    "DescVi": "Bạn đã đi đến cuối trục đường ẩm thực Vĩnh Khánh. Hy vọng bạn đã có một hành trình khám phá ẩm thực Quận 4 thật thú vị và đầy ắp kỷ niệm.",
+    "DescEn": "You have reached the end of Vinh Khanh food street. We hope you had an exciting and memorable journey exploring the cuisine of District 4.",
+    "Radius": 150,
+    "ImagePath": "endroad.jpg"
   }
 ]

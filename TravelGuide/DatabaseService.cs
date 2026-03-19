@@ -16,7 +16,11 @@ namespace TravelGuide
             var dbPath = Path.Combine(FileSystem.AppDataDirectory, "TravelGuide.db3");
             _db = new SQLiteAsyncConnection(dbPath);
 
-            // Tạo bảng dựa trên Model TouristPlace bạn đã định nghĩa
+            // --- QUAN TRỌNG: CẬP NHẬT CẤU TRÚC BẢNG ---
+            // Nếu bạn đang trong quá trình phát triển và thay đổi Model liên tục, 
+            // hãy bỏ comment dòng dưới đây để mỗi lần chạy nó sẽ xóa bảng cũ tạo bảng mới:
+            // await _db.DropTableAsync<TouristPlace>(); 
+
             await _db.CreateTableAsync<TouristPlace>();
         }
 
@@ -25,32 +29,40 @@ namespace TravelGuide
         {
             await Init();
 
-            // Chỉ nạp nếu database đang trống để tránh trùng lặp
+            // Kiểm tra xem đã có dữ liệu chưa
             var count = await _db.Table<TouristPlace>().CountAsync();
-            if (count > 0) return;
+
+            // Nếu đã có dữ liệu, mình xóa đi nạp lại để đảm bảo cập nhật đúng bản JSON mới nhất
+            if (count > 0)
+            {
+                await _db.DeleteAllAsync<TouristPlace>();
+            }
 
             try
             {
-                // Mở file extra_places.json từ thư mục Resources/Raw
+                // Mở file extra_places.json từ Resources/Raw
                 using var stream = await FileSystem.OpenAppPackageFileAsync("extra_places.json");
                 using var reader = new StreamReader(stream);
                 var json = await reader.ReadToEndAsync();
 
-                // Chuyển dữ liệu JSON thành danh sách C#
-                var places = JsonSerializer.Deserialize<List<TouristPlace>>(json);
-                if (places != null)
+                // Cấu hình để không phân biệt chữ hoa chữ thường khi đọc JSON
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+                var places = JsonSerializer.Deserialize<List<TouristPlace>>(json, options);
+
+                if (places != null && places.Count > 0)
                 {
                     await _db.InsertAllAsync(places);
+                    System.Diagnostics.Debug.WriteLine($"Đã nạp thành công {places.Count} địa điểm vào DB.");
                 }
             }
             catch (Exception ex)
             {
-                // Ghi log lỗi nếu không tìm thấy file hoặc định dạng JSON sai
                 System.Diagnostics.Debug.WriteLine($"Lỗi nạp dữ liệu: {ex.Message}");
             }
         }
 
-        // 3. Hàm lấy danh sách địa điểm để hiển thị lên UI
+        // 3. Hàm lấy danh sách địa điểm
         public async Task<List<TouristPlace>> GetPlacesAsync()
         {
             await Init();

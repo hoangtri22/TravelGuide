@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:sys="clr-namespace:System;assembly=netstandard"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.MainPage"
              BackgroundColor="White"
              NavigationPage.HasNavigationBar="False">
@@ -23,15 +24,15 @@
 
                 <VerticalStackLayout Padding="25" Spacing="15" Margin="0,-30,0,0">
                     <VerticalStackLayout Spacing="5">
-                        <Label Text="Chào mừng bạn!" FontSize="28" FontAttributes="Bold" TextColor="#1E88E5"/>
-                        <Label Text="Thiết lập hành trình của riêng bạn" FontSize="14" TextColor="Gray"/>
+                        <Label Text="{loc:Translate WelcomeText}" FontSize="28" FontAttributes="Bold" TextColor="#1E88E5"/>
+                        <Label Text="Setup your journey / Thiết lập hành trình" FontSize="14" TextColor="Gray"/>
                     </VerticalStackLayout>
 
                     <Grid>
                         <VerticalStackLayout Spacing="5">
-                            <Label Text="Ngôn ngữ sử dụng" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                            <Label Text="{loc:Translate BtnEnglish}" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
                             <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
-                                <Entry x:Name="LanguageEntry" Placeholder="Gõ ngôn ngữ..." TextChanged="OnLanguageSearch" VerticalOptions="Center"/>
+                                <Entry x:Name="LanguageEntry" Placeholder="Search language..." TextChanged="OnLanguageSearch" VerticalOptions="Center"/>
                             </Border>
                         </VerticalStackLayout>
 
@@ -51,9 +52,9 @@
 
                     <Grid>
                         <VerticalStackLayout Spacing="5">
-                            <Label Text="Đơn vị tiền tệ" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                            <Label Text="Currency / Tiền tệ" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
                             <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
-                                <Entry x:Name="CurrencyEntry" Placeholder="Gõ mã (vd: VND...)" TextChanged="OnCurrencySearch" VerticalOptions="Center"/>
+                                <Entry x:Name="CurrencyEntry" Placeholder="VND, USD..." TextChanged="OnCurrencySearch" VerticalOptions="Center"/>
                             </Border>
                         </VerticalStackLayout>
 
@@ -71,7 +72,7 @@
                         </Border>
                     </Grid>
 
-                    <Button Text="Tiếp tục" Clicked="GoHome" BackgroundColor="#1E88E5" TextColor="White" 
+                    <Button Text="Continue / Tiếp tục" Clicked="GoHome" BackgroundColor="#1E88E5" TextColor="White" 
                             CornerRadius="25" HeightRequest="50" FontAttributes="Bold" Margin="0,10,0,20"/>
                 </VerticalStackLayout>
             </VerticalStackLayout>

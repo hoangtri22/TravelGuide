@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using LocalizationResourceManager.Maui;
 
 namespace TravelGuide;
 
@@ -45,8 +46,12 @@ public partial class MainPage : ContentPage
 
     void LoadSavedSettings()
     {
-        LanguageEntry.Text = Preferences.Get("language", GetDeviceLanguage());
+        string savedLang = Preferences.Get("language", GetDeviceLanguage());
+        LanguageEntry.Text = savedLang;
         CurrencyEntry.Text = Preferences.Get("currency", "VND - Vietnamese Dong");
+
+        // Cập nhật ngôn ngữ ngay khi load app
+        UpdateAppLanguage(savedLang);
     }
 
     string GetDeviceLanguage()
@@ -80,9 +85,30 @@ public partial class MainPage : ContentPage
         {
             LanguageEntry.Text = selected;
             if (LanguageListFrame != null) LanguageListFrame.IsVisible = false;
+
+            // Lưu và cập nhật ngôn ngữ
             Preferences.Set("language", selected);
+            UpdateAppLanguage(selected);
         }
         if (sender is CollectionView cv) cv.SelectedItem = null;
+    }
+
+    // Hàm dùng chung để đổi ngôn ngữ, tránh lỗi trùng tên Current
+    private void UpdateAppLanguage(string selectedLanguage)
+    {
+        try
+        {
+            int startIndex = selectedLanguage.LastIndexOf('(') + 1;
+            string langCode = selectedLanguage.Substring(startIndex, 2);
+
+            var localizationManager = Handler.MauiContext.Services.GetService<ILocalizationResourceManager>();
+            if (localizationManager != null)
+            {
+                // THAY SetCulture BẰNG DÒNG NÀY:
+                localizationManager.CurrentCulture = new CultureInfo(langCode);
+            }
+        }
+        catch { }
     }
 
     void OnCurrencySearch(object sender, TextChangedEventArgs e)
@@ -117,9 +143,7 @@ public partial class MainPage : ContentPage
 
     async void GoHome(object sender, EventArgs e)
     {
-        // Lấy HomePage từ hệ thống Service đã được tiêm sẵn DatabaseService
         var homePage = Handler.MauiContext.Services.GetService<HomePage>();
-
         if (homePage != null)
         {
             await Navigation.PushAsync(homePage);
