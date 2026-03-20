@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace TravelGuide.Platforms.Android;
 
 [Service(ForegroundServiceType = ForegroundService.TypeLocation)]
-[SupportedOSPlatform("android26.0")]
+[SupportedOSPlatform("android29.0")]
 public class LocationService : Service
 {
     private CancellationTokenSource? _cts;

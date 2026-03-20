@@ -18,6 +18,7 @@ public class MainActivity : MauiAppCompatActivity
         // Không start service ở đây — Android 14 chặn FGS từ OnCreate
     }
 
+    [System.Runtime.Versioning.SupportedOSPlatform("android26.0")]
     protected override void OnResume()
     {
         base.OnResume();
