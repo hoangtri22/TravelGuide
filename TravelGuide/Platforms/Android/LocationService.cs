@@ -10,78 +10,78 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace TravelGuide.Platforms.Android;
 
-[Service(ForegroundServiceType = ForegroundService.TypeLocation | ForegroundService.TypeDataSync)]
+[Service(ForegroundServiceType = ForegroundService.TypeLocation)]
 [SupportedOSPlatform("android26.0")]
 public class LocationService : Service
 {
-    // FIX: CancellationTokenSource để dừng vòng lặp khi service bị kill
     private CancellationTokenSource? _cts;
+    private static bool _isRunning = false;
 
     public override IBinder? OnBind(Intent? intent) => null;
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
+        if (_isRunning)
+        {
+            System.Diagnostics.Debug.WriteLine("[LocationService] Already running, skip");
+            return StartCommandResult.Sticky;
+        }
+
         StartForegroundNotification();
-
         _cts = new CancellationTokenSource();
+        _isRunning = true;
         Task.Run(() => RunLocationLoopAsync(_cts.Token));
-
+        System.Diagnostics.Debug.WriteLine("[LocationService] Started");
         return StartCommandResult.Sticky;
     }
 
-    // FIX: Override OnDestroy để huỷ loop khi service dừng
     public override void OnDestroy()
     {
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
+        _isRunning = false;
         base.OnDestroy();
-        System.Diagnostics.Debug.WriteLine("[LocationService] Destroyed, GPS loop cancelled");
+        System.Diagnostics.Debug.WriteLine("[LocationService] Destroyed");
     }
 
     private void StartForegroundNotification()
     {
-        const string channelId = "location_notification_channel";
+        const string channelId = "location_channel";
         var notificationManager = GetSystemService(NotificationService) as NotificationManager;
 
-        if (notificationManager != null && notificationManager.GetNotificationChannel(channelId) == null)
+        if (notificationManager != null &&
+            notificationManager.GetNotificationChannel(channelId) == null)
         {
             var channel = new NotificationChannel(
                 channelId, "Location Tracking", NotificationImportance.Low);
+            channel.Description = "Theo doi vi tri de phat thuyet minh tu dong";
             notificationManager.CreateNotificationChannel(channel);
         }
 
         var notification = new Notification.Builder(this, channelId)
-            .SetContentTitle("TravelGuide đang chạy")
-            .SetContentText("Ứng dụng đang theo dõi vị trí để thuyết minh...")
+            .SetContentTitle("Travel Guide dang chay")
+            .SetContentText("Dang theo doi vi tri de thuyet minh tu dong...")
             .SetSmallIcon(global::Android.Resource.Drawable.IcMenuMyLocation)
             .SetOngoing(true)
             .Build();
 
         if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-        {
-            var type = ForegroundService.TypeLocation | ForegroundService.TypeDataSync;
-            StartForeground(1001, notification, type);
-        }
+            StartForeground(1001, notification, ForegroundService.TypeLocation);
         else
-        {
             StartForeground(1001, notification);
-        }
     }
 
     private async Task RunLocationLoopAsync(CancellationToken token)
     {
-        // FIX: Lấy GeofenceEngine từ DI để feed trực tiếp
-        // (tránh duplicate: LocationService + GpsBackgroundService cùng send LocationMessage)
         GeofenceEngine? geofenceEngine = null;
         try
         {
-            geofenceEngine = IPlatformApplication.Current?.Services
-                .GetService<GeofenceEngine>();
+            geofenceEngine = IPlatformApplication.Current?.Services.GetService<GeofenceEngine>();
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[LocationService] GeofenceEngine resolve error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[LocationService] GeofenceEngine error: {ex.Message}");
         }
 
         while (!token.IsCancellationRequested)
@@ -94,31 +94,23 @@ public class LocationService : Service
 
                 if (location != null)
                 {
-                    // Gửi cho MapPage cập nhật marker
                     WeakReferenceMessenger.Default.Send(new LocationMessage(location));
-
-                    // FIX: Feed GeofenceEngine để trigger thuyết minh
                     if (geofenceEngine != null)
                         await geofenceEngine.ProcessLocationAsync(location);
-
                     System.Diagnostics.Debug.WriteLine(
-                        $"[LocationService] Lat: {location.Latitude:F5}, Lon: {location.Longitude:F5}");
+                        $"[LocationService] {location.Latitude:F5}, {location.Longitude:F5}");
                 }
             }
-            catch (System.OperationCanceledException)
-            {
-                break; // thoát loop sạch khi bị cancel
-            }
+            catch (System.OperationCanceledException) { break; }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LocationService] GPS Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[LocationService] Error: {ex.Message}");
             }
 
-            // Dùng Task.Delay với token — thoát ngay khi cancel thay vì đợi đủ 10s
             try { await Task.Delay(10_000, token); }
             catch (System.OperationCanceledException) { break; }
         }
 
-        System.Diagnostics.Debug.WriteLine("[LocationService] GPS loop exited cleanly");
+        _isRunning = false;
     }
 }

@@ -6,31 +6,43 @@ using TravelGuide.Platforms.Android;
 
 namespace TravelGuide;
 
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true,
+    ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation |
+    ConfigChanges.UiMode | ConfigChanges.ScreenLayout |
+    ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
-    // Thêm dấu ? vào Bundle để chấp nhận giá trị null
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        // Không start service ở đây — Android 14 chặn FGS từ OnCreate
+    }
 
+    protected override void OnResume()
+    {
+        base.OnResume();
+
+        // Start LocationService từ OnResume — app đã fully visible
+        // Android 14 cho phép start FGS khi app đang ở foreground
         try
         {
-            Intent intent = new Intent(this, typeof(LocationService));
-
-            // Kiểm tra Android 8.0 (Oreo) trở lên để dùng StartForegroundService
+            var intent = new Intent(this, typeof(LocationService));
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-            {
                 StartForegroundService(intent);
-            }
             else
-            {
                 StartService(intent);
-            }
+
+            System.Diagnostics.Debug.WriteLine("[MainActivity] LocationService started");
         }
-        catch (System.Exception ex)
+        catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Service Error] {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MainActivity] Service error: {ex.Message}");
         }
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        // KHÔNG stop service — để tiếp tục chạy nền
     }
 }

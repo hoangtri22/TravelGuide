@@ -105,23 +105,26 @@ public class NarrationEngine
             "ja" => ("ja", "JP"),
             "ko" => ("ko", "KR"),
             "zh" => ("zh", "CN"),
-            _ => ("en", "US") // ← fallback EN thay vì VI
+            _ => ("vi", "VN") // FIX: fallback về VI thay vì EN
         };
 
         var list = available.ToList();
+
+        // DEBUG: Log tất cả locales có sẵn trên thiết bị — xem trong Output window
+        System.Diagnostics.Debug.WriteLine(
+            $"[TTS] Available locales ({list.Count}): " +
+            string.Join(", ", list.Select(l => $"{l.Language}-{l.Country}")));
 
         // Tìm locale khớp cả language lẫn country
         var matched =
             list.FirstOrDefault(l =>
                 string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(l.Country, country, StringComparison.OrdinalIgnoreCase))
-            // Fallback: chỉ khớp language
+            // Fallback: chỉ khớp language (ví dụ en-GB khi không có en-US)
             ?? list.FirstOrDefault(l =>
-                string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase))
-            // Fallback cuối: EN-US
-            ?? list.FirstOrDefault(l =>
-                string.Equals(l.Language, "en", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(l.Country, "US", StringComparison.OrdinalIgnoreCase));
+                string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase));
+        // FIX: Bỏ fallback EN-US cuối — nếu không có locale nào khớp thì
+        // trả null để TTS tự chọn system default, tránh phát sai ngôn ngữ
 
         System.Diagnostics.Debug.WriteLine(
             $"[TTS] Matched locale: {matched?.Language}-{matched?.Country} " +

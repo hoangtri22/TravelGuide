@@ -15,7 +15,6 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontAttributes" Value="Bold"/>
             <Setter Property="HeightRequest" Value="45"/>
-            <Setter Property="WidthRequest" Value="90"/>
             <Setter Property="BorderColor" Value="#E0E0E0"/>
             <Setter Property="BorderWidth" Value="1"/>
         </Style>
@@ -45,17 +44,21 @@
                                TextChanged="OnSearchBarTextChanged"/>
                 </Border>
 
-                <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween">
-                    <Button Text="{loc:Translate BtnMap}"
+                <!-- FIX: Grid 3 cột đều nhau thay FlexLayout — tránh bị cắt chữ khi đổi ngôn ngữ -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0"
+                            Text="{loc:Translate BtnMap}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenMap"/>
-                    <Button Text="{loc:Translate BtnAudio}"
+                    <Button Grid.Column="1"
+                            Text="{loc:Translate BtnAudio}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenAudio"/>
-                    <Button Text="{loc:Translate BtnNearby}"
+                    <Button Grid.Column="2"
+                            Text="{loc:Translate BtnNearby}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenNearby"/>
-                </FlexLayout>
+                </Grid>
 
                 <Label Text="{loc:Translate PopularPlaces}"
                        FontSize="20" FontAttributes="Bold"

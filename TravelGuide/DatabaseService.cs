@@ -89,23 +89,18 @@ namespace TravelGuide
         }
 
         // ── 6. Kiểm tra đã dịch ngôn ngữ nào chưa ──────────────────────
+        // FIX: Kiểm tra TẤT CẢ địa điểm, không chỉ place đầu tiên
         public async Task<bool> IsTranslatedAsync(string langCode)
         {
             var places = await GetPlacesAsync();
             if (places.Count == 0) return false;
 
-            var first = places.First();
             return langCode switch
             {
-                // Khác VI và khác NameVi mới coi là đã dịch thật
-                "en" => !string.IsNullOrEmpty(first.NameEn)
-                        && first.NameEn != first.NameVi,
-                "ja" => !string.IsNullOrEmpty(first.NameJa)
-                        && first.NameJa != first.NameVi,
-                "ko" => !string.IsNullOrEmpty(first.NameKo)
-                        && first.NameKo != first.NameVi,
-                "zh" => !string.IsNullOrEmpty(first.NameZh)
-                        && first.NameZh != first.NameVi,
+                "en" => places.All(p => !string.IsNullOrEmpty(p.NameEn) && p.NameEn != p.NameVi),
+                "ja" => places.All(p => !string.IsNullOrEmpty(p.NameJa) && p.NameJa != p.NameVi),
+                "ko" => places.All(p => !string.IsNullOrEmpty(p.NameKo) && p.NameKo != p.NameVi),
+                "zh" => places.All(p => !string.IsNullOrEmpty(p.NameZh) && p.NameZh != p.NameVi),
                 _ => true // "vi" luôn có sẵn
             };
         }

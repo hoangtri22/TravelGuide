@@ -1,35 +1,27 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
 	<application
         android:allowBackup="true"
         android:icon="@mipmap/appicon"
         android:supportsRtl="true"
         android:label="Travel Guide">
-
 		<meta-data
 			android:name="com.google.android.geo.API_KEY"
 			android:value="YOUR_REAL_API_KEY_HERE" />
-
 		<service
 			android:name=".LocationService"
-			android:foregroundServiceType="location|dataSync"
+			android:foregroundServiceType="location"
 			android:enabled="true"
 			android:exported="false">
 		</service>
 	</application>
-	
+
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET"/>
-
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 </manifest>

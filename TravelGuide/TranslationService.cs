@@ -1,6 +1,5 @@
-﻿using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
+﻿using System.Text.Json;
+using System.Web;
 using TravelGuide.Models;
 
 namespace TravelGuide;
@@ -10,10 +9,17 @@ public class TranslationService
     private readonly HttpClient _http;
     private readonly DatabaseService _db;
 
-    // ⚠️ Thay bằng API key thật của bạn
-    private const string ApiKey = "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";
-    private const string ApiUrl = "https://api.anthropic.com/v1/messages";
-    private const string Model = "claude-haiku-4-5-20251001"; // Haiku: nhanh + rẻ cho task dịch
+    // MyMemory API — miễn phí, không cần key, 1000 request/ngày
+    private const string ApiUrl = "https://api.mymemory.translated.net/get";
+
+    // Mapping ngôn ngữ: AppLanguage code → MyMemory language pair
+    private static readonly Dictionary<string, string> LangPair = new()
+    {
+        { "en", "vi|en" },
+        { "ja", "vi|ja" },
+        { "ko", "vi|ko" },
+        { "zh", "vi|zh" },
+    };
 
     public TranslationService(HttpClient http, DatabaseService db)
     {
@@ -21,47 +27,23 @@ public class TranslationService
         _db = db;
     }
 
-    /// <summary>
-    /// Dịch 1 địa điểm sang ngôn ngữ target nếu chưa có bản dịch.
-    /// Trả về true nếu dịch thành công.
-    /// </summary>
+    /// <summary>Dịch 1 địa điểm sang ngôn ngữ target nếu chưa có bản dịch.</summary>
     public async Task<bool> TranslatePlaceAsync(TouristPlace place, string targetLang)
     {
-        // Kiểm tra đã có bản dịch chưa
         if (AlreadyTranslated(place, targetLang)) return true;
 
         try
         {
-            var langName = GetLanguageFullName(targetLang);
+            var translatedName = await TranslateTextAsync(place.NameVi, targetLang);
+            var translatedDesc = await TranslateTextAsync(place.DescVi, targetLang);
 
-            // Gọi Claude dịch cả Name lẫn Description trong 1 request
-            // FIX CS9006: Tách JSON template ra biến riêng để tránh {{ }} conflict với string interpolation
-            const string jsonTemplate = "{\n  \"name\": \"...\",\n  \"description\": \"...\"\n}";
-            var prompt =
-                $"Dịch các đoạn văn bản sau sang {langName}.\n" +
-                $"Chỉ trả về JSON thuần, không giải thích, không markdown.\n" +
-                $"Format JSON:\n{jsonTemplate}\n\n" +
-                $"Văn bản cần dịch:\n" +
-                $"- name: {place.NameVi}\n" +
-                $"- description: {place.DescVi}";
+            if (translatedName == null || translatedDesc == null) return false;
 
-            var result = await CallClaudeAsync(prompt);
-            if (result == null) return false;
-
-            // Parse JSON từ Claude
-            var json = JsonSerializer.Deserialize<TranslationResult>(result,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (json == null) return false;
-
-            // Gán vào đúng field theo ngôn ngữ
-            ApplyTranslation(place, targetLang, json.Name, json.Description);
-
-            // Lưu lại vào SQLite
+            ApplyTranslation(place, targetLang, translatedName, translatedDesc);
             await _db.UpdatePlaceAsync(place);
 
             System.Diagnostics.Debug.WriteLine(
-                $"✅ Dịch xong [{targetLang}]: {place.NameVi} → {json.Name}");
+                $"✅ Dịch xong [{targetLang}]: {place.NameVi} → {translatedName}");
             return true;
         }
         catch (Exception ex)
@@ -82,54 +64,60 @@ public class TranslationService
             await TranslatePlaceAsync(places[i], targetLang);
             progress?.Report((i + 1, places.Count));
 
-            // Delay nhỏ để tránh rate limit
-            await Task.Delay(300);
+            // Delay tránh rate limit MyMemory (~1 req/giây)
+            await Task.Delay(500);
         }
     }
 
     // ─── Private helpers ───────────────────────────────────────────────────
 
-    private async Task<string?> CallClaudeAsync(string prompt)
+    private async Task<string?> TranslateTextAsync(string text, string targetLang)
     {
-        var requestBody = new
+        if (!LangPair.TryGetValue(targetLang, out var langpair)) return text;
+
+        try
         {
-            model = Model,
-            max_tokens = 300,
-            messages = new[]
+            var encoded = HttpUtility.UrlEncode(text);
+            var url = $"{ApiUrl}?q={encoded}&langpair={langpair}";
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[MyMemory] → [{targetLang}]: {text.Substring(0, Math.Min(30, text.Length))}...");
+
+            var response = await _http.GetAsync(url);
+
+            if (!response.IsSuccessStatusCode)
             {
-                new { role = "user", content = prompt }
+                System.Diagnostics.Debug.WriteLine($"[MyMemory] HTTP Error: {(int)response.StatusCode}");
+                return null;
             }
-        };
 
-        var request = new HttpRequestMessage(HttpMethod.Post, ApiUrl);
-        request.Headers.Add("x-api-key", ApiKey);
-        request.Headers.Add("anthropic-version", "2023-06-01");
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody),
-            Encoding.UTF8, "application/json");
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-        var response = await _http.SendAsync(request);
-        if (!response.IsSuccessStatusCode)
+            // responseStatus 200 = thành công
+            var status = root.GetProperty("responseStatus").GetInt32();
+            if (status != 200)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MyMemory] API Error status: {status}");
+                return null;
+            }
+
+            var translated = root
+                .GetProperty("responseData")
+                .GetProperty("translatedText")
+                .GetString();
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[MyMemory] ✅ {translated?.Substring(0, Math.Min(40, translated?.Length ?? 0))}");
+
+            return translated;
+        }
+        catch (Exception ex)
         {
-            var err = await response.Content.ReadAsStringAsync();
-            System.Diagnostics.Debug.WriteLine($"Claude API error: {err}");
+            System.Diagnostics.Debug.WriteLine($"[MyMemory] Exception: {ex.Message}");
             return null;
         }
-
-        var responseJson = await response.Content.ReadAsStringAsync();
-        using var doc = JsonDocument.Parse(responseJson);
-
-        // Lấy text từ response Claude
-        var text = doc.RootElement
-            .GetProperty("content")[0]
-            .GetProperty("text")
-            .GetString();
-
-        // Làm sạch markdown nếu Claude tự ý thêm ```json
-        return text?
-            .Replace("```json", "")
-            .Replace("```", "")
-            .Trim();
     }
 
     private static bool AlreadyTranslated(TouristPlace place, string lang) =>
@@ -138,8 +126,8 @@ public class TranslationService
             "ja" => !string.IsNullOrEmpty(place.NameJa),
             "ko" => !string.IsNullOrEmpty(place.NameKo),
             "zh" => !string.IsNullOrEmpty(place.NameZh),
-            "en" => !string.IsNullOrEmpty(place.NameEn),
-            _ => true // "vi" luôn có sẵn
+            "en" => !string.IsNullOrEmpty(place.NameEn) && place.NameEn != place.NameVi,
+            _ => true
         };
 
     private static void ApplyTranslation(
@@ -152,23 +140,8 @@ public class TranslationService
             case "zh": place.NameZh = name; place.DescZh = desc; break;
             case "en":
                 place.NameEn = name ?? place.NameEn;
-                place.DescEn = desc ?? place.DescEn; break;
+                place.DescEn = desc ?? place.DescEn;
+                break;
         }
-    }
-
-    private static string GetLanguageFullName(string code) =>
-        code switch
-        {
-            "ja" => "tiếng Nhật",
-            "ko" => "tiếng Hàn",
-            "zh" => "tiếng Trung (Giản thể)",
-            "en" => "tiếng Anh",
-            _ => "tiếng Anh"
-        };
-
-    private class TranslationResult
-    {
-        public string? Name { get; set; }
-        public string? Description { get; set; }
     }
 }
