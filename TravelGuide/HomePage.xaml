@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:TravelGuide"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.HomePage"
              BackgroundColor="#F2F2F2"
-             Title="Travel Guide">
+             Title="{loc:Translate AppTitle}">
 
     <ContentPage.Resources>
         <Style x:Key="CategoryBtnStyle" TargetType="Button">
@@ -13,64 +15,96 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontAttributes" Value="Bold"/>
             <Setter Property="HeightRequest" Value="45"/>
-            <Setter Property="WidthRequest" Value="90"/>
             <Setter Property="BorderColor" Value="#E0E0E0"/>
             <Setter Property="BorderWidth" Value="1"/>
         </Style>
     </ContentPage.Resources>
 
-    <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="20">
+    <Grid RowDefinitions="*, Auto">
 
-            <VerticalStackLayout Spacing="5" HorizontalOptions="Center" Margin="0,10">
-                <Label Text="Travel Guide" 
-                       FontSize="28" 
-                       FontAttributes="Bold" 
-                       TextColor="#2E86DE"
-                       HorizontalOptions="Center"/>
-                <Label Text="Khám phá Sài Gòn cùng bạn" 
-                       FontSize="14" 
-                       TextColor="Gray"
-                       HorizontalOptions="Center"/>
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="20" Spacing="20">
+
+                <VerticalStackLayout Spacing="5"
+                                     HorizontalOptions="Center"
+                                     Margin="0,10">
+                    <Label Text="Travel Guide"
+                           FontSize="28" FontAttributes="Bold"
+                           TextColor="#2E86DE"
+                           HorizontalOptions="Center"/>
+                    <Label Text="{loc:Translate AppTagline}"
+                           FontSize="14" TextColor="Gray"
+                           HorizontalOptions="Center"/>
+                </VerticalStackLayout>
+
+                <Border StrokeShape="RoundRectangle 20"
+                        Padding="5" BackgroundColor="White"
+                        Stroke="#E0E0E0" StrokeThickness="1">
+                    <SearchBar Placeholder="{loc:Translate SearchPlaceholder}"
+                               TextChanged="OnSearchBarTextChanged"/>
+                </Border>
+
+                <!-- FIX: Grid 3 cột đều nhau thay FlexLayout — tránh bị cắt chữ khi đổi ngôn ngữ -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+                    <Button Grid.Column="0"
+                            Text="{loc:Translate BtnMap}"
+                            Style="{StaticResource CategoryBtnStyle}"
+                            Clicked="OpenMap"/>
+                    <Button Grid.Column="1"
+                            Text="{loc:Translate BtnAudio}"
+                            Style="{StaticResource CategoryBtnStyle}"
+                            Clicked="OpenAudio"/>
+                    <Button Grid.Column="2"
+                            Text="{loc:Translate BtnNearby}"
+                            Style="{StaticResource CategoryBtnStyle}"
+                            Clicked="OpenNearby"/>
+                </Grid>
+
+                <Label Text="{loc:Translate PopularPlaces}"
+                       FontSize="20" FontAttributes="Bold"
+                       Margin="0,10,0,0"/>
+
+                <CollectionView x:Name="PlacesCollection"
+                                SelectionMode="Single"
+                                SelectionChanged="OnPlaceSelected">
+                    <CollectionView.ItemsLayout>
+                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="15"/>
+                    </CollectionView.ItemsLayout>
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate>
+                            <Border StrokeShape="RoundRectangle 15"
+                                    StrokeThickness="0"
+                                    BackgroundColor="White"
+                                    Margin="0,5">
+                                <Border.Shadow>
+                                    <Shadow Brush="Black" Offset="0,5"
+                                            Radius="10" Opacity="0.1"/>
+                                </Border.Shadow>
+                                <Grid RowDefinitions="180, Auto">
+                                    <Image Source="{Binding ImageSource}"
+                                           Aspect="AspectFill" Grid.Row="0"/>
+                                    <VerticalStackLayout Grid.Row="1"
+                                                         Padding="15" Spacing="5">
+                                        <Label Text="{Binding Name}"
+                                               FontSize="18" FontAttributes="Bold"
+                                               TextColor="#333333"/>
+                                        <Label Text="{Binding Summary}"
+                                               FontSize="13" TextColor="Gray"
+                                               MaxLines="2"/>
+                                        <Label Text="{loc:Translate ViewDetail}"
+                                               FontSize="12" TextColor="#2E86DE"
+                                               Margin="0,5,0,0"/>
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
             </VerticalStackLayout>
+        </ScrollView>
 
-            <Border StrokeShape="RoundRectangle 20" Padding="5" BackgroundColor="White" Stroke="#E0E0E0" StrokeThickness="1">
-                <SearchBar Placeholder="Tìm kiếm địa điểm..." 
-                    TextChanged="OnSearchBarTextChanged" />
-            </Border>
+        <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="1"/>
 
-            <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween">
-                <Button Text="📍 Bản đồ" Style="{StaticResource CategoryBtnStyle}" Clicked="OpenMap"/>
-                <Button Text="🎙 Audio" Style="{StaticResource CategoryBtnStyle}"/>
-                <Button Text="🔍 Gần đây" Style="{StaticResource CategoryBtnStyle}"/>
-            </FlexLayout>
-
-            <Label Text="Địa điểm phổ biến" FontSize="20" FontAttributes="Bold" Margin="0,10,0,0"/>
-
-            <CollectionView x:Name="PlacesCollection" SelectionMode="Single" SelectionChanged="OnPlaceSelected">
-                <CollectionView.ItemsLayout>
-                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="15"/>
-                </CollectionView.ItemsLayout>
-                <CollectionView.ItemTemplate>
-                    <DataTemplate>
-                        <Border StrokeShape="RoundRectangle 15" StrokeThickness="0" BackgroundColor="White" Margin="0,5">
-                            <Border.Shadow>
-                                <Shadow Brush="Black" Offset="0,5" Radius="10" Opacity="0.1" />
-                            </Border.Shadow>
-
-                            <Grid RowDefinitions="180, Auto">
-                                <Image Source="{Binding ImageUrl}" Aspect="AspectFill" Grid.Row="0"/>
-                                <VerticalStackLayout Grid.Row="1" Padding="15" Spacing="5">
-                                    <Label Text="{Binding Name}" FontSize="18" FontAttributes="Bold" TextColor="#333333"/>
-                                    <Label Text="{Binding Description}" FontSize="13" TextColor="Gray" MaxLines="2"/>
-                                    <Label Text="Xem chi tiết >" FontSize="12" TextColor="#2E86DE" Margin="0,5,0,0"/>
-                                </VerticalStackLayout>
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
-
-        </VerticalStackLayout>
-    </ScrollView>
+    </Grid>
 </ContentPage>

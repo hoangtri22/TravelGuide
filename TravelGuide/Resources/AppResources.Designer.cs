@@ -61,11 +61,128 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Explore Saigon with us.
+        /// </summary>
+        public static string AppTagline {
+            get {
+                return ResourceManager.GetString("AppTagline", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Travel Guide.
+        /// </summary>
+        public static string AppTitle {
+            get {
+                return ResourceManager.GetString("AppTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Language: .
+        /// </summary>
+        public static string AudioLanguage {
+            get {
+                return ResourceManager.GetString("AudioLanguage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to  places.
+        /// </summary>
+        public static string AudioPlaces {
+            get {
+                return ResourceManager.GetString("AudioPlaces", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Vinh Khanh Food Street.
+        /// </summary>
+        public static string AudioStreetName {
+            get {
+                return ResourceManager.GetString("AudioStreetName", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 🎙 Commentary.
+        /// </summary>
+        public static string AudioTitle {
+            get {
+                return ResourceManager.GetString("AudioTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 🎙 Audio.
+        /// </summary>
+        public static string BtnAudio {
+            get {
+                return ResourceManager.GetString("BtnAudio", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Continue.
+        /// </summary>
+        public static string BtnContinue {
+            get {
+                return ResourceManager.GetString("BtnContinue", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to English.
         /// </summary>
         public static string BtnEnglish {
             get {
                 return ResourceManager.GetString("BtnEnglish", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 📍 Map.
+        /// </summary>
+        public static string BtnMap {
+            get {
+                return ResourceManager.GetString("BtnMap", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 🔍 Nearby.
+        /// </summary>
+        public static string BtnNearby {
+            get {
+                return ResourceManager.GetString("BtnNearby", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ▶  Play all.
+        /// </summary>
+        public static string BtnPlayAll {
+            get {
+                return ResourceManager.GetString("BtnPlayAll", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to ⏸  Playing....
+        /// </summary>
+        public static string BtnPlaying {
+            get {
+                return ResourceManager.GetString("BtnPlaying", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 🔊 Listen to commentary.
+        /// </summary>
+        public static string BtnSpeak {
+            get {
+                return ResourceManager.GetString("BtnSpeak", resourceCulture);
             }
         }
         
@@ -79,11 +196,209 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Currency.
+        /// </summary>
+        public static string CurrencyLabel {
+            get {
+                return ResourceManager.GetString("CurrencyLabel", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to VND, USD....
+        /// </summary>
+        public static string CurrencyPlaceholder {
+            get {
+                return ResourceManager.GetString("CurrencyPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Place Detail.
+        /// </summary>
+        public static string DetailTitle {
+            get {
+                return ResourceManager.GetString("DetailTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to km away.
+        /// </summary>
+        public static string DistanceKm {
+            get {
+                return ResourceManager.GetString("DistanceKm", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to m away.
+        /// </summary>
+        public static string DistanceM {
+            get {
+                return ResourceManager.GetString("DistanceM", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Language.
+        /// </summary>
+        public static string LanguageLabel {
+            get {
+                return ResourceManager.GetString("LanguageLabel", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Search language....
+        /// </summary>
+        public static string LanguagePlaceholder {
+            get {
+                return ResourceManager.GetString("LanguagePlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Loading map....
+        /// </summary>
+        public static string LoadingMap {
+            get {
+                return ResourceManager.GetString("LoadingMap", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Map.
+        /// </summary>
+        public static string MapTitle {
+            get {
+                return ResourceManager.GetString("MapTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Playing....
+        /// </summary>
+        public static string MiniPlaying {
+            get {
+                return ResourceManager.GetString("MiniPlaying", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Switching....
+        /// </summary>
+        public static string MiniSwitching {
+            get {
+                return ResourceManager.GetString("MiniSwitching", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 📍 My location.
+        /// </summary>
+        public static string MyLocation {
+            get {
+                return ResourceManager.GetString("MyLocation", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Playing commentary....
+        /// </summary>
+        public static string NowPlaying {
+            get {
+                return ResourceManager.GetString("NowPlaying", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Popular Places.
+        /// </summary>
+        public static string PopularPlaces {
+            get {
+                return ResourceManager.GetString("PopularPlaces", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Searching location....
+        /// </summary>
+        public static string SearchingLocation {
+            get {
+                return ResourceManager.GetString("SearchingLocation", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Search places....
+        /// </summary>
+        public static string SearchPlaceholder {
+            get {
+                return ResourceManager.GetString("SearchPlaceholder", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Setup your journey.
+        /// </summary>
+        public static string SetupJourney {
+            get {
+                return ResourceManager.GetString("SetupJourney", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Translating....
+        /// </summary>
+        public static string Translating {
+            get {
+                return ResourceManager.GetString("Translating", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to View detail &gt;.
+        /// </summary>
+        public static string ViewDetail {
+            get {
+                return ResourceManager.GetString("ViewDetail", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 📍 Vinh Khanh Street.
+        /// </summary>
+        public static string VinhKhanhStreet {
+            get {
+                return ResourceManager.GetString("VinhKhanhStreet", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Welcome to Vinh Khanh Food Street!.
         /// </summary>
         public static string WelcomeText {
             get {
                 return ResourceManager.GetString("WelcomeText", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to 📍 You are here.
+        /// </summary>
+        public static string YouAreHere {
+            get {
+                return ResourceManager.GetString("YouAreHere", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You are in this area.
+        /// </summary>
+        public static string YouAreInZone {
+            get {
+                return ResourceManager.GetString("YouAreInZone", resourceCulture);
             }
         }
     }

@@ -1,5 +1,4 @@
 ﻿using SQLite;
-
 namespace TravelGuide.Models;
 
 public class TouristPlace
@@ -7,43 +6,56 @@ public class TouristPlace
     [PrimaryKey, AutoIncrement]
     public int Id { get; set; }
 
-    // Tên theo 2 ngôn ngữ
     public string NameVi { get; set; } = string.Empty;
     public string NameEn { get; set; } = string.Empty;
-
-    // Mô tả theo 2 ngôn ngữ
     public string DescVi { get; set; } = string.Empty;
     public string DescEn { get; set; } = string.Empty;
 
+    public string? NameJa { get; set; }
+    public string? NameKo { get; set; }
+    public string? NameZh { get; set; }
+    public string? DescJa { get; set; }
+    public string? DescKo { get; set; }
+    public string? DescZh { get; set; }
+
     public double Latitude { get; set; }
     public double Longitude { get; set; }
-    public double Radius { get; set; } = 200;
-    public string? ImageUrl { get; set; }
+    public double Radius { get; set; } = 50;
+    public string? ImagePath { get; set; }
 
-    // --- CÁC THUỘC TÍNH THÔNG MINH (Chỉ dùng để hiển thị, không lưu DB) ---
+    [Ignore]
+    public string? ImageSource => string.IsNullOrEmpty(ImagePath)
+        ? "placeholder.png" : ImagePath;
 
     [Ignore]
     public string Name => GetCurrentName();
-
     [Ignore]
     public string Description => GetCurrentDescription();
-
     [Ignore]
     public string Summary => Description?.Length > 100
-        ? Description.Substring(0, 97) + "..."
-        : Description ?? "";
+        ? Description.Substring(0, 97) + "..." : Description ?? "";
 
-    // Hàm bổ trợ để lấy đúng ngôn ngữ hiện tại
     private string GetCurrentName()
     {
-        // Lấy 2 chữ cái đầu của ngôn ngữ đang chạy (ví dụ: "vi" hoặc "en")
-        var culture = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-        return culture == "vi" ? NameVi : NameEn;
+        return AppLanguage.Current switch
+        {
+            "en" => !string.IsNullOrEmpty(NameEn) ? NameEn : NameVi,
+            "ja" => !string.IsNullOrEmpty(NameJa) ? NameJa : NameVi,
+            "ko" => !string.IsNullOrEmpty(NameKo) ? NameKo : NameVi,
+            "zh" => !string.IsNullOrEmpty(NameZh) ? NameZh : NameVi,
+            _ => NameVi
+        };
     }
 
     private string GetCurrentDescription()
     {
-        var culture = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-        return culture == "vi" ? DescVi : DescEn;
+        return AppLanguage.Current switch
+        {
+            "en" => !string.IsNullOrEmpty(DescEn) ? DescEn : DescVi,
+            "ja" => !string.IsNullOrEmpty(DescJa) ? DescJa : DescVi,
+            "ko" => !string.IsNullOrEmpty(DescKo) ? DescKo : DescVi,
+            "zh" => !string.IsNullOrEmpty(DescZh) ? DescZh : DescVi,
+            _ => DescVi
+        };
     }
 }

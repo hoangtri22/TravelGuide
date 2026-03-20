@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
+             x:Class="TravelGuide.MiniPlayerView"
+             x:Name="this">
+
+    <Border x:Name="PlayerBar" BackgroundColor="#0F172A" StrokeThickness="0" IsVisible="False">
+        <Border.Shadow>
+            <Shadow Brush="Black" Offset="0,-3" Radius="12" Opacity="0.2"/>
+        </Border.Shadow>
+        <Grid ColumnDefinitions="*, Auto, Auto" Padding="16,10" ColumnSpacing="8">
+
+            <VerticalStackLayout Grid.Column="0" VerticalOptions="Center" Spacing="2">
+                <Label x:Name="LblPlaceName" Text="" FontSize="13" FontAttributes="Bold"
+                       TextColor="White" LineBreakMode="TailTruncation"/>
+                <StackLayout Orientation="Horizontal" Spacing="6">
+                    <Ellipse x:Name="StatusDot" WidthRequest="6" HeightRequest="6" Fill="#22C55E"/>
+                    <Label x:Name="LblStatus" Text="{loc:Translate MiniPlaying}"
+                           FontSize="11" TextColor="#94A3B8"/>
+                </StackLayout>
+            </VerticalStackLayout>
+
+            <Border Grid.Column="1" WidthRequest="40" HeightRequest="40"
+                    BackgroundColor="#1E293B" StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20"/>
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnStopTapped"/>
+                </Border.GestureRecognizers>
+                <Label Text="⏹" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
+
+            <Border Grid.Column="2" WidthRequest="40" HeightRequest="40"
+                    BackgroundColor="#1E293B" StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20"/>
+                </Border.StrokeShape>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnNextTapped"/>
+                </Border.GestureRecognizers>
+                <Label Text="⏭" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center"/>
+            </Border>
+
+        </Grid>
+    </Border>
+</ContentView>

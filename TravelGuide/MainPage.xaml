@@ -1,7 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:sys="clr-namespace:System;assembly=netstandard"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.MainPage"
              BackgroundColor="White"
@@ -10,9 +9,10 @@
     <Grid>
         <ScrollView>
             <VerticalStackLayout Spacing="0">
+
                 <Grid HeightRequest="250">
                     <Image Source="travel.jpg" Aspect="AspectFill"/>
-                    <BoxView VerticalOptions="End" HeightRequest="60">
+                    <BoxView VerticalOptions="End" HeightRequest="80">
                         <BoxView.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                 <GradientStop Color="Transparent" Offset="0"/>
@@ -22,58 +22,149 @@
                     </BoxView>
                 </Grid>
 
-                <VerticalStackLayout Padding="25" Spacing="15" Margin="0,-30,0,0">
-                    <VerticalStackLayout Spacing="5">
-                        <Label Text="{loc:Translate WelcomeText}" FontSize="28" FontAttributes="Bold" TextColor="#1E88E5"/>
-                        <Label Text="Setup your journey / Thiết lập hành trình" FontSize="14" TextColor="Gray"/>
+                <VerticalStackLayout Padding="25" Spacing="20" Margin="0,-30,0,0">
+
+                    <!-- Title -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="{loc:Translate WelcomeText}"
+                               FontSize="26" FontAttributes="Bold" TextColor="#1E88E5"/>
+                        <Label Text="{loc:Translate SetupJourney}"
+                               FontSize="14" TextColor="Gray"/>
                     </VerticalStackLayout>
 
-                    <Grid>
-                        <VerticalStackLayout Spacing="5">
-                            <Label Text="{loc:Translate BtnEnglish}" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
-                            <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
-                                <Entry x:Name="LanguageEntry" Placeholder="Search language..." TextChanged="OnLanguageSearch" VerticalOptions="Center"/>
-                            </Border>
-                        </VerticalStackLayout>
+                    <!-- Language Selector -->
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="{loc:Translate LanguageLabel}"
+                               FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
 
-                        <Border x:Name="LanguageListFrame" IsVisible="False" 
-                                StrokeShape="RoundRectangle 10" BackgroundColor="White" 
-                                Stroke="#D1D1D1" HeightRequest="150" VerticalOptions="Start" 
-                                Margin="0,70,0,0" ZIndex="1">
-                            <CollectionView x:Name="LanguageCollection" SelectionMode="Single" SelectionChanged="OnLanguageSelected">
+                        <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+
+                            <Border x:Name="BtnLang_vi" Grid.Column="0"
+                                    StrokeShape="RoundRectangle 12"
+                                    BackgroundColor="#1E88E5" StrokeThickness="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLanguageTapped" CommandParameter="vi"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Padding="4,10" Spacing="3" HorizontalOptions="Center">
+                                    <Label Text="🇻🇳" FontSize="22" HorizontalOptions="Center"/>
+                                    <Label Text="VI" FontSize="11" FontAttributes="Bold"
+                                           TextColor="White" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border x:Name="BtnLang_en" Grid.Column="1"
+                                    StrokeShape="RoundRectangle 12"
+                                    BackgroundColor="#F1F5F9" StrokeThickness="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLanguageTapped" CommandParameter="en"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Padding="4,10" Spacing="3" HorizontalOptions="Center">
+                                    <Label Text="🇬🇧" FontSize="22" HorizontalOptions="Center"/>
+                                    <Label Text="EN" FontSize="11" FontAttributes="Bold"
+                                           TextColor="#555555" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border x:Name="BtnLang_ja" Grid.Column="2"
+                                    StrokeShape="RoundRectangle 12"
+                                    BackgroundColor="#F1F5F9" StrokeThickness="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLanguageTapped" CommandParameter="ja"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Padding="4,10" Spacing="3" HorizontalOptions="Center">
+                                    <Label Text="🇯🇵" FontSize="22" HorizontalOptions="Center"/>
+                                    <Label Text="JA" FontSize="11" FontAttributes="Bold"
+                                           TextColor="#555555" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border x:Name="BtnLang_ko" Grid.Column="3"
+                                    StrokeShape="RoundRectangle 12"
+                                    BackgroundColor="#F1F5F9" StrokeThickness="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLanguageTapped" CommandParameter="ko"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Padding="4,10" Spacing="3" HorizontalOptions="Center">
+                                    <Label Text="🇰🇷" FontSize="22" HorizontalOptions="Center"/>
+                                    <Label Text="KO" FontSize="11" FontAttributes="Bold"
+                                           TextColor="#555555" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <Border x:Name="BtnLang_zh" Grid.Column="4"
+                                    StrokeShape="RoundRectangle 12"
+                                    BackgroundColor="#F1F5F9" StrokeThickness="0">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnLanguageTapped" CommandParameter="zh"/>
+                                </Border.GestureRecognizers>
+                                <VerticalStackLayout Padding="4,10" Spacing="3" HorizontalOptions="Center">
+                                    <Label Text="🇨🇳" FontSize="22" HorizontalOptions="Center"/>
+                                    <Label Text="ZH" FontSize="11" FontAttributes="Bold"
+                                           TextColor="#555555" HorizontalOptions="Center"/>
+                                </VerticalStackLayout>
+                            </Border>
+
+                        </Grid>
+
+                        <!-- Tên ngôn ngữ đang chọn -->
+                        <Label x:Name="LblSelectedLang"
+                               Text="🇻🇳 Tiếng Việt"
+                               FontSize="13" TextColor="#1E88E5"
+                               FontAttributes="Bold"
+                               HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+
+                    <!-- Currency Selector -->
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{loc:Translate CurrencyLabel}"
+                               FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                        <Border StrokeShape="RoundRectangle 12" Padding="10,0"
+                                Stroke="#E0E0E0" HeightRequest="45">
+                            <Entry x:Name="CurrencyEntry"
+                                   Placeholder="{loc:Translate CurrencyPlaceholder}"
+                                   TextChanged="OnCurrencySearch"
+                                   VerticalOptions="Center"/>
+                        </Border>
+
+                        <Border x:Name="CurrencyListFrame" IsVisible="False"
+                                StrokeShape="RoundRectangle 10" BackgroundColor="White"
+                                Stroke="#D1D1D1" HeightRequest="150">
+                            <CollectionView x:Name="CurrencyCollection"
+                                            SelectionMode="Single"
+                                            SelectionChanged="OnCurrencySelected">
                                 <CollectionView.ItemTemplate>
                                     <DataTemplate>
-                                        <Label Text="{Binding .}" Padding="15,10" FontSize="14" TextColor="#333333"/>
+                                        <Label Text="{Binding .}" Padding="15,10"
+                                               FontSize="14" TextColor="#333333"/>
                                     </DataTemplate>
                                 </CollectionView.ItemTemplate>
                             </CollectionView>
                         </Border>
-                    </Grid>
+                    </VerticalStackLayout>
 
-                    <Grid>
-                        <VerticalStackLayout Spacing="5">
-                            <Label Text="Currency / Tiền tệ" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
-                            <Border StrokeShape="RoundRectangle 12" Padding="10,0" Stroke="#E0E0E0" HeightRequest="45">
-                                <Entry x:Name="CurrencyEntry" Placeholder="VND, USD..." TextChanged="OnCurrencySearch" VerticalOptions="Center"/>
-                            </Border>
-                        </VerticalStackLayout>
+                    <!-- Translating indicator -->
+                    <HorizontalStackLayout x:Name="TranslatingBar"
+                                           IsVisible="False"
+                                           Spacing="10" HorizontalOptions="Center">
+                        <ActivityIndicator IsRunning="True" Color="#1E88E5"
+                                           WidthRequest="20" HeightRequest="20"/>
+                        <Label x:Name="LblTranslating"
+                               Text="{loc:Translate Translating}"
+                               FontSize="13" TextColor="#1E88E5"
+                               VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
 
-                        <Border x:Name="CurrencyListFrame" IsVisible="False" 
-                                StrokeShape="RoundRectangle 10" BackgroundColor="White" 
-                                Stroke="#D1D1D1" HeightRequest="150" VerticalOptions="Start" 
-                                Margin="0,70,0,0" ZIndex="1">
-                            <CollectionView x:Name="CurrencyCollection" SelectionMode="Single" SelectionChanged="OnCurrencySelected">
-                                <CollectionView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Label Text="{Binding .}" Padding="15,10" FontSize="14" TextColor="#333333"/>
-                                    </DataTemplate>
-                                </CollectionView.ItemTemplate>
-                            </CollectionView>
-                        </Border>
-                    </Grid>
+                    <!-- Continue Button -->
+                    <Button x:Name="ContinueBtn"
+                            Text="{loc:Translate BtnContinue}"
+                            Clicked="GoHome"
+                            BackgroundColor="#1E88E5"
+                            TextColor="White"
+                            CornerRadius="25"
+                            HeightRequest="50"
+                            FontAttributes="Bold"
+                            Margin="0,5,0,20"/>
 
-                    <Button Text="Continue / Tiếp tục" Clicked="GoHome" BackgroundColor="#1E88E5" TextColor="White" 
-                            CornerRadius="25" HeightRequest="50" FontAttributes="Bold" Margin="0,10,0,20"/>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>

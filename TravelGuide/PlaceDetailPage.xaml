@@ -1,34 +1,30 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:TravelGuide"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.PlaceDetailPage"
-             Title="Chi tiết địa danh">
+             Title="{loc:Translate DetailTitle}">
 
-    <ScrollView>
-        <VerticalStackLayout Spacing="20" Padding="0,0,0,20">
-            <Image x:Name="ImgPlace" 
-                   HeightRequest="300" 
-                   Aspect="AspectFill" />
+    <Grid RowDefinitions="*, Auto">
 
-            <VerticalStackLayout Padding="20" Spacing="15">
-                <Label x:Name="LblName" 
-                       FontSize="26" 
-                       FontAttributes="Bold" 
-                       TextColor="#1E88E5" />
-
-                <Button Text="🔊 Nghe thuyết minh HDV"
-                        BackgroundColor="#4CAF50"
-                        TextColor="White"
-                        CornerRadius="20"
-                        Clicked="OnSpeakClicked" />
-
-                <BoxView HeightRequest="1" Color="#EEEEEE" />
-
-                <Label x:Name="LblDescription" 
-                       FontSize="16" 
-                       LineHeight="1.5"
-                       TextColor="#333333" />
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Spacing="20" Padding="0,0,0,20">
+                <Image x:Name="ImgPlace" HeightRequest="300" Aspect="AspectFill"/>
+                <VerticalStackLayout Padding="20" Spacing="15">
+                    <Label x:Name="LblName"
+                           FontSize="26" FontAttributes="Bold" TextColor="#1E88E5"/>
+                    <Button Text="{loc:Translate BtnSpeak}"
+                            BackgroundColor="#4CAF50" TextColor="White"
+                            CornerRadius="20" Clicked="OnSpeakClicked"/>
+                    <BoxView HeightRequest="1" Color="#EEEEEE"/>
+                    <Label x:Name="LblDescription"
+                           FontSize="16" LineHeight="1.5" TextColor="#333333"/>
+                </VerticalStackLayout>
             </VerticalStackLayout>
-        </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+
+        <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="1"/>
+
+    </Grid>
 </ContentPage>

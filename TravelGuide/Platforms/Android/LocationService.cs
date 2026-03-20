@@ -5,67 +5,112 @@ using System.Runtime.Versioning;
 using Microsoft.Maui.Devices.Sensors;
 using CommunityToolkit.Mvvm.Messaging;
 using TravelGuide.Models;
-using Android.Content.PM; // Thêm cái này để dùng ForegroundService ngắn gọn
+using Android.Content.PM;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TravelGuide.Platforms.Android;
 
-// SỬA Ở ĐÂY: Thêm DataSync vào attribute để khớp với code bên dưới
-[Service(ForegroundServiceType = ForegroundService.TypeLocation | ForegroundService.TypeDataSync)]
-[SupportedOSPlatform("android26.0")]
+[Service(ForegroundServiceType = ForegroundService.TypeLocation)]
+[SupportedOSPlatform("android29.0")]
 public class LocationService : Service
 {
+    private CancellationTokenSource? _cts;
+    private static bool _isRunning = false;
+
     public override IBinder? OnBind(Intent? intent) => null;
 
     public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
     {
-        string channelId = "location_notification_channel";
+        if (_isRunning)
+        {
+            System.Diagnostics.Debug.WriteLine("[LocationService] Already running, skip");
+            return StartCommandResult.Sticky;
+        }
+
+        StartForegroundNotification();
+        _cts = new CancellationTokenSource();
+        _isRunning = true;
+        Task.Run(() => RunLocationLoopAsync(_cts.Token));
+        System.Diagnostics.Debug.WriteLine("[LocationService] Started");
+        return StartCommandResult.Sticky;
+    }
+
+    public override void OnDestroy()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+        _isRunning = false;
+        base.OnDestroy();
+        System.Diagnostics.Debug.WriteLine("[LocationService] Destroyed");
+    }
+
+    private void StartForegroundNotification()
+    {
+        const string channelId = "location_channel";
         var notificationManager = GetSystemService(NotificationService) as NotificationManager;
 
-        if (notificationManager != null && notificationManager.GetNotificationChannel(channelId) == null)
+        if (notificationManager != null &&
+            notificationManager.GetNotificationChannel(channelId) == null)
         {
-            var channel = new NotificationChannel(channelId, "Location Tracking", NotificationImportance.Low);
+            var channel = new NotificationChannel(
+                channelId, "Location Tracking", NotificationImportance.Low);
+            channel.Description = "Theo doi vi tri de phat thuyet minh tu dong";
             notificationManager.CreateNotificationChannel(channel);
         }
 
         var notification = new Notification.Builder(this, channelId)
-            .SetContentTitle("TravelGuide đang chạy")
-            .SetContentText("Ứng dụng đang theo dõi vị trí để thuyết minh...")
+            .SetContentTitle("Travel Guide dang chay")
+            .SetContentText("Dang theo doi vi tri de thuyet minh tu dong...")
             .SetSmallIcon(global::Android.Resource.Drawable.IcMenuMyLocation)
             .SetOngoing(true)
             .Build();
 
         if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
-        {
-            // Đã khớp hoàn toàn với thuộc tính [Service] ở trên đầu
-            var type = ForegroundService.TypeLocation | ForegroundService.TypeDataSync;
-            StartForeground(1001, notification, type);
-        }
+            StartForeground(1001, notification, ForegroundService.TypeLocation);
         else
-        {
             StartForeground(1001, notification);
+    }
+
+    private async Task RunLocationLoopAsync(CancellationToken token)
+    {
+        GeofenceEngine? geofenceEngine = null;
+        try
+        {
+            geofenceEngine = IPlatformApplication.Current?.Services.GetService<GeofenceEngine>();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LocationService] GeofenceEngine error: {ex.Message}");
         }
 
-        // Vòng lặp lấy vị trí (Giữ nguyên logic của bạn)
-        Task.Run(async () => {
-            while (true)
+        while (!token.IsCancellationRequested)
+        {
+            try
             {
-                try
-                {
-                    var location = await Geolocation.Default.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
-                    if (location != null)
-                    {
-                        WeakReferenceMessenger.Default.Send(new LocationMessage(location));
-                        System.Diagnostics.Debug.WriteLine($"[GPS] Lat: {location.Latitude}, Lon: {location.Longitude}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[GPS Error] {ex.Message}");
-                }
-                await Task.Delay(10000); // 10 giây quét một lần để đỡ tốn pin/RAM
-            }
-        });
+                var location = await Geolocation.Default.GetLocationAsync(
+                    new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)),
+                    token);
 
-        return StartCommandResult.Sticky;
+                if (location != null)
+                {
+                    WeakReferenceMessenger.Default.Send(new LocationMessage(location));
+                    if (geofenceEngine != null)
+                        await geofenceEngine.ProcessLocationAsync(location);
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[LocationService] {location.Latitude:F5}, {location.Longitude:F5}");
+                }
+            }
+            catch (System.OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LocationService] Error: {ex.Message}");
+            }
+
+            try { await Task.Delay(10_000, token); }
+            catch (System.OperationCanceledException) { break; }
+        }
+
+        _isRunning = false;
     }
 }

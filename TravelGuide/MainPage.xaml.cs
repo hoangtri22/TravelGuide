@@ -5,132 +5,115 @@ namespace TravelGuide;
 
 public partial class MainPage : ContentPage
 {
-    List<string> fullCurrencyList = new();
-    List<string> fullLanguageList = new();
+    private readonly DatabaseService _dbService;
+    private readonly TranslationService _translationService;
 
-    public MainPage()
+    private string _selectedLang = "vi";
+
+    private readonly List<string> _fullCurrencyList = new();
+
+    private readonly Dictionary<string, string> _langNames = new()
+    {
+        { "vi", "🇻🇳 Tiếng Việt" },
+        { "en", "🇬🇧 English" },
+        { "ja", "🇯🇵 日本語" },
+        { "ko", "🇰🇷 한국어" },
+        { "zh", "🇨🇳 中文" },
+    };
+
+    public MainPage(DatabaseService dbService, TranslationService translationService)
     {
         InitializeComponent();
-        LoadData();
+        _dbService = dbService;
+        _translationService = translationService;
+
+        LoadCurrencies();
         LoadSavedSettings();
 
-        if (LanguageListFrame != null) LanguageListFrame.IsVisible = false;
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
     }
 
-    void LoadData()
+    private void LoadCurrencies()
     {
         try
         {
-            fullCurrencyList = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
+            var currencies = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
                 .Select(c => { try { return new RegionInfo(c.Name); } catch { return null; } })
                 .Where(r => r != null)
-                .Select(r => $"{r?.ISOCurrencySymbol} - {r?.CurrencyEnglishName}")
-                .Distinct()
-                .OrderBy(c => c)
-                .ToList();
-
-            fullLanguageList = CultureInfo.GetCultures(CultureTypes.NeutralCultures)
-                .Select(c => $"{c.EnglishName} ({c.TwoLetterISOLanguageName})")
-                .Where(l => !string.IsNullOrEmpty(l))
-                .Distinct()
-                .OrderBy(l => l)
-                .ToList();
+                .Select(r => $"{r!.ISOCurrencySymbol} - {r.CurrencyEnglishName}")
+                .Distinct().OrderBy(c => c).ToList();
+            _fullCurrencyList.AddRange(currencies);
         }
         catch
         {
-            fullCurrencyList = new() { "VND - Vietnamese Dong", "USD - US Dollar" };
-            fullLanguageList = new() { "Vietnamese (vi)", "English (en)" };
+            _fullCurrencyList.AddRange(new[]
+                { "VND - Vietnamese Dong", "USD - US Dollar",
+                  "JPY - Japanese Yen", "KRW - South Korean Won",
+                  "CNY - Chinese Yuan" });
         }
     }
 
-    void LoadSavedSettings()
+    private void LoadSavedSettings()
     {
-        string savedLang = Preferences.Get("language", GetDeviceLanguage());
-        LanguageEntry.Text = savedLang;
+        _selectedLang = Preferences.Get("app_language", "vi");
         CurrencyEntry.Text = Preferences.Get("currency", "VND - Vietnamese Dong");
-
-        // Cập nhật ngôn ngữ ngay khi load app
-        UpdateAppLanguage(savedLang);
+        HighlightSelectedLang(_selectedLang);
     }
 
-    string GetDeviceLanguage()
+    private void HighlightSelectedLang(string code)
     {
-        var deviceLang = CultureInfo.CurrentCulture.EnglishName;
-        return fullLanguageList.FirstOrDefault(l => l.Contains(deviceLang)) ?? "English (en)";
+        var allCodes = new[] { "vi", "en", "ja", "ko", "zh" };
+        foreach (var c in allCodes)
+        {
+            var border = this.FindByName<Border>($"BtnLang_{c}");
+            if (border == null) continue;
+
+            bool isSelected = c == code;
+            border.BackgroundColor = isSelected
+                ? Color.FromArgb("#1E88E5")
+                : Color.FromArgb("#F1F5F9");
+
+            var stack = border.Content as VerticalStackLayout;
+            if (stack?.Children.Count > 1 && stack.Children[1] is Label lbl)
+                lbl.TextColor = isSelected ? Colors.White : Color.FromArgb("#555555");
+        }
+
+        if (LblSelectedLang != null && _langNames.TryGetValue(code, out var name))
+            LblSelectedLang.Text = name;
     }
 
-    void OnLanguageSearch(object sender, TextChangedEventArgs e)
+    private void OnLanguageTapped(object sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not string code) return;
+        if (_selectedLang == code) return;
+
+        _selectedLang = code;
+        HighlightSelectedLang(code);
+
+        Preferences.Set("app_language", code);
+        AppLanguage.SetLanguage(code);
+        SyncLocalization(code);
+
+        if (code is "en" or "ja" or "ko" or "zh")
+            _ = TranslateIfNeededAsync(code);
+    }
+
+    private void OnCurrencySearch(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").ToLower();
-
-        if (string.IsNullOrWhiteSpace(keyword))
-        {
-            if (LanguageListFrame != null) LanguageListFrame.IsVisible = false;
-            return;
-        }
-
-        var result = fullLanguageList
-            .Where(x => x.ToLower().Contains(keyword))
-            .Take(20)
-            .ToList();
-
-        if (LanguageCollection != null) LanguageCollection.ItemsSource = result;
-        if (LanguageListFrame != null) LanguageListFrame.IsVisible = result.Any();
-    }
-
-    void OnLanguageSelected(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.CurrentSelection.FirstOrDefault() is string selected)
-        {
-            LanguageEntry.Text = selected;
-            if (LanguageListFrame != null) LanguageListFrame.IsVisible = false;
-
-            // Lưu và cập nhật ngôn ngữ
-            Preferences.Set("language", selected);
-            UpdateAppLanguage(selected);
-        }
-        if (sender is CollectionView cv) cv.SelectedItem = null;
-    }
-
-    // Hàm dùng chung để đổi ngôn ngữ, tránh lỗi trùng tên Current
-    private void UpdateAppLanguage(string selectedLanguage)
-    {
-        try
-        {
-            int startIndex = selectedLanguage.LastIndexOf('(') + 1;
-            string langCode = selectedLanguage.Substring(startIndex, 2);
-
-            var localizationManager = Handler.MauiContext.Services.GetService<ILocalizationResourceManager>();
-            if (localizationManager != null)
-            {
-                // THAY SetCulture BẰNG DÒNG NÀY:
-                localizationManager.CurrentCulture = new CultureInfo(langCode);
-            }
-        }
-        catch { }
-    }
-
-    void OnCurrencySearch(object sender, TextChangedEventArgs e)
-    {
-        var keyword = (e.NewTextValue ?? "").ToLower();
-
         if (string.IsNullOrWhiteSpace(keyword))
         {
             if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
             return;
         }
-
-        var result = fullCurrencyList
+        var result = _fullCurrencyList
             .Where(x => x.ToLower().Contains(keyword))
-            .Take(20)
-            .ToList();
-
+            .Take(20).ToList();
         if (CurrencyCollection != null) CurrencyCollection.ItemsSource = result;
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = result.Any();
     }
 
-    void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
+    private void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is string selected)
         {
@@ -141,12 +124,82 @@ public partial class MainPage : ContentPage
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
-    async void GoHome(object sender, EventArgs e)
+    private async void GoHome(object sender, EventArgs e)
     {
-        var homePage = Handler.MauiContext.Services.GetService<HomePage>();
-        if (homePage != null)
+        AppLanguage.SetLanguage(_selectedLang);
+
+        // Dịch theo ngôn ngữ đang chọn (bao gồm cả EN)
+        if (_selectedLang is "en" or "ja" or "ko" or "zh")
         {
-            await Navigation.PushAsync(homePage);
+            bool done = await _dbService.IsTranslatedAsync(_selectedLang);
+            if (!done)
+                await ShowTranslatingAsync(_selectedLang);
         }
+
+        if (Handler?.MauiContext == null) return;
+        var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
+        await Navigation.PushAsync(homePage);
+    }
+
+    private async Task ShowTranslatingAsync(string lang)
+    {
+        try
+        {
+            if (TranslatingBar != null) TranslatingBar.IsVisible = true;
+            if (ContinueBtn != null)
+            {
+                ContinueBtn.IsEnabled = false;
+                ContinueBtn.Opacity = 0.6;
+            }
+
+            var places = await _dbService.GetPlacesAsync();
+            var progress = new Progress<(int current, int total)>(p =>
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (LblTranslating != null)
+                        LblTranslating.Text = $"{p.current}/{p.total}...";
+                });
+            });
+
+            await _translationService.TranslateAllAsync(places, lang, progress);
+        }
+        finally
+        {
+            if (TranslatingBar != null) TranslatingBar.IsVisible = false;
+            if (ContinueBtn != null)
+            {
+                ContinueBtn.IsEnabled = true;
+                ContinueBtn.Opacity = 1;
+            }
+        }
+    }
+
+    private async Task TranslateIfNeededAsync(string lang)
+    {
+        try
+        {
+            bool done = await _dbService.IsTranslatedAsync(lang);
+            if (done) return;
+            var places = await _dbService.GetPlacesAsync();
+            await _translationService.TranslateAllAsync(places, lang);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[MainPage] TranslateIfNeeded error: {ex.Message}");
+        }
+    }
+
+    private void SyncLocalization(string code)
+    {
+        try
+        {
+            var locMgr = Handler?.MauiContext?.Services
+                .GetService<ILocalizationResourceManager>();
+            if (locMgr != null)
+                locMgr.CurrentCulture = new CultureInfo(code);
+        }
+        catch { }
     }
 }

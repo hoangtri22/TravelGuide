@@ -1,92 +1,74 @@
 ﻿[
   {
     "NameVi": "Cổng chào Phố Ẩm thực Vĩnh Khánh",
-    "NameEn": "Vinh Khanh Food Street Welcome Gate",
+    "DescVi": "Chào mừng bạn đến với phố ẩm thực Vĩnh Khánh, Quận 4. Đây là thiên đường đồ ăn đêm nổi tiếng nhất Sài Gòn với hàng trăm quán ốc và hải sản tươi ngon.",
     "Latitude": 10.7595,
     "Longitude": 106.7012,
-    "DescVi": "Chào mừng bạn đến với phố ẩm thực Vĩnh Khánh, Quận 4. Đây là thiên đường đồ ăn đêm nổi tiếng nhất Sài Gòn với hàng trăm quán ốc và hải sản tươi ngon.",
-    "DescEn": "Welcome to Vinh Khanh Food Street, District 4. This is Saigon's most famous night food paradise with hundreds of fresh snail and seafood stalls.",
-    "Radius": 150,
+    "Radius": 80,
     "ImagePath": "gatevinhkhanh.jpg"
   },
   {
     "NameVi": "Ốc Oanh",
-    "NameEn": "Oc Oanh Restaurant",
+    "DescVi": "Bạn đang ở gần Ốc Oanh, quán ốc đông khách bậc nhất con phố này. Đừng bỏ lỡ món càng ghẹ rang muối và các loại ốc xào bơ tỏi thơm nức mũi nhé.",
     "Latitude": 10.7588,
     "Longitude": 106.7018,
-    "DescVi": "Bạn đang ở gần Ốc Oanh, quán ốc đông khách bậc nhất con phố này. Đừng bỏ lỡ món càng ghẹ rang muối và các loại ốc xào bơ tỏi thơm nức mũi nhé.",
-    "DescEn": "You are near Oc Oanh, one of the busiest snail restaurants on this street. Don't miss the salt-roasted crab claws and various snails stir-fried with garlic butter.",
-    "Radius": 100,
+    "Radius": 50,
     "ImagePath": "ocoanh.jpg"
   },
   {
     "NameVi": "Cafe Era",
-    "NameEn": "Era Coffee",
+    "DescVi": "Phía trước là Cafe Era. Một không gian cà phê ấm cúng và yên tĩnh, rất thích hợp để bạn dừng chân nghỉ ngơi sau khi dạo quanh phố ẩm thực.",
     "Latitude": 10.7585,
     "Longitude": 106.7025,
-    "DescVi": "Phía trước là Cafe Era. Một không gian cà phê ấm cúng và yên tĩnh, rất thích hợp để bạn dừng chân nghỉ ngơi sau khi dạo quanh phố ẩm thực.",
-    "DescEn": "Ahead is Era Coffee. A cozy and quiet cafe space, perfect for a break after wandering around the food street.",
-    "Radius": 80,
+    "Radius": 45,
     "ImagePath": "cafeera.jpg"
   },
   {
     "NameVi": "Ốc Đào 2",
-    "NameEn": "Oc Dao 2 Restaurant",
+    "DescVi": "Bạn đang đi ngang qua Ốc Đào 2, một chi nhánh của thương hiệu ốc nổi tiếng Sài Gòn. Nơi đây thu hút thực khách bởi nước sốt đậm đà và hải sản rất tươi.",
     "Latitude": 10.7582,
     "Longitude": 106.7032,
-    "DescVi": "Bạn đang đi ngang qua Ốc Đào 2, một chi nhánh của thương hiệu ốc nổi tiếng Sài Gòn. Nơi đây thu hút thực khách bởi nước sốt đậm đà và hải sản rất tươi.",
-    "DescEn": "You are passing by Oc Dao 2, a branch of a famous snail brand in Saigon. This place attracts diners with its rich sauces and very fresh seafood.",
-    "Radius": 100,
+    "Radius": 50,
     "ImagePath": "ocdao.jpg"
   },
   {
     "NameVi": "Sủi cảo Tân Tòng Lợi",
-    "NameEn": "Tan Tong Loi Dumplings",
+    "DescVi": "Bên tay trái bạn là Sủi cảo Tân Tòng Lợi. Nếu đã chán đồ biển, hãy thử món sủi cảo tôm thịt chuẩn vị người Hoa tại đây, rất thơm ngon và đậm đà.",
     "Latitude": 10.7580,
     "Longitude": 106.7038,
-    "DescVi": "Bên tay trái bạn là Sủi cảo Tân Tòng Lợi. Nếu đã chán đồ biển, hãy thử món sủi cảo tôm thịt chuẩn vị người Hoa tại đây, rất thơm ngon và đậm đà.",
-    "DescEn": "On your left is Tan Tong Loi Dumplings. If you're tired of seafood, try the authentic Chinese shrimp and pork dumplings here, very delicious and flavorful.",
-    "Radius": 100,
+    "Radius": 50,
     "ImagePath": "suicao.jpg"
   },
   {
     "NameVi": "Lẩu bò Khu Nhà Cháy",
-    "NameEn": "Khu Nha Chay Beef Hotpot",
+    "DescVi": "Chào mừng bạn đến với Lẩu bò Khu Nhà Cháy. Đây là điểm dừng chân lý tưởng cho những tín đồ lẩu bò với nước dùng thanh ngọt và các loại topping phong phú.",
     "Latitude": 10.7575,
     "Longitude": 106.7045,
-    "DescVi": "Chào mừng bạn đến với Lẩu bò Khu Nhà Cháy. Đây là điểm dừng chân lý tưởng cho những tín đồ lẩu bò với nước dùng thanh ngọt và các loại topping phong phú.",
-    "DescEn": "Welcome to Khu Nha Chay Beef Hotpot. This is an ideal stop for beef hotpot lovers with its sweet broth and diverse toppings.",
-    "Radius": 120,
+    "Radius": 60,
     "ImagePath": "laubo.jpg"
   },
   {
     "NameVi": "Ốc Vũ",
-    "NameEn": "Oc Vu Restaurant",
+    "DescVi": "Bạn đang ở gần Ốc Vũ. Quán nổi tiếng với không gian rộng rãi, thoáng mát và thực đơn đa dạng từ các loại ốc bình dân đến hải sản cao cấp.",
     "Latitude": 10.7568,
     "Longitude": 106.7058,
-    "DescVi": "Bạn đang ở gần Ốc Vũ. Quán nổi tiếng với không gian rộng rãi, thoáng mát và thực đơn đa dạng từ các loại ốc bình dân đến hải sản cao cấp.",
-    "DescEn": "You are near Oc Vu. The restaurant is famous for its spacious, airy atmosphere and a diverse menu ranging from affordable snails to premium seafood.",
-    "Radius": 100,
+    "Radius": 50,
     "ImagePath": "ocvu.jpg"
   },
   {
     "NameVi": "Ốc Linh",
-    "NameEn": "Oc Linh Restaurant",
+    "DescVi": "Phía trước là Ốc Linh, một quán ăn vỉa hè đúng chất Sài Gòn. Đồ ăn ở đây giá cả rất phải chăng nhưng chất lượng lại không hề thua kém các quán lớn.",
     "Latitude": 10.7562,
     "Longitude": 106.7065,
-    "DescVi": "Phía trước là Ốc Linh, một quán ăn vỉa hè đúng chất Sài Gòn. Đồ ăn ở đây giá cả rất phải chăng nhưng chất lượng lại không hề thua kém các quán lớn.",
-    "DescEn": "Ahead is Oc Linh, an authentic Saigon street-style eatery. The food here is very reasonably priced but the quality is as good as larger restaurants.",
-    "Radius": 100,
+    "Radius": 50,
     "ImagePath": "oclinh.jpg"
   },
   {
     "NameVi": "Cuối đường Vĩnh Khánh",
-    "NameEn": "End of Vinh Khanh Street",
+    "DescVi": "Bạn đã đi đến cuối trục đường ẩm thực Vĩnh Khánh. Hy vọng bạn đã có một hành trình khám phá ẩm thực Quận 4 thật thú vị và đầy ắp kỷ niệm.",
     "Latitude": 10.7555,
     "Longitude": 106.7072,
-    "DescVi": "Bạn đã đi đến cuối trục đường ẩm thực Vĩnh Khánh. Hy vọng bạn đã có một hành trình khám phá ẩm thực Quận 4 thật thú vị và đầy ắp kỷ niệm.",
-    "DescEn": "You have reached the end of Vinh Khanh food street. We hope you had an exciting and memorable journey exploring the cuisine of District 4.",
-    "Radius": 150,
+    "Radius": 80,
     "ImagePath": "endroad.jpg"
   }
 ]
