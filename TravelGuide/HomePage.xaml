@@ -42,7 +42,7 @@
             <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween">
                 <Button Text="📍 Bản đồ" Style="{StaticResource CategoryBtnStyle}" Clicked="OpenMap"/>
                 <Button Text="🎙 Audio" Style="{StaticResource CategoryBtnStyle}"/>
-                <Button Text="🔍 Gần đây" Style="{StaticResource CategoryBtnStyle}"/>
+                <Button Text="🔍 Gần đây" Style="{StaticResource CategoryBtnStyle}" Clicked="OpenNearby"/>
             </FlexLayout>
 
             <Label Text="Địa điểm phổ biến" FontSize="20" FontAttributes="Bold" Margin="0,10,0,0"/>
@@ -59,7 +59,7 @@
                             </Border.Shadow>
 
                             <Grid RowDefinitions="180, Auto">
-                                <Image Source="{Binding ImageUrl}" Aspect="AspectFill" Grid.Row="0"/>
+                                <Image Source="{Binding ImageSource}" Aspect="AspectFill" Grid.Row="0"/>
                                 <VerticalStackLayout Grid.Row="1" Padding="15" Spacing="5">
                                     <Label Text="{Binding Name}" FontSize="18" FontAttributes="Bold" TextColor="#333333"/>
                                     <Label Text="{Binding Description}" FontSize="13" TextColor="Gray" MaxLines="2"/>

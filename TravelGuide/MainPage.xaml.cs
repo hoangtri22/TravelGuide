@@ -5,12 +5,17 @@ namespace TravelGuide;
 
 public partial class MainPage : ContentPage
 {
-    List<string> fullCurrencyList = new();
-    List<string> fullLanguageList = new();
+    private List<string> _fullCurrencyList = new();
+    private List<string> _fullLanguageList = new();
 
-    public MainPage()
+    // FIX: Inject HomePage qua DI thay vì GetService trong GoHome
+    private readonly HomePage _homePage;
+
+    public MainPage(HomePage homePage)
     {
         InitializeComponent();
+        _homePage = homePage;
+
         LoadData();
         LoadSavedSettings();
 
@@ -18,19 +23,19 @@ public partial class MainPage : ContentPage
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
     }
 
-    void LoadData()
+    private void LoadData()
     {
         try
         {
-            fullCurrencyList = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
+            _fullCurrencyList = CultureInfo.GetCultures(CultureTypes.SpecificCultures)
                 .Select(c => { try { return new RegionInfo(c.Name); } catch { return null; } })
                 .Where(r => r != null)
-                .Select(r => $"{r?.ISOCurrencySymbol} - {r?.CurrencyEnglishName}")
+                .Select(r => $"{r!.ISOCurrencySymbol} - {r.CurrencyEnglishName}")
                 .Distinct()
                 .OrderBy(c => c)
                 .ToList();
 
-            fullLanguageList = CultureInfo.GetCultures(CultureTypes.NeutralCultures)
+            _fullLanguageList = CultureInfo.GetCultures(CultureTypes.NeutralCultures)
                 .Select(c => $"{c.EnglishName} ({c.TwoLetterISOLanguageName})")
                 .Where(l => !string.IsNullOrEmpty(l))
                 .Distinct()
@@ -39,28 +44,26 @@ public partial class MainPage : ContentPage
         }
         catch
         {
-            fullCurrencyList = new() { "VND - Vietnamese Dong", "USD - US Dollar" };
-            fullLanguageList = new() { "Vietnamese (vi)", "English (en)" };
+            _fullCurrencyList = new() { "VND - Vietnamese Dong", "USD - US Dollar" };
+            _fullLanguageList = new() { "Vietnamese (vi)", "English (en)" };
         }
     }
 
-    void LoadSavedSettings()
+    private void LoadSavedSettings()
     {
         string savedLang = Preferences.Get("language", GetDeviceLanguage());
         LanguageEntry.Text = savedLang;
         CurrencyEntry.Text = Preferences.Get("currency", "VND - Vietnamese Dong");
-
-        // Cập nhật ngôn ngữ ngay khi load app
         UpdateAppLanguage(savedLang);
     }
 
-    string GetDeviceLanguage()
+    private string GetDeviceLanguage()
     {
         var deviceLang = CultureInfo.CurrentCulture.EnglishName;
-        return fullLanguageList.FirstOrDefault(l => l.Contains(deviceLang)) ?? "English (en)";
+        return _fullLanguageList.FirstOrDefault(l => l.Contains(deviceLang)) ?? "English (en)";
     }
 
-    void OnLanguageSearch(object sender, TextChangedEventArgs e)
+    private void OnLanguageSearch(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").ToLower();
 
@@ -70,7 +73,7 @@ public partial class MainPage : ContentPage
             return;
         }
 
-        var result = fullLanguageList
+        var result = _fullLanguageList
             .Where(x => x.ToLower().Contains(keyword))
             .Take(20)
             .ToList();
@@ -79,39 +82,58 @@ public partial class MainPage : ContentPage
         if (LanguageListFrame != null) LanguageListFrame.IsVisible = result.Any();
     }
 
-    void OnLanguageSelected(object sender, SelectionChangedEventArgs e)
+    private void OnLanguageSelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is string selected)
         {
             LanguageEntry.Text = selected;
             if (LanguageListFrame != null) LanguageListFrame.IsVisible = false;
 
-            // Lưu và cập nhật ngôn ngữ
             Preferences.Set("language", selected);
             UpdateAppLanguage(selected);
         }
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
-    // Hàm dùng chung để đổi ngôn ngữ, tránh lỗi trùng tên Current
+    /// <summary>
+    /// Đồng bộ cả ILocalizationResourceManager lẫn AppLanguage.
+    /// FIX: AppLanguage.SetLanguage() chưa được gọi trong bản cũ.
+    /// </summary>
     private void UpdateAppLanguage(string selectedLanguage)
     {
         try
         {
             int startIndex = selectedLanguage.LastIndexOf('(') + 1;
-            string langCode = selectedLanguage.Substring(startIndex, 2);
+            if (startIndex <= 0 || startIndex + 2 > selectedLanguage.Length) return;
 
-            var localizationManager = Handler.MauiContext.Services.GetService<ILocalizationResourceManager>();
-            if (localizationManager != null)
+            string langCode = selectedLanguage.Substring(startIndex, 2).ToLower();
+
+            // FIX: Sync AppLanguage để TouristPlace.Name/Description trả đúng ngôn ngữ
+            // Map full locale code → app language code (chỉ 5 ngôn ngữ app hỗ trợ)
+            var supportedCode = langCode switch
             {
-                // THAY SetCulture BẰNG DÒNG NÀY:
+                "vi" => "vi",
+                "en" => "en",
+                "ja" => "ja",
+                "ko" => "ko",
+                "zh" => "zh",
+                _ => "en" // fallback về English nếu locale không hỗ trợ
+            };
+            AppLanguage.SetLanguage(supportedCode);
+
+            // Sync LocalizationResourceManager cho .resx translations
+            var localizationManager = Handler?.MauiContext?.Services
+                .GetService<ILocalizationResourceManager>();
+            if (localizationManager != null)
                 localizationManager.CurrentCulture = new CultureInfo(langCode);
-            }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainPage] UpdateAppLanguage error: {ex.Message}");
+        }
     }
 
-    void OnCurrencySearch(object sender, TextChangedEventArgs e)
+    private void OnCurrencySearch(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").ToLower();
 
@@ -121,7 +143,7 @@ public partial class MainPage : ContentPage
             return;
         }
 
-        var result = fullCurrencyList
+        var result = _fullCurrencyList
             .Where(x => x.ToLower().Contains(keyword))
             .Take(20)
             .ToList();
@@ -130,7 +152,7 @@ public partial class MainPage : ContentPage
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = result.Any();
     }
 
-    void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
+    private void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is string selected)
         {
@@ -141,12 +163,9 @@ public partial class MainPage : ContentPage
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
-    async void GoHome(object sender, EventArgs e)
+    // FIX: Dùng _homePage đã inject — không cần GetService tại runtime
+    private async void GoHome(object sender, EventArgs e)
     {
-        var homePage = Handler.MauiContext.Services.GetService<HomePage>();
-        if (homePage != null)
-        {
-            await Navigation.PushAsync(homePage);
-        }
+        await Navigation.PushAsync(_homePage);
     }
 }

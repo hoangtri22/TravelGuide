@@ -2,8 +2,7 @@
 using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
 using TravelGuide.Resources;
-using System.Globalization; 
-using LocalizationResourceManager.Maui; 
+using LocalizationResourceManager.Maui;
 
 namespace TravelGuide;
 
@@ -11,17 +10,17 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        // FIX: Load ngôn ngữ đã lưu ngay khi khởi động
+        AppLanguage.LoadSaved();
+
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
             .UseMauiMaps()
-            // --- ĐĂNG KÝ BỘ DỊCH THUẬT ---
             .UseLocalizationResourceManager(settings =>
             {
-                // Chỉ cần dòng này để nạp file ngôn ngữ là đủ
                 settings.AddResource(AppResources.ResourceManager);
             })
-            // -----------------------------
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -32,14 +31,33 @@ public static class MauiProgram
         builder.Logging.AddDebug();
 #endif
 
-        // Đăng ký các Service cho App
+        // Infrastructure
         builder.Services.AddSingleton<DatabaseService>();
-        builder.Services.AddTransient<HomePage>();
-        builder.Services.AddTransient<MapPage>();
+        builder.Services.AddSingleton<HttpClient>();
+        builder.Services.AddSingleton<TranslationService>();
 
-        // Nhớ thêm cả MainPage nếu bạn dùng DI (Dependency Injection)
+        // FIX: Đăng ký các engine còn thiếu — Singleton vì cần dùng chung state
+        builder.Services.AddSingleton<NarrationEngine>();
+        builder.Services.AddSingleton<GeofenceEngine>();
+        builder.Services.AddSingleton<GpsBackgroundService>();
+
+        // ── Pages (Transient — tạo mới mỗi lần navigate) ─────────────────
+        // Thứ tự đăng ký không quan trọng với DI container,
+        // nhưng liệt kê theo dependency tree để dễ đọc:
+        // PlaceDetailPage ← HomePage ← MainPage
+        builder.Services.AddTransient<PlaceDetailPage>();
+        builder.Services.AddTransient<MapPage>();
+        builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<MainPage>();
 
-        return builder.Build();
+        var app = builder.Build();
+
+        Task.Run(async () =>
+        {
+            var db = app.Services.GetRequiredService<DatabaseService>();
+            await db.SeedDataAsync();
+        });
+
+        return app;
     }
 }

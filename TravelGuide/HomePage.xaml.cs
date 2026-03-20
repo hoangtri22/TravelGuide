@@ -5,77 +5,79 @@ namespace TravelGuide;
 public partial class HomePage : ContentPage
 {
     private readonly DatabaseService _dbService;
+    private readonly NarrationEngine _narrationEngine;
     private List<TouristPlace> _allPlaces = new();
 
-    // Sử dụng Dependency Injection để lấy DatabaseService đã đăng ký
-    public HomePage(DatabaseService dbService)
+    public HomePage(DatabaseService dbService, NarrationEngine narrationEngine)
     {
         InitializeComponent();
         _dbService = dbService;
+        _narrationEngine = narrationEngine;
     }
 
-    // Mỗi khi quay lại trang chủ, cập nhật lại dữ liệu mới nhất
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        await LoadData();
+        await LoadPlacesAsync();
     }
 
-    private async Task LoadData()
+    private async Task LoadPlacesAsync()
     {
-        // Lấy toàn bộ 30+ địa điểm từ SQLite
         _allPlaces = await _dbService.GetPlacesAsync();
-
-        // 1. Lấy 5 địa điểm ngẫu nhiên để hiển thị mặc định
-        var random5 = _allPlaces.OrderBy(x => Guid.NewGuid()).Take(5).ToList();
-
-        PlacesCollection.ItemsSource = random5;
+        PlacesCollection.ItemsSource = _allPlaces;
     }
 
-    // 2. Xử lý tìm kiếm (Search)
+    // ── Search ────────────────────────────────────────────────────────────
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
-        var searchTerm = e.NewTextValue?.ToLower() ?? "";
+        var keyword = (e.NewTextValue ?? "").Trim().ToLower();
 
-        if (string.IsNullOrWhiteSpace(searchTerm))
-        {
-            // Nếu xóa thanh tìm kiếm, quay lại hiển thị 5 cái ngẫu nhiên ban đầu
-            var random5 = _allPlaces.OrderBy(x => Guid.NewGuid()).Take(5).ToList();
-            PlacesCollection.ItemsSource = random5;
-        }
-        else
-        {
-            // Tìm kiếm dựa trên tên địa danh (không phân biệt hoa thường)
-            var results = _allPlaces
-                .Where(p => p.Name.ToLower().Contains(searchTerm))
-                .ToList();
-
-            PlacesCollection.ItemsSource = results;
-        }
+        PlacesCollection.ItemsSource = string.IsNullOrEmpty(keyword)
+            ? _allPlaces
+            : _allPlaces.Where(p =>
+                p.Name.ToLower().Contains(keyword) ||
+                p.Description.ToLower().Contains(keyword)).ToList();
     }
 
-    // Mở bản đồ
-    // Mở bản đồ
+    // ── Chọn địa điểm → navigate sang PlaceDetailPage ────────────────────
+    private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.CurrentSelection.FirstOrDefault() is not TouristPlace place) return;
+
+        // FIX: Dùng factory pattern — lấy page từ DI rồi gọi LoadPlace()
+        var detailPage = Handler.MauiContext!.Services.GetRequiredService<PlaceDetailPage>();
+        detailPage.LoadPlace(place);
+        await Navigation.PushAsync(detailPage);
+
+        // Reset selection để tap lại vẫn trigger
+        if (sender is CollectionView cv) cv.SelectedItem = null;
+    }
+
+    // ── Nút Bản đồ ────────────────────────────────────────────────────────
     private async void OpenMap(object sender, EventArgs e)
     {
-        // Lấy MapPage từ hệ thống Service (đã có sẵn dbService bên trong)
-        var mapPage = Handler.MauiContext.Services.GetService<MapPage>();
+        var mapPage = Handler.MauiContext!.Services.GetRequiredService<MapPage>();
         await Navigation.PushAsync(mapPage);
     }
 
-    // Chuyển sang trang chi tiết
-    private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
+    // ── Nút Gần đây ───────────────────────────────────────────────────────
+    private async void OpenNearby(object sender, EventArgs e)
     {
-        var selectedPlace = e.CurrentSelection.FirstOrDefault() as TouristPlace;
-
-        if (selectedPlace != null)
+        try
         {
-            await Navigation.PushAsync(new PlaceDetailPage(selectedPlace));
+            var location = await Geolocation.Default.GetLocationAsync(
+                new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
 
-            if (sender is CollectionView collectionView)
-            {
-                collectionView.SelectedItem = null;
-            }
+            if (location == null) return;
+
+            var nearby = await _dbService.GetNearbyPlacesAsync(
+                location.Latitude, location.Longitude, radiusMeters: 1000);
+
+            PlacesCollection.ItemsSource = nearby;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[HomeNearby] {ex.Message}");
         }
     }
 }
