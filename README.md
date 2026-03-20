@@ -1,65 +1,181 @@
-📍 Travel Guide: Ứng dụng Hướng dẫn Du lịch
+# 📍 Travel Guide — Ứng dụng khám phá phố ẩm thực Vĩnh Khánh
 
-** Đồ án môn học: Ngôn ngữ lập trình C# (841423)
-
-*Lớp: DCT123C2
-
-Thông tin nhóm - Nhóm 8:
-1. 3123411210 - Hồ Ngọc Phương Nhi
-2. 3123411311 - Nguyễn Hoàng Trí
-
-Ứng dụng di động được xây dựng bằng .NET MAUI Native và giúp du khách khám phá những địa điểm mới thông qua chế độ thuyết minh tự động và bản đồ tương tác hoạt động liên tục trong nền ứng dụng.
-
-Các tính năng chính:
-
-🗺️ Bản đồ tương tác (Mapbox): Hiển thị các POI (Point of Interest) trực quan trên nền bản đồ Mapbox API, phân loại màu sắc cho địa điểm tham quan du lịch và ẩm thực.
-
-🎙️ Thuyết minh tự động (TTS): Sử dụng công nghệ Text-to-Speech để tự động thuyết minh thông tin địa danh khi người dùng đến gần.
-
-🔄 Chạy ngầm (Background Service): Hỗ trợ theo dõi vị trí và phát thuyết minh ngay cả khi ứng dụng đã thoát ra màn hình chính (Tối ưu cho Android 14+).
-
-📍 Định vị POI gần nhất: Tự động tính toán và highlight địa điểm du lịch ở gần vị trí hiện tại của người dùng nhất.
-
-🔊 Điều khiển thông minh: Cho phép nghe lại thuyết minh hoặc dừng phát nhanh chóng để tiết kiệm tài nguyên hệ thống.
-
-📍 Thuật toán tự động xác định vị trí gần nhất với người dùng, tự động tính toán khoảng cách thực tế từ người dùng đến các vị trí.
-
-🛠️ Quốc tế hóa (i18n): Tìm kiếm ngôn ngữ và tiền tệ có sẵn ở tất cả các quốc gia trên toàn cầu thông qua CultureInfo.
-
-🛠️ Công nghệ được sử dụng:
-
-Khung ứng dụng - .NET 9.0 (MAUI) (Ứng dụng gốc - không sử dụng thư viện bên ngoài)
-
-Giao diện bản đồ - Mapbox GL JS được nhúng trong WebView.
-
-Nhân Android - Dịch vụ nền trước (Vị trí và Đồng bộ dữ liệu)
-
-Truyền thông dữ liệu - MessagingCenter (Hệ thống gốc)
-
-Lưu trữ - Microsoft.Maui.Storage.Preferences.
-
-🚀 Hướng dẫn cài đặt và Chạy dự án: 
-Để chạy thử ứng dụng trên máy tính của bạn, hãy làm theo các bước đơn giản sau:
-
-1. Tải mã nguồn
-Truy cập vào liên kết GitHub https://github.com/hoangtri22/demo-git.
-Nhấn vào nút Code (màu xanh).
-Chọn Download ZIP.
-Sau khi tải về, hãy Giải nén (Extract) tệp tin ra một thư mục trên máy tính.
-
-2. Mở dự án
-Khởi động Visual Studio 2022 (v17.12 trở lên).
-Chọn Open a project or solution.
-Tìm đến thư mục vừa giải nén và chọn file TravelGuide.sln.
-
-3. Cấu hình môi trường
-Đảm bảo bạn đã cài đặt bộ công cụ .NET Multi-platform App UI development trong Visual Studio Installer.
-Kiểm tra xem máy đã có .NET 9 SDK chưa.
-
-4. Triển khai và Chạy (Deploy)
-Chọn thiết bị mục tiêu là Android Emulator (khuyên dùng API 30 - 34).
-Nhấn nút Run (F5) hoặc biểu tượng tam giác xanh để bắt đầu quá trình Build.
-
-Lưu ý: Khi ứng dụng khởi động lần đầu, hãy chấp nhận các yêu cầu về Quyền vị trí (Location Permission) để tính năng bản đồ và thuyết minh hoạt động chính xác.
+> **Đồ án môn học: Ngôn ngữ lập trình C# (841423)**
+> Lớp: DCT123C2
 
 
+## 👥 Thông tin nhóm — Nhóm 8
+
+| MSSV       | Họ và Tên          |
+|------------|--------------------|
+| 3123411210 | Hồ Ngọc Phương Nhi |
+| 3123411311 | Nguyễn Hoàng Trí   |
+
+
+## 📖 Giới thiệu
+
+**Travel Guide** là ứng dụng di động được xây dựng bằng **.NET MAUI Native**, hỗ trợ du khách khám phá **Phố Ẩm Thực Vĩnh Khánh (Quận 4, TP. HCM)** thông qua bản đồ tương tác, thuyết minh tự động bằng giọng nói và hệ thống đa ngôn ngữ.
+
+
+## ✨ Tính năng chính
+
+### 🗺️ Bản đồ tương tác (Mapbox GL JS)
+- Hiển thị các POI (Point of Interest) trực quan trên nền bản đồ Mapbox
+- Phân loại màu sắc: đỏ cho địa điểm nhỏ, xanh cho khu vực lớn
+- Tự động highlight địa điểm gần nhất khi người dùng đến gần
+- Popup thông tin địa điểm khi nhấn vào marker
+
+### 🎙️ Thuyết minh tự động (Text-to-Speech)
+- Sử dụng `Microsoft.Maui.Media.TextToSpeech` để tự động đọc thông tin địa danh
+- Hỗ trợ hàng đợi phát (Queue) — phát tuần tự nhiều địa điểm
+- Chức năng Skip, Stop, và Shuffle
+- Giọng đọc tự động chọn đúng theo ngôn ngữ hiện tại (vi/en/ja/ko/zh)
+
+### 📡 Geofence Engine
+- Theo dõi vị trí GPS liên tục qua `GpsBackgroundService`
+- Tự động phát thuyết minh khi người dùng bước vào vùng bán kính của POI
+- Cơ chế **Debounce** (3 giây) tránh kích hoạt khi chỉ đi ngang qua
+- Cơ chế **Cooldown** (60 giây) tránh phát lặp lại liên tục
+- Gửi sự kiện `OnPoiEntered`, `OnPoiTriggered`, `OnPoiExited` ra UI
+
+### 🔊 Mini Player
+- Hiển thị cố định ở đáy màn hình khi đang phát thuyết minh
+- Hoạt động liên tục khi điều hướng giữa các trang
+- Nút Stop và Skip ngay trên thanh player
+
+### 🌐 Đa ngôn ngữ (i18n)
+- Hỗ trợ 5 ngôn ngữ: 🇻🇳 Tiếng Việt, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇨🇳 中文
+- Giao diện tự động dịch qua `LocalizationResourceManager.Maui` và file `.resx`
+- Nội dung địa điểm được dịch tự động qua **Claude API (claude-haiku)** và lưu vào SQLite
+- Chọn ngôn ngữ bằng grid button cờ quốc gia — không cần gõ tìm kiếm
+- Bản dịch được lưu lại, không dịch lại khi mở app lần sau
+
+### 💱 Đơn vị tiền tệ
+- Tìm kiếm và chọn tiền tệ từ toàn bộ danh sách `CultureInfo` hệ thống
+- Lưu lựa chọn qua `Preferences`
+
+---
+
+## 🛠️ Công nghệ sử dụng
+
+| Thành phần      | Công nghệ                                      |
+|-----------------|------------------------------------------------|
+| Framework       | .NET 9.0 MAUI (Native)                         |
+| Bản đồ          | Mapbox GL JS v2.15 (nhúng trong WebView)       |    
+| Text-to-Speech  | Microsoft.Maui.Media.TextToSpeech              |
+| Cơ sở dữ liệu   | SQLite-net-pcl                                 |
+| Dịch thuật      | Anthropic Claude API (claude-haiku-4-5)        |
+| Đa ngôn ngữ UI  | LocalizationResourceManager.Maui + .resx       |
+| Messaging       | CommunityToolkit.Mvvm (WeakReferenceMessenger) |
+| Lưu trữ cài đặt | Microsoft.Maui.Storage.Preferences             |
+| Định vị         | Microsoft.Maui.Devices.Sensors.Geolocation     |
+
+---
+
+## 📁 Cấu trúc project
+```
+TravelGuide/
+├── Models/
+│   ├── LocationMessage.cs           # Message GPS dùng cho WeakReferenceMessenger
+│   └── TouristPlace.cs              # Model địa điểm, computed Name/Description theo ngôn ngữ
+│
+├── Platforms/
+│   ├── Android/
+│   │   ├── Resources/
+│   │   │   └── AndroidManifest.xml  # Khai báo quyền GPS, Internet
+│   │   ├── LocationService.cs       # Foreground Service theo dõi GPS nền (Android)
+│   │   ├── MainActivity.cs
+│   │   └── MainApplication.cs
+│   ├── iOS/
+│   ├── MacCatalyst/
+│   ├── Tizen/
+│   └── Windows/
+│
+├── Resources/
+│   ├── AppIcon/
+│   ├── Fonts/
+│   ├── Images/
+│   ├── Raw/
+│   │   ├── AboutAssets.txt
+│   │   └── extra_places.json        # Dữ liệu địa điểm gốc (seed lần đầu)
+│   ├── Splash/
+│   ├── Styles/
+│   ├── AppResources.resx            # Chuỗi giao diện tiếng Anh (default)
+│   ├── AppResources_vi.resx         # Tiếng Việt
+│   ├── AppResources_ja.resx         # Tiếng Nhật
+│   ├── AppResources_ko.resx         # Tiếng Hàn
+│   └── AppResources_zh.resx         # Tiếng Trung
+│
+├── App.xaml
+├── AppLanguage.cs                   # Quản lý ngôn ngữ hiện tại toàn app
+├── AppShell.xaml
+├── AudioPage.xaml / .cs             # Danh sách audio, phát tất cả, shuffle
+├── DatabaseService.cs               # SQLite: CRUD địa điểm, seed data
+├── GeofenceEngine.cs                # So sánh vị trí với POI, debounce, cooldown
+├── GpsBackgroundService.cs          # Theo dõi GPS liên tục, gửi LocationMessage
+├── HomePage.xaml / .cs              # Danh sách địa điểm, tìm kiếm, điều hướng
+├── MainPage.xaml / .cs              # Chọn ngôn ngữ, tiền tệ, khởi động app
+├── MapPage.xaml / .cs               # Bản đồ Mapbox, geofence, GPS
+├── MauiProgram.cs                   # DI container, khởi tạo services
+├── MiniPlayerView.xaml / .cs        # Thanh mini player cố định đáy màn hình
+├── NarrationEngine.cs               # Quản lý TTS queue, skip, stop
+├── PlaceDetailPage.xaml / .cs       # Chi tiết địa điểm, nghe thuyết minh
+└── TranslationService.cs            # Gọi Claude API để dịch nội dung
+```
+
+---
+
+## 🚀 Hướng dẫn cài đặt và chạy
+
+### Yêu cầu hệ thống
+- Visual Studio 2022 (v17.12 trở lên)
+- .NET 9 SDK
+- Workload **.NET Multi-platform App UI development**
+- Android Emulator API 30–34 (khuyến nghị Pixel 5 API 34)
+
+### Các bước thực hiện
+
+**1. Tải mã nguồn**
+```
+https://github.com/hoangtri22/demo-git
+```
+Nhấn **Code → Download ZIP** → Giải nén ra thư mục
+
+**2. Mở dự án**
+- Khởi động Visual Studio 2022
+- Chọn **Open a project or solution**
+- Mở file `TravelGuide.sln`
+
+**3. Restore packages**
+- Visual Studio sẽ tự động restore NuGet packages
+- Nếu không, chạy: `dotnet restore`
+
+**4. Chạy ứng dụng**
+- Chọn thiết bị: **Android Emulator** (API 30–34)
+- Nhấn **F5** hoặc nút Run ▶
+
+> ⚠️ **Lưu ý:** Khi khởi động lần đầu, hãy **chấp nhận quyền vị trí (Location Permission)** để tính năng bản đồ và thuyết minh tự động hoạt động đúng.
+
+## 🔄 Luồng hoạt động
+
+Khởi động app
+    → Chọn ngôn ngữ (MainPage) — grid button 5 cờ quốc gia
+    → Nhấn "Tiếp tục" → Dịch nội dung qua Claude API (nếu chưa dịch)
+    → Vào HomePage — danh sách địa điểm theo ngôn ngữ đã chọn
+
+Khi mở MapPage
+    → GpsBackgroundService bắt đầu theo dõi GPS mỗi 5 giây
+    → GeofenceEngine so sánh vị trí với từng POI
+    → Khi vào vùng POI → debounce 3s → phát thuyết minh TTS
+    → MiniPlayer hiển thị ở đáy màn hình
+
+Khi đổi ngôn ngữ
+    → AppLanguage.OnLanguageChanged fired
+    → Tất cả trang tự reload nội dung
+    → LocalizationResourceManager cập nhật giao diện
+## 📝 Ghi chú
+
+- Ứng dụng tập trung vào khu vực **Phố Ẩm Thực Vĩnh Khánh, Quận 4, TP. HCM**
+- Dữ liệu địa điểm được load từ file `extra_places.json` (seed lần đầu)
+- Bản dịch được lưu vào SQLite — **không gọi API lại** khi mở app lần sau
+- Mapbox token đã được tích hợp sẵn trong mã nguồn
