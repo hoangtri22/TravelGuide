@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:TravelGuide"
+             x:Class="TravelGuide.AudioPage"
+             Title="🎙 Thuyết minh"
+             BackgroundColor="#F2F2F2">
+
+    <Grid RowDefinitions="Auto, Auto, *, Auto, Auto">
+
+        <!-- Row 0: Header -->
+        <Border Grid.Row="0" BackgroundColor="White"
+                StrokeThickness="0" Padding="16,12">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,2" Radius="8" Opacity="0.06"/>
+            </Border.Shadow>
+            <Grid ColumnDefinitions="*, Auto">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="Phố Ẩm Thực Vĩnh Khánh"
+                           FontSize="15" FontAttributes="Bold"
+                           TextColor="#1E3A5F"/>
+                    <Label x:Name="LblLang"
+                           FontSize="12" TextColor="#6B7280"/>
+                </VerticalStackLayout>
+                <Border Grid.Column="1"
+                        BackgroundColor="#EFF6FF"
+                        StrokeShape="RoundRectangle 20"
+                        StrokeThickness="0" Padding="12,6">
+                    <Label x:Name="LblCount"
+                           FontSize="12" FontAttributes="Bold"
+                           TextColor="#1A56DB"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Row 1: Nút điều khiển -->
+        <Border Grid.Row="1" Padding="16,10"
+                BackgroundColor="White" StrokeThickness="0">
+            <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="10">
+                <Button Grid.Column="0"
+                        x:Name="BtnPlayAll"
+                        Text="▶  Phát tất cả"
+                        BackgroundColor="#1A56DB"
+                        TextColor="White" CornerRadius="12"
+                        FontSize="14" FontAttributes="Bold"
+                        HeightRequest="44"
+                        Clicked="OnPlayAllClicked"/>
+                <Button Grid.Column="1"
+                        x:Name="BtnStop"
+                        Text="⏹"
+                        BackgroundColor="#FEE2E2" TextColor="#B91C1C"
+                        CornerRadius="12" FontSize="16"
+                        WidthRequest="44" HeightRequest="44"
+                        IsVisible="False"
+                        Clicked="OnStopClicked"/>
+                <Button Grid.Column="2"
+                        x:Name="BtnShuffle"
+                        Text="🔀"
+                        BackgroundColor="#F1F5F9" TextColor="#475569"
+                        CornerRadius="12" FontSize="16"
+                        WidthRequest="44" HeightRequest="44"
+                        Clicked="OnShuffleClicked"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 2: Danh sách -->
+        <CollectionView x:Name="AudioList"
+                        Grid.Row="2"
+                        Margin="0,4,0,0"
+                        SelectionMode="None">
+            <CollectionView.ItemsLayout>
+                <LinearItemsLayout Orientation="Vertical" ItemSpacing="0"/>
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border BackgroundColor="White"
+                            StrokeThickness="0" Margin="12,4">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14"/>
+                        </Border.StrokeShape>
+                        <Border.Shadow>
+                            <Shadow Brush="Black" Offset="0,2"
+                                    Radius="8" Opacity="0.06"/>
+                        </Border.Shadow>
+                        <Grid ColumnDefinitions="Auto, *, Auto"
+                              Padding="14,12" ColumnSpacing="12">
+
+                            <Border Grid.Column="0"
+                                    WidthRequest="36" HeightRequest="36"
+                                    BackgroundColor="#EFF6FF"
+                                    StrokeThickness="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="18"/>
+                                </Border.StrokeShape>
+                                <Label Text="{Binding OrderIndex}"
+                                       FontSize="14" FontAttributes="Bold"
+                                       TextColor="#1A56DB"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"/>
+                            </Border>
+
+                            <VerticalStackLayout Grid.Column="1"
+                                                 Spacing="3"
+                                                 VerticalOptions="Center">
+                                <Label Text="{Binding Name}"
+                                       FontSize="14" FontAttributes="Bold"
+                                       TextColor="#1E3A5F"/>
+                                <Label Text="{Binding Summary}"
+                                       FontSize="12" TextColor="#6B7280"
+                                       MaxLines="2"/>
+                            </VerticalStackLayout>
+
+                            <Border Grid.Column="2"
+                                    WidthRequest="40" HeightRequest="40"
+                                    StrokeThickness="0"
+                                    BackgroundColor="{Binding PlayBtnColor}">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="20"/>
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Tapped="OnPlayItemTapped"
+                                        CommandParameter="{Binding .}"/>
+                                </Border.GestureRecognizers>
+                                <Label Text="{Binding PlayBtnIcon}"
+                                       FontSize="16"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"/>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Row 3: Now playing bar -->
+        <Border x:Name="NowPlayingBar"
+                Grid.Row="3"
+                BackgroundColor="#1A56DB"
+                StrokeThickness="0" Padding="16,12"
+                IsVisible="False">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <Label Grid.Column="0" Text="🔊" FontSize="18"
+                       VerticalOptions="Center"/>
+                <VerticalStackLayout Grid.Column="1"
+                                     Margin="10,0" Spacing="2">
+                    <Label x:Name="LblNowPlaying"
+                           Text="" FontSize="13"
+                           FontAttributes="Bold" TextColor="White"/>
+                    <Label x:Name="LblNowPlayingStatus"
+                           Text="Đang phát..."
+                           FontSize="11" TextColor="#BFDBFE"/>
+                </VerticalStackLayout>
+                <Button Grid.Column="2"
+                        Text="⏭" BackgroundColor="Transparent"
+                        TextColor="White" FontSize="18"
+                        WidthRequest="44" HeightRequest="44"
+                        Clicked="OnNextClicked"/>
+            </Grid>
+        </Border>
+
+        <!-- Row 4: MiniPlayer -->
+        <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="4"/>
+
+    </Grid>
+</ContentPage>

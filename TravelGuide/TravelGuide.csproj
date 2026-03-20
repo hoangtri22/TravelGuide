@@ -61,8 +61,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<MauiXaml Update="AudioPage.xaml">
+		  <Generator>MSBuild:Compile</Generator>
+		</MauiXaml>
 		<MauiXaml Update="MapPage.xaml">
 			<Generator>MSBuild:Compile</Generator>
+		</MauiXaml>
+		<MauiXaml Update="MiniPlayerView.xaml">
+		  <Generator>MSBuild:Compile</Generator>
 		</MauiXaml>
 		<MauiXaml Update="NewPage2.xaml">
 			<Generator>MSBuild:Compile</Generator>

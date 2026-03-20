@@ -72,8 +72,15 @@
                         </Border>
                     </Grid>
 
-                    <Button Text="Continue / Tiếp tục" Clicked="GoHome" BackgroundColor="#1E88E5" TextColor="White" 
-                            CornerRadius="25" HeightRequest="50" FontAttributes="Bold" Margin="0,10,0,20"/>
+                    <Button x:Name="ContinueBtn"
+                        Text="Continue / Tiếp tục"
+                        Clicked="GoHome"
+                        BackgroundColor="#1E88E5"
+                        TextColor="White"
+                        CornerRadius="25"
+                        HeightRequest="50"
+                        FontAttributes="Bold"
+                        Margin="0,10,0,20"/>
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>

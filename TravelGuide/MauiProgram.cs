@@ -49,6 +49,7 @@ public static class MauiProgram
         builder.Services.AddTransient<MapPage>();
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<MainPage>();
+        builder.Services.AddTransient<AudioPage>();
 
         var app = builder.Build();
 

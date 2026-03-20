@@ -13,11 +13,16 @@ public partial class HomePage : ContentPage
         InitializeComponent();
         _dbService = dbService;
         _narrationEngine = narrationEngine;
+
+        AppLanguage.OnLanguageChanged += _ =>
+            MainThread.BeginInvokeOnMainThread(async () =>
+                await LoadPlacesAsync());
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        MiniPlayer.Attach(_narrationEngine); // ✅
         await LoadPlacesAsync();
     }
 
@@ -27,53 +32,59 @@ public partial class HomePage : ContentPage
         PlacesCollection.ItemsSource = _allPlaces;
     }
 
-    // ── Search ────────────────────────────────────────────────────────────
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").Trim().ToLower();
-
         PlacesCollection.ItemsSource = string.IsNullOrEmpty(keyword)
             ? _allPlaces
             : _allPlaces.Where(p =>
-                p.Name.ToLower().Contains(keyword) ||
-                p.Description.ToLower().Contains(keyword)).ToList();
+                p.NameVi.ToLower().Contains(keyword) ||
+                p.NameEn.ToLower().Contains(keyword) ||
+                p.DescVi.ToLower().Contains(keyword) ||
+                (p.NameJa != null && p.NameJa.ToLower().Contains(keyword)) ||
+                (p.NameKo != null && p.NameKo.ToLower().Contains(keyword)) ||
+                (p.NameZh != null && p.NameZh.ToLower().Contains(keyword)))
+              .ToList();
     }
 
-    // ── Chọn địa điểm → navigate sang PlaceDetailPage ────────────────────
     private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is not TouristPlace place) return;
-
-        // FIX: Dùng factory pattern — lấy page từ DI rồi gọi LoadPlace()
-        var detailPage = Handler.MauiContext!.Services.GetRequiredService<PlaceDetailPage>();
+        if (Handler?.MauiContext == null) return;
+        var detailPage = Handler.MauiContext.Services
+            .GetRequiredService<PlaceDetailPage>();
         detailPage.LoadPlace(place);
         await Navigation.PushAsync(detailPage);
-
-        // Reset selection để tap lại vẫn trigger
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
-    // ── Nút Bản đồ ────────────────────────────────────────────────────────
     private async void OpenMap(object sender, EventArgs e)
     {
-        var mapPage = Handler.MauiContext!.Services.GetRequiredService<MapPage>();
+        if (Handler?.MauiContext == null) return;
+        var mapPage = Handler.MauiContext.Services
+            .GetRequiredService<MapPage>();
         await Navigation.PushAsync(mapPage);
     }
 
-    // ── Nút Gần đây ───────────────────────────────────────────────────────
+    private async void OpenAudio(object sender, EventArgs e)
+    {
+        if (Handler?.MauiContext == null) return;
+        var audioPage = Handler.MauiContext.Services
+            .GetRequiredService<AudioPage>();
+        await Navigation.PushAsync(audioPage);
+    }
+
     private async void OpenNearby(object sender, EventArgs e)
     {
         try
         {
             var location = await Geolocation.Default.GetLocationAsync(
-                new GeolocationRequest(GeolocationAccuracy.Medium, TimeSpan.FromSeconds(5)));
-
+                new GeolocationRequest(GeolocationAccuracy.Medium,
+                    TimeSpan.FromSeconds(5)));
             if (location == null) return;
-
             var nearby = await _dbService.GetNearbyPlacesAsync(
                 location.Latitude, location.Longitude, radiusMeters: 1000);
-
-            PlacesCollection.ItemsSource = nearby;
+            PlacesCollection.ItemsSource = nearby.Any() ? nearby : _allPlaces;
         }
         catch (Exception ex)
         {

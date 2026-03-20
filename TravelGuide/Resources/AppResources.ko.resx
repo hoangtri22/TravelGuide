@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- MainPage -->
+  <data name="WelcomeText" xml:space="preserve"><value>빈카인 음식 거리에 오신 것을 환영합니다!</value></data>
+  <data name="SetupJourney" xml:space="preserve"><value>여행 설정</value></data>
+  <data name="LanguageLabel" xml:space="preserve"><value>언어</value></data>
+  <data name="LanguagePlaceholder" xml:space="preserve"><value>언어 검색...</value></data>
+  <data name="CurrencyLabel" xml:space="preserve"><value>통화</value></data>
+  <data name="CurrencyPlaceholder" xml:space="preserve"><value>VND, USD...</value></data>
+  <data name="BtnContinue" xml:space="preserve"><value>계속하기</value></data>
+  <data name="BtnEnglish" xml:space="preserve"><value>영어</value></data>
+  <data name="BtnVietnamese" xml:space="preserve"><value>베트남어</value></data>
+  <data name="Translating" xml:space="preserve"><value>번역 중...</value></data>
+
+  <!-- HomePage -->
+  <data name="AppTagline" xml:space="preserve"><value>사이공을 함께 탐험해요</value></data>
+  <data name="SearchPlaceholder" xml:space="preserve"><value>장소 검색...</value></data>
+  <data name="BtnMap" xml:space="preserve"><value>지도</value></data>
+  <data name="BtnAudio" xml:space="preserve"><value>오디오</value></data>
+  <data name="BtnNearby" xml:space="preserve"><value>근처</value></data>
+  <data name="PopularPlaces" xml:space="preserve"><value>인기 장소</value></data>
+  <data name="ViewDetail" xml:space="preserve"><value>자세히 보기 ></value></data>
+
+  <!-- MapPage -->
+  <data name="MapTitle" xml:space="preserve"><value>지도</value></data>
+  <data name="SearchingLocation" xml:space="preserve"><value>위치 검색 중...</value></data>
+  <data name="VinhKhanhStreet" xml:space="preserve"><value>📍 빈카인 거리</value></data>
+  <data name="LoadingMap" xml:space="preserve"><value>지도 로딩 중...</value></data>
+  <data name="YouAreHere" xml:space="preserve"><value>📍 현재 위치</value></data>
+  <data name="MyLocation" xml:space="preserve"><value>📍 내 위치</value></data>
+  <data name="NowPlaying" xml:space="preserve"><value>해설 재생 중...</value></data>
+  <data name="YouAreInZone" xml:space="preserve"><value>이 구역에 있습니다</value></data>
+  <data name="DistanceM" xml:space="preserve"><value>m 거리</value></data>
+  <data name="DistanceKm" xml:space="preserve"><value>km 거리</value></data>
+
+  <!-- PlaceDetailPage -->
+  <data name="DetailTitle" xml:space="preserve"><value>장소 상세</value></data>
+  <data name="BtnSpeak" xml:space="preserve"><value>🔊 오디오 가이드 듣기</value></data>
+
+  <!-- AudioPage -->
+  <data name="AudioTitle" xml:space="preserve"><value>🎙 오디오 가이드</value></data>
+  <data name="AudioStreetName" xml:space="preserve"><value>빈카인 음식 거리</value></data>
+  <data name="AudioLanguage" xml:space="preserve"><value>언어: </value></data>
+  <data name="AudioPlaces" xml:space="preserve"><value> 장소</value></data>
+  <data name="BtnPlayAll" xml:space="preserve"><value>▶  모두 재생</value></data>
+  <data name="BtnPlaying" xml:space="preserve"><value>⏸  재생 중...</value></data>
+
+  <!-- MiniPlayer -->
+  <data name="MiniPlaying" xml:space="preserve"><value>재생 중...</value></data>
+  <data name="MiniSwitching" xml:space="preserve"><value>전환 중...</value></data>
+</root>
