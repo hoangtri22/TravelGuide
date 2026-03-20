@@ -27,6 +27,11 @@ public partial class AudioPage : ContentPage
         InitializeComponent();
         _dbService = dbService;
         _narrationEngine = narrationEngine;
+
+        // Reload khi đổi ngôn ngữ
+        AppLanguage.OnLanguageChanged += _ =>
+            MainThread.BeginInvokeOnMainThread(async () =>
+                await LoadAsync());
     }
 
     protected override async void OnAppearing()
@@ -39,7 +44,6 @@ public partial class AudioPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        // Không stop khi rời trang — để MiniPlayer tiếp tục
     }
 
     private async Task LoadAsync()
@@ -53,9 +57,19 @@ public partial class AudioPage : ContentPage
             PlayBtnColor = "#EFF6FF"
         }).ToList();
 
+        // Force refresh để Name/Summary lấy đúng ngôn ngữ
+        AudioList.ItemsSource = null;
         AudioList.ItemsSource = _items;
-        LblCount.Text = $"{_items.Count} địa điểm";
-        LblLang.Text = $"Ngôn ngữ: {AppLanguage.GetLanguageName(AppLanguage.Current)}";
+
+        LblCount.Text = $"{_items.Count} {AppLanguage.Current switch
+        {
+            "en" => "places",
+            "ja" => "スポット",
+            "ko" => "장소",
+            "zh" => "个景点",
+            _ => "địa điểm"
+        }}";
+        LblLang.Text = $"{AppLanguage.GetLanguageName(AppLanguage.Current)}";
     }
 
     private async void OnPlayAllClicked(object sender, EventArgs e)
@@ -86,9 +100,8 @@ public partial class AudioPage : ContentPage
     private void OnPlayItemTapped(object sender, TappedEventArgs e)
     {
         if (e.Parameter is not AudioItem item) return;
-        var idx = _items.IndexOf(item);
         if (_isPlaying) StopPlayback();
-        _ = PlaySingleAndUpdateUIAsync(item, idx);
+        _ = PlaySingleAndUpdateUIAsync(item);
     }
 
     private void OnNextClicked(object sender, EventArgs e)
@@ -113,12 +126,10 @@ public partial class AudioPage : ContentPage
             foreach (var item in list)
             {
                 if (_cts.Token.IsCancellationRequested) break;
-                var idx = _items.IndexOf(item);
                 SetItemState(item, true);
                 UpdateNowPlaying(item.Name);
                 await _narrationEngine.SpeakAsync(item.Place);
 
-                // Đợi TTS phát xong (poll mỗi 200ms)
                 while (_narrationEngine.IsSpeaking &&
                        _narrationEngine.CurrentPlace?.Id == item.Place.Id &&
                        !_cts.Token.IsCancellationRequested)
@@ -138,7 +149,7 @@ public partial class AudioPage : ContentPage
         }
     }
 
-    private async Task PlaySingleAndUpdateUIAsync(AudioItem item, int idx)
+    private async Task PlaySingleAndUpdateUIAsync(AudioItem item)
     {
         _isPlaying = true;
         UpdatePlayAllBtn(true);
@@ -195,7 +206,23 @@ public partial class AudioPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            BtnPlayAll.Text = isPlaying ? "⏸  Đang phát..." : "▶  Phát tất cả";
+            BtnPlayAll.Text = isPlaying
+                ? AppLanguage.Current switch
+                {
+                    "en" => "⏸  Playing...",
+                    "ja" => "⏸  再生中...",
+                    "ko" => "⏸  재생 중...",
+                    "zh" => "⏸  播放中...",
+                    _ => "⏸  Đang phát..."
+                }
+                : AppLanguage.Current switch
+                {
+                    "en" => "▶  Play all",
+                    "ja" => "▶  すべて再生",
+                    "ko" => "▶  전체 재생",
+                    "zh" => "▶  全部播放",
+                    _ => "▶  Phát tất cả"
+                };
             BtnPlayAll.BackgroundColor = isPlaying
                 ? Color.FromArgb("#0F4C81") : Color.FromArgb("#1A56DB");
             BtnStop.IsVisible = isPlaying;
@@ -207,7 +234,14 @@ public partial class AudioPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             LblNowPlaying.Text = name;
-            LblNowPlayingStatus.Text = "Đang phát...";
+            LblNowPlayingStatus.Text = AppLanguage.Current switch
+            {
+                "en" => "Playing...",
+                "ja" => "再生中...",
+                "ko" => "재생 중...",
+                "zh" => "播放中...",
+                _ => "Đang phát..."
+            };
             NowPlayingBar.IsVisible = true;
         });
     }

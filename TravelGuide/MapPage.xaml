@@ -1,102 +1,65 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<ContentPage
-    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:TravelGuide"
-    x:Class="TravelGuide.MapPage"
-    Title="Bản đồ"
-    BackgroundColor="#F2F2F2">
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:TravelGuide"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
+             x:Class="TravelGuide.MapPage"
+             Title="{loc:Translate MapTitle}"
+             BackgroundColor="#F2F2F2">
 
-    <!-- ✅ Thêm row Auto cuối cho MiniPlayer -->
     <Grid RowDefinitions="Auto, *, Auto, Auto">
 
-        <!-- Row 0: Thanh trạng thái GPS -->
-        <Border Grid.Row="0"
-                BackgroundColor="White"
-                StrokeThickness="0"
-                Padding="16,10">
+        <!-- Row 0: GPS Status Bar -->
+        <Border Grid.Row="0" BackgroundColor="White" StrokeThickness="0" Padding="16,10">
             <Border.Shadow>
                 <Shadow Brush="Black" Offset="0,2" Radius="8" Opacity="0.08"/>
             </Border.Shadow>
             <Grid ColumnDefinitions="Auto, *, Auto">
-
                 <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
-                    <Ellipse x:Name="GpsIndicator"
-                             WidthRequest="10" HeightRequest="10"
-                             Fill="#9E9E9E"/>
+                    <Ellipse x:Name="GpsIndicator" WidthRequest="10" HeightRequest="10" Fill="#9E9E9E"/>
                     <Label x:Name="LblGpsStatus"
-                           Text="Đang tìm vị trí..."
-                           FontSize="13" TextColor="#666666"
-                           VerticalOptions="Center"/>
+                           Text="{loc:Translate SearchingLocation}"
+                           FontSize="13" TextColor="#666666" VerticalOptions="Center"/>
                 </HorizontalStackLayout>
-
-                <Label Grid.Column="1"
-                       Text="📍 Phố Vĩnh Khánh"
-                       FontSize="15" FontAttributes="Bold"
-                       TextColor="#2E86DE"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center"/>
-
-                <Button Grid.Column="2"
-                        x:Name="BtnReload"
-                        Text="🔄" FontSize="16"
-                        BackgroundColor="Transparent"
-                        TextColor="#2E86DE"
-                        WidthRequest="40" HeightRequest="40"
-                        Padding="0"
+                <Label Grid.Column="1" Text="{loc:Translate VinhKhanhStreet}"
+                       FontSize="15" FontAttributes="Bold" TextColor="#2E86DE"
+                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                <Button Grid.Column="2" x:Name="BtnReload" Text="🔄" FontSize="16"
+                        BackgroundColor="Transparent" TextColor="#2E86DE"
+                        WidthRequest="40" HeightRequest="40" Padding="0"
                         Clicked="OnReloadClicked"/>
             </Grid>
         </Border>
 
-        <!-- Row 1: Bản đồ Mapbox -->
-        <WebView x:Name="mapView"
-                 Grid.Row="1"
-                 Navigating="MapView_Navigating"/>
+        <!-- Row 1: Map -->
+        <WebView x:Name="mapView" Grid.Row="1" Navigating="MapView_Navigating"/>
 
-        <!-- Row 1: Loading overlay (chồng lên map) -->
-        <Grid x:Name="LoadingOverlay"
-              Grid.Row="1"
-              BackgroundColor="White"
-              IsVisible="True"
-              ZIndex="10">
-            <VerticalStackLayout VerticalOptions="Center"
-                                 HorizontalOptions="Center"
-                                 Spacing="16">
-                <ActivityIndicator IsRunning="True" Color="#2E86DE"
-                                   WidthRequest="48" HeightRequest="48"/>
-                <Label Text="Đang tải bản đồ..."
-                       FontSize="14" TextColor="#666666"
-                       HorizontalOptions="Center"/>
+        <!-- Row 1: Loading Overlay -->
+        <Grid x:Name="LoadingOverlay" Grid.Row="1" BackgroundColor="White" IsVisible="True" ZIndex="10">
+            <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="16">
+                <ActivityIndicator IsRunning="True" Color="#2E86DE" WidthRequest="48" HeightRequest="48"/>
+                <Label Text="{loc:Translate LoadingMap}"
+                       FontSize="14" TextColor="#666666" HorizontalOptions="Center"/>
             </VerticalStackLayout>
         </Grid>
 
-        <!-- Row 2: Banner địa điểm gần nhất -->
-        <Border x:Name="NearbyBanner"
-                Grid.Row="2"
-                BackgroundColor="#2E86DE"
-                StrokeThickness="0"
-                Padding="16,12"
-                IsVisible="False">
+        <!-- Row 2: Nearby Banner -->
+        <Border x:Name="NearbyBanner" Grid.Row="2" BackgroundColor="#2E86DE"
+                StrokeThickness="0" Padding="16,12" IsVisible="False">
             <Grid ColumnDefinitions="*, Auto">
                 <VerticalStackLayout Grid.Column="0" Spacing="2">
-                    <Label x:Name="LblNearbyTitle"
-                           Text="" FontSize="14"
+                    <Label x:Name="LblNearbyTitle" Text="" FontSize="14"
                            FontAttributes="Bold" TextColor="White"/>
-                    <Label x:Name="LblNearbyDist"
-                           Text="" FontSize="12"
-                           TextColor="#BBDEFB"/>
+                    <Label x:Name="LblNearbyDist" Text="" FontSize="12" TextColor="#BBDEFB"/>
                 </VerticalStackLayout>
-                <Button Grid.Column="1"
-                        Text="🔊" FontSize="18"
-                        BackgroundColor="Transparent"
-                        TextColor="White"
-                        WidthRequest="44" HeightRequest="44"
-                        Padding="0"
+                <Button Grid.Column="1" Text="🔊" FontSize="18"
+                        BackgroundColor="Transparent" TextColor="White"
+                        WidthRequest="44" HeightRequest="44" Padding="0"
                         Clicked="OnSpeakNearbyClicked"/>
             </Grid>
         </Border>
 
-        <!-- ✅ Row 3: MiniPlayer cố định đáy -->
+        <!-- Row 3: MiniPlayer -->
         <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="3"/>
 
     </Grid>

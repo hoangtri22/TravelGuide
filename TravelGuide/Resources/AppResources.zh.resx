@@ -32,8 +32,8 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
 
   <!-- MainPage -->
-  <data name="WelcomeText" xml:space="preserve"><value>欢迎来到荣庆美食街！</value></data>
-  <data name="SetupJourney" xml:space="preserve"><value>设置您的行程</value></data>
+  <data name="WelcomeText" xml:space="preserve"><value>欢迎来到永庆美食街！</value></data>
+  <data name="SetupJourney" xml:space="preserve"><value>设置您的旅程</value></data>
   <data name="LanguageLabel" xml:space="preserve"><value>语言</value></data>
   <data name="LanguagePlaceholder" xml:space="preserve"><value>搜索语言...</value></data>
   <data name="CurrencyLabel" xml:space="preserve"><value>货币</value></data>
@@ -44,35 +44,36 @@
   <data name="Translating" xml:space="preserve"><value>翻译中...</value></data>
 
   <!-- HomePage -->
+  <data name="AppTitle" xml:space="preserve"><value>Travel Guide</value></data>
   <data name="AppTagline" xml:space="preserve"><value>与您一起探索西贡</value></data>
   <data name="SearchPlaceholder" xml:space="preserve"><value>搜索地点...</value></data>
-  <data name="BtnMap" xml:space="preserve"><value>地图</value></data>
-  <data name="BtnAudio" xml:space="preserve"><value>音频</value></data>
-  <data name="BtnNearby" xml:space="preserve"><value>附近</value></data>
-  <data name="PopularPlaces" xml:space="preserve"><value>热门地点</value></data>
+  <data name="BtnMap" xml:space="preserve"><value>📍 地图</value></data>
+  <data name="BtnAudio" xml:space="preserve"><value>🎙 音频</value></data>
+  <data name="BtnNearby" xml:space="preserve"><value>🔍 附近</value></data>
+  <data name="PopularPlaces" xml:space="preserve"><value>热门景点</value></data>
   <data name="ViewDetail" xml:space="preserve"><value>查看详情 ></value></data>
 
   <!-- MapPage -->
   <data name="MapTitle" xml:space="preserve"><value>地图</value></data>
   <data name="SearchingLocation" xml:space="preserve"><value>正在搜索位置...</value></data>
-  <data name="VinhKhanhStreet" xml:space="preserve"><value>📍 荣庆街</value></data>
+  <data name="VinhKhanhStreet" xml:space="preserve"><value>📍 永庆街</value></data>
   <data name="LoadingMap" xml:space="preserve"><value>正在加载地图...</value></data>
   <data name="YouAreHere" xml:space="preserve"><value>📍 您在这里</value></data>
   <data name="MyLocation" xml:space="preserve"><value>📍 我的位置</value></data>
-  <data name="NowPlaying" xml:space="preserve"><value>正在播放解说...</value></data>
+  <data name="NowPlaying" xml:space="preserve"><value>正在播放讲解...</value></data>
   <data name="YouAreInZone" xml:space="preserve"><value>您正在此区域内</value></data>
-  <data name="DistanceM" xml:space="preserve"><value>米</value></data>
-  <data name="DistanceKm" xml:space="preserve"><value>公里</value></data>
+  <data name="DistanceM" xml:space="preserve"><value>米远</value></data>
+  <data name="DistanceKm" xml:space="preserve"><value>公里远</value></data>
 
   <!-- PlaceDetailPage -->
-  <data name="DetailTitle" xml:space="preserve"><value>地点详情</value></data>
-  <data name="BtnSpeak" xml:space="preserve"><value>🔊 收听语音导览</value></data>
+  <data name="DetailTitle" xml:space="preserve"><value>景点详情</value></data>
+  <data name="BtnSpeak" xml:space="preserve"><value>🔊 收听讲解</value></data>
 
   <!-- AudioPage -->
   <data name="AudioTitle" xml:space="preserve"><value>🎙 语音导览</value></data>
-  <data name="AudioStreetName" xml:space="preserve"><value>荣庆美食街</value></data>
+  <data name="AudioStreetName" xml:space="preserve"><value>永庆美食街</value></data>
   <data name="AudioLanguage" xml:space="preserve"><value>语言：</value></data>
-  <data name="AudioPlaces" xml:space="preserve"><value> 个地点</value></data>
+  <data name="AudioPlaces" xml:space="preserve"><value> 个景点</value></data>
   <data name="BtnPlayAll" xml:space="preserve"><value>▶  全部播放</value></data>
   <data name="BtnPlaying" xml:space="preserve"><value>⏸  播放中...</value></data>
 

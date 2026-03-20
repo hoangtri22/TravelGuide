@@ -22,7 +22,6 @@ public partial class MiniPlayerView : ContentView
         _engine.OnStartedPlaying += OnStarted;
         _engine.OnStoppedPlaying += OnStopped;
 
-        // Nếu đang phát sẵn khi navigate sang trang mới
         if (_engine.IsSpeaking && _engine.CurrentPlace != null)
             OnStarted(_engine.CurrentPlace);
         else
@@ -34,7 +33,14 @@ public partial class MiniPlayerView : ContentView
         MainThread.BeginInvokeOnMainThread(() =>
         {
             LblPlaceName.Text = place.Name;
-            LblStatus.Text = "Đang phát...";
+            LblStatus.Text = AppLanguage.Current switch
+            {
+                "en" => "Playing...",
+                "ja" => "再生中...",
+                "ko" => "재생 중...",
+                "zh" => "播放中...",
+                _ => "Đang phát..."
+            };
             StatusDot.Fill = new SolidColorBrush(Color.FromArgb("#22C55E"));
             PlayerBar.IsVisible = true;
         });
@@ -57,6 +63,13 @@ public partial class MiniPlayerView : ContentView
     private void OnNextTapped(object sender, TappedEventArgs e)
     {
         _engine?.SkipNext();
-        LblStatus.Text = "Đang chuyển...";
+        LblStatus.Text = AppLanguage.Current switch
+        {
+            "en" => "Switching...",
+            "ja" => "切り替え中...",
+            "ko" => "전환 중...",
+            "zh" => "切换中...",
+            _ => "Đang chuyển..."
+        };
     }
 }

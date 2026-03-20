@@ -23,8 +23,7 @@ namespace TravelGuide
             await Init();
 
             var count = await _db!.Table<TouristPlace>().CountAsync();
-            if (count > 0)
-                await _db!.DeleteAllAsync<TouristPlace>();
+            if (count > 0) return; // ← Giữ lại data + bản dịch đã có
 
             try
             {
@@ -37,12 +36,11 @@ namespace TravelGuide
 
                 if (places != null && places.Count > 0)
                 {
-                    // ✅ Chỉ nhập NameVi/DescVi trong JSON
-                    // → tự điền En tạm = Vi, sẽ dịch thật khi user chọn ngôn ngữ
                     foreach (var p in places)
                     {
-                        if (string.IsNullOrEmpty(p.NameEn)) p.NameEn = p.NameVi;
-                        if (string.IsNullOrEmpty(p.DescEn)) p.DescEn = p.DescVi;
+                        // NameEn giữ trống — IsTranslatedAsync sẽ phát hiện chưa dịch
+                        if (string.IsNullOrEmpty(p.NameEn)) p.NameEn = "";
+                        if (string.IsNullOrEmpty(p.DescEn)) p.DescEn = "";
                     }
 
                     await _db!.InsertAllAsync(places);
@@ -89,21 +87,25 @@ namespace TravelGuide
             await Init();
             await _db!.UpdateAsync(place);
         }
- 
+
         // ── 6. Kiểm tra đã dịch ngôn ngữ nào chưa ──────────────────────
         public async Task<bool> IsTranslatedAsync(string langCode)
         {
             var places = await GetPlacesAsync();
             if (places.Count == 0) return false;
 
-            // Kiểm tra địa điểm đầu tiên — nếu có bản dịch = đã dịch tất cả
             var first = places.First();
             return langCode switch
             {
-                "en" => !string.IsNullOrEmpty(first.NameEn) && first.NameEn != first.NameVi,
-                "ja" => !string.IsNullOrEmpty(first.NameJa),
-                "ko" => !string.IsNullOrEmpty(first.NameKo),
-                "zh" => !string.IsNullOrEmpty(first.NameZh),
+                // Khác VI và khác NameVi mới coi là đã dịch thật
+                "en" => !string.IsNullOrEmpty(first.NameEn)
+                        && first.NameEn != first.NameVi,
+                "ja" => !string.IsNullOrEmpty(first.NameJa)
+                        && first.NameJa != first.NameVi,
+                "ko" => !string.IsNullOrEmpty(first.NameKo)
+                        && first.NameKo != first.NameVi,
+                "zh" => !string.IsNullOrEmpty(first.NameZh)
+                        && first.NameZh != first.NameVi,
                 _ => true // "vi" luôn có sẵn
             };
         }

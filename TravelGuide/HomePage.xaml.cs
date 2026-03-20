@@ -22,19 +22,21 @@ public partial class HomePage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        MiniPlayer.Attach(_narrationEngine); // ✅
+        MiniPlayer.Attach(_narrationEngine);
         await LoadPlacesAsync();
     }
 
     private async Task LoadPlacesAsync()
     {
         _allPlaces = await _dbService.GetPlacesAsync();
+        PlacesCollection.ItemsSource = null;  // ← force refresh
         PlacesCollection.ItemsSource = _allPlaces;
     }
 
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").Trim().ToLower();
+        PlacesCollection.ItemsSource = null;
         PlacesCollection.ItemsSource = string.IsNullOrEmpty(keyword)
             ? _allPlaces
             : _allPlaces.Where(p =>
@@ -61,16 +63,14 @@ public partial class HomePage : ContentPage
     private async void OpenMap(object sender, EventArgs e)
     {
         if (Handler?.MauiContext == null) return;
-        var mapPage = Handler.MauiContext.Services
-            .GetRequiredService<MapPage>();
+        var mapPage = Handler.MauiContext.Services.GetRequiredService<MapPage>();
         await Navigation.PushAsync(mapPage);
     }
 
     private async void OpenAudio(object sender, EventArgs e)
     {
         if (Handler?.MauiContext == null) return;
-        var audioPage = Handler.MauiContext.Services
-            .GetRequiredService<AudioPage>();
+        var audioPage = Handler.MauiContext.Services.GetRequiredService<AudioPage>();
         await Navigation.PushAsync(audioPage);
     }
 
@@ -84,6 +84,7 @@ public partial class HomePage : ContentPage
             if (location == null) return;
             var nearby = await _dbService.GetNearbyPlacesAsync(
                 location.Latitude, location.Longitude, radiusMeters: 1000);
+            PlacesCollection.ItemsSource = null;
             PlacesCollection.ItemsSource = nearby.Any() ? nearby : _allPlaces;
         }
         catch (Exception ex)

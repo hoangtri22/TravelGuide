@@ -11,7 +11,6 @@ public class TouristPlace
     public string DescVi { get; set; } = string.Empty;
     public string DescEn { get; set; } = string.Empty;
 
-    // ✅ Thêm 3 ngôn ngữ mới — nullable vì chưa dịch ngay
     public string? NameJa { get; set; }
     public string? NameKo { get; set; }
     public string? NameZh { get; set; }
@@ -40,11 +39,11 @@ public class TouristPlace
     {
         return AppLanguage.Current switch
         {
-            "ja" => NameJa ?? NameEn,
-            "ko" => NameKo ?? NameEn,
-            "zh" => NameZh ?? NameEn,
-            "vi" => NameVi,
-            _ => NameEn
+            "en" => !string.IsNullOrEmpty(NameEn) ? NameEn : NameVi,
+            "ja" => !string.IsNullOrEmpty(NameJa) ? NameJa : NameVi,
+            "ko" => !string.IsNullOrEmpty(NameKo) ? NameKo : NameVi,
+            "zh" => !string.IsNullOrEmpty(NameZh) ? NameZh : NameVi,
+            _ => NameVi
         };
     }
 
@@ -52,11 +51,11 @@ public class TouristPlace
     {
         return AppLanguage.Current switch
         {
-            "ja" => DescJa ?? DescEn,
-            "ko" => DescKo ?? DescEn,
-            "zh" => DescZh ?? DescEn,
-            "vi" => DescVi,
-            _ => DescEn
+            "en" => !string.IsNullOrEmpty(DescEn) ? DescEn : DescVi,
+            "ja" => !string.IsNullOrEmpty(DescJa) ? DescJa : DescVi,
+            "ko" => !string.IsNullOrEmpty(DescKo) ? DescKo : DescVi,
+            "zh" => !string.IsNullOrEmpty(DescZh) ? DescZh : DescVi,
+            _ => DescVi
         };
     }
 }

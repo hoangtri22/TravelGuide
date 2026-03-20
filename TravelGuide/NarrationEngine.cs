@@ -13,7 +13,6 @@ public class NarrationEngine
     public bool IsSpeaking => _isSpeaking;
     public TouristPlace? CurrentPlace { get; private set; }
 
-    // ✅ Events cho MiniPlayer
     public event Action<TouristPlace>? OnStartedPlaying;
     public event Action? OnStoppedPlaying;
 
@@ -35,13 +34,14 @@ public class NarrationEngine
             new SpeechOptions { Volume = 0 });
     }
 
-    // ✅ Skip sang địa điểm tiếp
     public void SkipNext() => _cts?.Cancel();
 
     private async Task ProcessQueueAsync()
     {
         _isSpeaking = true;
-        _cachedLocales ??= await TextToSpeech.Default.GetLocalesAsync();
+
+        // Reset cache locales mỗi lần để lấy đúng locale theo ngôn ngữ hiện tại
+        _cachedLocales = await TextToSpeech.Default.GetLocalesAsync();
 
         try
         {
@@ -52,7 +52,6 @@ public class NarrationEngine
                 var place = _queue.Dequeue();
                 CurrentPlace = place;
 
-                // ✅ Thông báo MiniPlayer
                 OnStartedPlaying?.Invoke(place);
 
                 var text = BuildNarrationText(place);
@@ -60,6 +59,10 @@ public class NarrationEngine
 
                 System.Diagnostics.Debug.WriteLine(
                     $"[TTS] Speaking [{AppLanguage.Current}]: {place.Name}");
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TTS] Text: {text}");
+                System.Diagnostics.Debug.WriteLine(
+                    $"[TTS] Locale: {opts.Locale?.Language}-{opts.Locale?.Country}");
 
                 try
                 {
@@ -71,8 +74,7 @@ public class NarrationEngine
                 }
 
                 if (_queue.Count > 0)
-                    await Task.Delay(600)
-                          .ContinueWith(_ => { });
+                    await Task.Delay(600).ContinueWith(_ => { });
             }
         }
         finally
@@ -103,17 +105,27 @@ public class NarrationEngine
             "ja" => ("ja", "JP"),
             "ko" => ("ko", "KR"),
             "zh" => ("zh", "CN"),
-            _ => ("vi", "VN")
+            _ => ("en", "US") // ← fallback EN thay vì VI
         };
+
         var list = available.ToList();
-        var matched = list.FirstOrDefault(l =>
-            string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(l.Country, country, StringComparison.OrdinalIgnoreCase))
+
+        // Tìm locale khớp cả language lẫn country
+        var matched =
+            list.FirstOrDefault(l =>
+                string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(l.Country, country, StringComparison.OrdinalIgnoreCase))
+            // Fallback: chỉ khớp language
             ?? list.FirstOrDefault(l =>
                 string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase))
+            // Fallback cuối: EN-US
             ?? list.FirstOrDefault(l =>
                 string.Equals(l.Language, "en", StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(l.Country, "US", StringComparison.OrdinalIgnoreCase));
+
+        System.Diagnostics.Debug.WriteLine(
+            $"[TTS] Matched locale: {matched?.Language}-{matched?.Country} " +
+            $"(requested: {lang}-{country})");
 
         return new SpeechOptions { Volume = 1.0f, Pitch = 1.0f, Locale = matched };
     }

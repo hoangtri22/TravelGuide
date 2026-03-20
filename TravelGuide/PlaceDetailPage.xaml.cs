@@ -11,27 +11,37 @@ public partial class PlaceDetailPage : ContentPage
     {
         InitializeComponent();
         _narrationEngine = narrationEngine;
+
+        // ← Reload khi đổi ngôn ngữ
+        AppLanguage.OnLanguageChanged += _ =>
+            MainThread.BeginInvokeOnMainThread(() => RefreshUI());
     }
 
     public void LoadPlace(TouristPlace place)
     {
         _currentPlace = place;
-        ImgPlace.Source = place.ImageSource;
-        LblName.Text = place.Name;
-        LblDescription.Text = place.Description;
-        Title = place.Name;
+        RefreshUI();
+    }
+
+    private void RefreshUI()
+    {
+        if (_currentPlace == null) return;
+        ImgPlace.Source = _currentPlace.ImageSource;
+        LblName.Text = _currentPlace.Name;         // Name tự lấy đúng ngôn ngữ
+        LblDescription.Text = _currentPlace.Description;
+        Title = _currentPlace.Name;
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        MiniPlayer.Attach(_narrationEngine); // ✅
+        MiniPlayer.Attach(_narrationEngine);
+        RefreshUI(); // ← Refresh lại khi quay lại trang
     }
 
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
-        // Không stop — để MiniPlayer tiếp tục khi navigate
     }
 
     private async void OnSpeakClicked(object sender, EventArgs e)

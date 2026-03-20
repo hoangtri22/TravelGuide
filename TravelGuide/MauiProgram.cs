@@ -53,6 +53,11 @@ public static class MauiProgram
 
         var app = builder.Build();
 
+        // Set culture theo ngôn ngữ đã lưu
+        var savedLang = Preferences.Get("app_language", "vi");
+        var locMgr = app.Services.GetRequiredService<ILocalizationResourceManager>();
+        locMgr.CurrentCulture = new System.Globalization.CultureInfo(savedLang);
+
         Task.Run(async () =>
         {
             var db = app.Services.GetRequiredService<DatabaseService>();

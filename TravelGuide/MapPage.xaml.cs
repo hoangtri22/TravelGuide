@@ -15,6 +15,17 @@ public partial class MapPage : ContentPage
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
 
+    // Helper dịch nhanh theo ngôn ngữ hiện tại
+    private static string T(string vi, string en, string ja, string ko, string zh) =>
+        AppLanguage.Current switch
+        {
+            "en" => en,
+            "ja" => ja,
+            "ko" => ko,
+            "zh" => zh,
+            _ => vi
+        };
+
     public MapPage(
         DatabaseService dbService,
         NarrationEngine narrationEngine,
@@ -27,7 +38,6 @@ public partial class MapPage : ContentPage
         _gpsService = gpsService;
         _geofenceEngine = geofenceEngine;
 
-        // Đăng ký nhận cập nhật vị trí GPS
         WeakReferenceMessenger.Default.Register<LocationMessage>(this, (r, m) =>
         {
             MainThread.BeginInvokeOnMainThread(async () =>
@@ -42,7 +52,6 @@ public partial class MapPage : ContentPage
             });
         });
 
-        // Đăng ký events từ GeofenceEngine
         _geofenceEngine.OnPoiEntered += OnPoiEntered;
         _geofenceEngine.OnPoiTriggered += OnPoiTriggered;
         _geofenceEngine.OnPoiExited += OnPoiExited;
@@ -53,7 +62,7 @@ public partial class MapPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        MiniPlayer.Attach(_narrationEngine); // ✅ MiniPlayer
+        MiniPlayer.Attach(_narrationEngine);
         await _gpsService.StartAsync();
     }
 
@@ -65,7 +74,6 @@ public partial class MapPage : ContentPage
         _geofenceEngine.OnPoiEntered -= OnPoiEntered;
         _geofenceEngine.OnPoiTriggered -= OnPoiTriggered;
         _geofenceEngine.OnPoiExited -= OnPoiExited;
-        // ✅ Không stop narration — MiniPlayer tiếp tục ở trang khác
     }
 
     // ── Geofence event handlers ──────────────────────────────────────────
@@ -76,7 +84,12 @@ public partial class MapPage : ContentPage
         {
             _nearestPlace = poi;
             LblNearbyTitle.Text = poi.Name;
-            LblNearbyDist.Text = "Bạn đang trong vùng này";
+            LblNearbyDist.Text = T(
+                "Bạn đang trong vùng này",
+                "You are in this area",
+                "このエリアにいます",
+                "이 구역에 있습니다",
+                "您正在此区域内");
             NearbyBanner.IsVisible = true;
             _ = mapView.EvaluateJavaScriptAsync(
                 $"highlightMarker({poi.Longitude}, {poi.Latitude});");
@@ -88,7 +101,12 @@ public partial class MapPage : ContentPage
         MainThread.BeginInvokeOnMainThread(() =>
         {
             NearbyBanner.BackgroundColor = Color.FromArgb("#2E7D32");
-            LblNearbyDist.Text = "Đang phát thuyết minh...";
+            LblNearbyDist.Text = T(
+                "Đang phát thuyết minh...",
+                "Playing commentary...",
+                "解説を再生中...",
+                "해설 재생 중...",
+                "正在播放讲解...");
         });
     }
 
@@ -146,7 +164,9 @@ public partial class MapPage : ContentPage
     {
         try
         {
-            UpdateGpsStatus("Đang định vị...", "#FFA726");
+            UpdateGpsStatus(T(
+                "Đang định vị...", "Locating...",
+                "位置取得中...", "위치 찾는 중...", "定位中..."), "#FFA726");
 
             var location = await Geolocation.Default.GetLocationAsync(
                 new GeolocationRequest(GeolocationAccuracy.Medium,
@@ -154,12 +174,19 @@ public partial class MapPage : ContentPage
 
             if (location == null)
             {
-                UpdateGpsStatus("Không có GPS", "#EF5350");
+                UpdateGpsStatus(T(
+                    "Không có GPS", "No GPS",
+                    "GPSなし", "GPS 없음", "无GPS"), "#EF5350");
                 return;
             }
 
             _lastKnownLocation = location;
-            UpdateGpsStatus($"Độ chính xác: {location.Accuracy:F0}m", "#4CAF50");
+            UpdateGpsStatus(T(
+                $"Độ chính xác: {location.Accuracy:F0}m",
+                $"Accuracy: {location.Accuracy:F0}m",
+                $"精度: {location.Accuracy:F0}m",
+                $"정확도: {location.Accuracy:F0}m",
+                $"精度: {location.Accuracy:F0}m"), "#4CAF50");
 
             await mapView.EvaluateJavaScriptAsync(
                 $"updateLocation({location.Longitude}, {location.Latitude});");
@@ -167,7 +194,9 @@ public partial class MapPage : ContentPage
         }
         catch (Exception ex)
         {
-            UpdateGpsStatus("Lỗi GPS", "#EF5350");
+            UpdateGpsStatus(T(
+                "Lỗi GPS", "GPS Error",
+                "GPSエラー", "GPS 오류", "GPS错误"), "#EF5350");
             System.Diagnostics.Debug.WriteLine($"GPS error: {ex.Message}");
         }
     }
@@ -193,8 +222,16 @@ public partial class MapPage : ContentPage
         {
             LblNearbyTitle.Text = _nearestPlace.Name;
             LblNearbyDist.Text = dist < 1000
-                ? $"Cách bạn {dist:F0}m"
-                : $"Cách bạn {dist / 1000:F1}km";
+                ? T($"Cách bạn {dist:F0}m",
+                    $"{dist:F0}m away",
+                    $"{dist:F0}m先",
+                    $"{dist:F0}m 거리",
+                    $"距您{dist:F0}米")
+                : T($"Cách bạn {dist / 1000:F1}km",
+                    $"{dist / 1000:F1}km away",
+                    $"{dist / 1000:F1}km先",
+                    $"{dist / 1000:F1}km 거리",
+                    $"距您{dist / 1000:F1}公里");
             NearbyBanner.IsVisible = true;
         }
         else
@@ -279,7 +316,7 @@ public partial class MapPage : ContentPage
 </head>
 <body>
   <div id='map'></div>
-  <button id='locateBtn'>📍 Vị trí của tôi</button>
+  <button id='locateBtn'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
   <script>
     mapboxgl.accessToken='{token}';
     const map=new mapboxgl.Map({{
@@ -308,7 +345,7 @@ public partial class MapPage : ContentPage
       if(userMarker) userMarker.remove();
       userMarker=new mapboxgl.Marker({{color:'#4CAF50'}})
         .setLngLat([lng,lat])
-        .setPopup(new mapboxgl.Popup().setHTML('<b>📍 Bạn đang ở đây</b>'))
+        .setPopup(new mapboxgl.Popup().setHTML('<b>{T("📍 Bạn đang ở đây", "📍 You are here", "📍 現在地", "📍 현재 위치", "📍 您在这里")}</b>'))
         .addTo(map);
       map.flyTo({{center:[lng,lat],zoom:16,speed:1.2}});
     }}

@@ -2,9 +2,11 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:TravelGuide"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.HomePage"
              BackgroundColor="#F2F2F2"
-             Title="Travel Guide">
+             Title="{loc:Translate AppTitle}">
+
     <ContentPage.Resources>
         <Style x:Key="CategoryBtnStyle" TargetType="Button">
             <Setter Property="BackgroundColor" Value="White"/>
@@ -19,7 +21,6 @@
         </Style>
     </ContentPage.Resources>
 
-    <!-- ✅ Grid 2 row: content + MiniPlayer -->
     <Grid RowDefinitions="*, Auto">
 
         <ScrollView Grid.Row="0">
@@ -32,7 +33,7 @@
                            FontSize="28" FontAttributes="Bold"
                            TextColor="#2E86DE"
                            HorizontalOptions="Center"/>
-                    <Label Text="Khám phá Sài Gòn cùng bạn"
+                    <Label Text="{loc:Translate AppTagline}"
                            FontSize="14" TextColor="Gray"
                            HorizontalOptions="Center"/>
                 </VerticalStackLayout>
@@ -40,23 +41,23 @@
                 <Border StrokeShape="RoundRectangle 20"
                         Padding="5" BackgroundColor="White"
                         Stroke="#E0E0E0" StrokeThickness="1">
-                    <SearchBar Placeholder="Tìm kiếm địa điểm..."
+                    <SearchBar Placeholder="{loc:Translate SearchPlaceholder}"
                                TextChanged="OnSearchBarTextChanged"/>
                 </Border>
 
                 <FlexLayout Wrap="Wrap" JustifyContent="SpaceBetween">
-                    <Button Text="📍 Bản đồ"
+                    <Button Text="{loc:Translate BtnMap}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenMap"/>
-                    <Button Text="🎙 Audio"
+                    <Button Text="{loc:Translate BtnAudio}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenAudio"/>
-                    <Button Text="🔍 Gần đây"
+                    <Button Text="{loc:Translate BtnNearby}"
                             Style="{StaticResource CategoryBtnStyle}"
                             Clicked="OpenNearby"/>
                 </FlexLayout>
 
-                <Label Text="Địa điểm phổ biến"
+                <Label Text="{loc:Translate PopularPlaces}"
                        FontSize="20" FontAttributes="Bold"
                        Margin="0,10,0,0"/>
 
@@ -64,8 +65,7 @@
                                 SelectionMode="Single"
                                 SelectionChanged="OnPlaceSelected">
                     <CollectionView.ItemsLayout>
-                        <LinearItemsLayout Orientation="Vertical"
-                                           ItemSpacing="15"/>
+                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="15"/>
                     </CollectionView.ItemsLayout>
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
@@ -79,22 +79,17 @@
                                 </Border.Shadow>
                                 <Grid RowDefinitions="180, Auto">
                                     <Image Source="{Binding ImageSource}"
-                                           Aspect="AspectFill"
-                                           Grid.Row="0"/>
+                                           Aspect="AspectFill" Grid.Row="0"/>
                                     <VerticalStackLayout Grid.Row="1"
-                                                         Padding="15"
-                                                         Spacing="5">
+                                                         Padding="15" Spacing="5">
                                         <Label Text="{Binding Name}"
-                                               FontSize="18"
-                                               FontAttributes="Bold"
+                                               FontSize="18" FontAttributes="Bold"
                                                TextColor="#333333"/>
                                         <Label Text="{Binding Summary}"
-                                               FontSize="13"
-                                               TextColor="Gray"
+                                               FontSize="13" TextColor="Gray"
                                                MaxLines="2"/>
-                                        <Label Text="Xem chi tiết >"
-                                               FontSize="12"
-                                               TextColor="#2E86DE"
+                                        <Label Text="{loc:Translate ViewDetail}"
+                                               FontSize="12" TextColor="#2E86DE"
                                                Margin="0,5,0,0"/>
                                     </VerticalStackLayout>
                                 </Grid>
@@ -106,7 +101,6 @@
             </VerticalStackLayout>
         </ScrollView>
 
-        <!-- ✅ MiniPlayer cố định đáy -->
         <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="1"/>
 
     </Grid>
