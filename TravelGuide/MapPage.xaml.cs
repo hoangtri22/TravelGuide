@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Maui.Devices.Sensors;
+using System.Globalization;
 using System.Text;
 using TravelGuide.Models;
 
@@ -15,7 +16,6 @@ public partial class MapPage : ContentPage
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
 
-    // Helper dịch nhanh theo ngôn ngữ hiện tại
     private static string T(string vi, string en, string ja, string ko, string zh) =>
         AppLanguage.Current switch
         {
@@ -25,6 +25,9 @@ public partial class MapPage : ContentPage
             "zh" => zh,
             _ => vi
         };
+
+    // Shortcut format số không bị ảnh hưởng bởi locale
+    private static string F(double d) => d.ToString(CultureInfo.InvariantCulture);
 
     public MapPage(
         DatabaseService dbService,
@@ -45,7 +48,7 @@ public partial class MapPage : ContentPage
                 _lastKnownLocation = m.Value;
                 if (mapView != null)
                 {
-                    string js = $"updateLocation({m.Value.Longitude}, {m.Value.Latitude});";
+                    string js = $"updateLocation({F(m.Value.Longitude)}, {F(m.Value.Latitude)});";
                     await mapView.EvaluateJavaScriptAsync(js);
                     await UpdateNearbyBanner(m.Value);
                 }
@@ -76,8 +79,6 @@ public partial class MapPage : ContentPage
         _geofenceEngine.OnPoiExited -= OnPoiExited;
     }
 
-    // ── Geofence event handlers ──────────────────────────────────────────
-
     private void OnPoiEntered(TouristPlace poi)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -92,7 +93,7 @@ public partial class MapPage : ContentPage
                 "您正在此区域内");
             NearbyBanner.IsVisible = true;
             _ = mapView.EvaluateJavaScriptAsync(
-                $"highlightMarker({poi.Longitude}, {poi.Latitude});");
+                $"highlightMarker({F(poi.Longitude)}, {F(poi.Latitude)});");
         });
     }
 
@@ -120,8 +121,6 @@ public partial class MapPage : ContentPage
         });
     }
 
-    // ── UI handlers ──────────────────────────────────────────────────────
-
     private void OnReloadClicked(object sender, EventArgs e)
     {
         LoadingOverlay.IsVisible = true;
@@ -136,10 +135,23 @@ public partial class MapPage : ContentPage
 
     private async void MapView_Navigating(object sender, WebNavigatingEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine($"[WebView NAV] {e.Url}");
+
         if (!e.Url.StartsWith("app://")) return;
         e.Cancel = true;
 
-        if (e.Url.Contains("speak"))
+        if (e.Url.Contains("error"))
+        {
+            string errorMsg = Uri.UnescapeDataString(
+                e.Url.Replace("app://error?msg=", ""));
+            System.Diagnostics.Debug.WriteLine($"[JS ERROR] {errorMsg}");
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                LoadingOverlay.IsVisible = false;
+                LblGpsStatus.Text = $"JS ERR: {errorMsg[..Math.Min(errorMsg.Length, 60)]}";
+            });
+        }
+        else if (e.Url.Contains("speak"))
         {
             string rawText = Uri.UnescapeDataString(
                 e.Url.Replace("app://speak?text=", ""));
@@ -155,6 +167,7 @@ public partial class MapPage : ContentPage
         }
         else if (e.Url.Contains("loaded"))
         {
+            System.Diagnostics.Debug.WriteLine("[WebView] Map loaded successfully!");
             MainThread.BeginInvokeOnMainThread(() =>
                 LoadingOverlay.IsVisible = false);
         }
@@ -189,7 +202,7 @@ public partial class MapPage : ContentPage
                 $"精度: {location.Accuracy:F0}m"), "#4CAF50");
 
             await mapView.EvaluateJavaScriptAsync(
-                $"updateLocation({location.Longitude}, {location.Latitude});");
+                $"updateLocation({F(location.Longitude)}, {F(location.Latitude)});");
             await UpdateNearbyBanner(location);
         }
         catch (Exception ex)
@@ -197,7 +210,7 @@ public partial class MapPage : ContentPage
             UpdateGpsStatus(T(
                 "Lỗi GPS", "GPS Error",
                 "GPSエラー", "GPS 오류", "GPS错误"), "#EF5350");
-            System.Diagnostics.Debug.WriteLine($"GPS error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[GPS ERROR] {ex.Message}");
         }
     }
 
@@ -251,7 +264,27 @@ public partial class MapPage : ContentPage
 
     async void LoadMap()
     {
+        System.Diagnostics.Debug.WriteLine("[MAP] LoadMap START");
         string token = "pk.eyJ1IjoicGh3bmlpMTk5IiwiYSI6ImNtbXE3MzBiYjBwN2UyeHB6aTAweDY5bnUifQ.allfFmkZfixY6rEIanjhYQ";
+
+        string mapboxJs = "";
+        string mapboxCss = "";
+        try
+        {
+            using var jsStream = await FileSystem.Current.OpenAppPackageFileAsync("mapbox-gl.js");
+            using var jsReader = new StreamReader(jsStream);
+            mapboxJs = await jsReader.ReadToEndAsync();
+            System.Diagnostics.Debug.WriteLine($"[MAP] JS loaded: {mapboxJs.Length} chars");
+
+            using var cssStream = await FileSystem.Current.OpenAppPackageFileAsync("mapbox-gl.css");
+            using var cssReader = new StreamReader(cssStream);
+            mapboxCss = await cssReader.ReadToEndAsync();
+            System.Diagnostics.Debug.WriteLine($"[MAP] CSS loaded: {mapboxCss.Length} chars");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MAP] File load error: {ex.Message}");
+        }
 
         Location userLocation;
         try
@@ -269,10 +302,13 @@ public partial class MapPage : ContentPage
         }
 
         _lastKnownLocation = userLocation;
+        System.Diagnostics.Debug.WriteLine(
+            $"[MAP] Loading at {F(userLocation.Latitude)}, {F(userLocation.Longitude)}");
 
         var allPlaces = await _dbService.GetPlacesAsync();
-        var sb = new StringBuilder();
+        System.Diagnostics.Debug.WriteLine($"[MAP] Total places: {allPlaces.Count}");
 
+        var sb = new StringBuilder();
         foreach (var p in allPlaces)
         {
             double dist = Location.CalculateDistance(
@@ -286,22 +322,37 @@ public partial class MapPage : ContentPage
                 string safeName = p.Name.Replace("'", "\\'");
                 string safeDesc = p.Description.Replace("'", "\\'");
                 sb.AppendLine(
-                    $"addPlace({p.Longitude},{p.Latitude},'{safeName}','{safeDesc}','{color}');");
+                    $"addPlace({F(p.Longitude)},{F(p.Latitude)},'{safeName}','{safeDesc}','{color}');");
             }
         }
 
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(15000);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (LoadingOverlay.IsVisible)
+                {
+                    System.Diagnostics.Debug.WriteLine("[MAP] Fallback: force hiding overlay after 15s");
+                    LoadingOverlay.IsVisible = false;
+                }
+            });
+        });
+
         if (mapView != null)
             mapView.Source = new HtmlWebViewSource
-            { Html = BuildMapHtml(token, userLocation, sb.ToString()) };
+            {
+                Html = BuildMapHtml(token, userLocation, sb.ToString(), mapboxJs, mapboxCss)
+            };
     }
 
-    private string BuildMapHtml(string token, Location center, string markersJs) => $@"
+    private string BuildMapHtml(string token, Location center, string markersJs,
+        string mapboxJs, string mapboxCss) => $@"
 <!DOCTYPE html><html>
 <head>
   <meta charset='utf-8'>
   <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'>
-  <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet'>
-  <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+  <style>{mapboxCss}</style>
   <style>
     body{{margin:0;padding:0;}}
     #map{{position:absolute;top:0;bottom:0;width:100%;}}
@@ -317,18 +368,27 @@ public partial class MapPage : ContentPage
 <body>
   <div id='map'></div>
   <button id='locateBtn'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
+  <script>{mapboxJs}</script>
   <script>
+    window.onerror = function(msg, src, line, col, err) {{
+      window.location.href = 'app://error?msg=' + encodeURIComponent(msg + ' | ' + src + ':' + line);
+      return true;
+    }};
+
     mapboxgl.accessToken='{token}';
     const map=new mapboxgl.Map({{
       container:'map',
       style:'mapbox://styles/mapbox/streets-v12',
-      center:[{center.Longitude},{center.Latitude}],
+      center:[{F(center.Longitude)},{F(center.Latitude)}],
       zoom:15
     }});
-    let userMarker=null;
-    const markerMap={{}};
+    var userMarker=null;
+    var markerMap={{}};
 
     map.on('load',()=>{{ window.location.href='app://loaded'; }});
+    map.on('error',(e)=>{{
+      window.location.href='app://error?msg='+encodeURIComponent('MapboxError: '+JSON.stringify(e.error));
+    }});
 
     function speak(t){{ window.location.href='app://speak?text='+encodeURIComponent(t); }}
 
