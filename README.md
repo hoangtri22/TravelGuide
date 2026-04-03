@@ -45,7 +45,7 @@
 
 ### 🌐 Đa ngôn ngữ (i18n)
 - Hỗ trợ 5 ngôn ngữ: 🇻🇳 Tiếng Việt, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇨🇳 中文
-- Giao diện tự động dịch qua `LocalizationResourceManager.Maui` và file `.resx`
+- Giao diện tự động dịch qua `MyMemory API` và file `.resx`
 - Nội dung địa điểm được dịch tự động qua **Claude API (claude-haiku)** và lưu vào SQLite
 - Chọn ngôn ngữ bằng grid button cờ quốc gia — không cần gõ tìm kiếm
 - Bản dịch được lưu lại, không dịch lại khi mở app lần sau
@@ -64,7 +64,7 @@
 | Bản đồ          | Mapbox GL JS v2.15 (nhúng trong WebView)       |    
 | Text-to-Speech  | Microsoft.Maui.Media.TextToSpeech              |
 | Cơ sở dữ liệu   | SQLite-net-pcl                                 |
-| Dịch thuật      | Anthropic Claude API (claude-haiku-4-5)        |
+| Dịch thuật      | MyMemory API                                   |
 | Đa ngôn ngữ UI  | LocalizationResourceManager.Maui + .resx       |
 | Messaging       | CommunityToolkit.Mvvm (WeakReferenceMessenger) |
 | Lưu trữ cài đặt | Microsoft.Maui.Storage.Preferences             |
