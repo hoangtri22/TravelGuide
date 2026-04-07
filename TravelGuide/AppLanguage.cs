@@ -72,6 +72,7 @@ public static class AppLanguage
         _current = saved;
 
         ApplyCulture(saved);
+        OnLanguageChanged?.Invoke(saved);
     }
 
     // =========================================================

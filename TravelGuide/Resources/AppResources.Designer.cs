@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace TravelGuide.Resources {
+namespace TravelGuide {
     using System;
     
     
@@ -22,7 +22,7 @@ namespace TravelGuide.Resources {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "18.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    public class AppResources {
+    internal class AppResources {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
@@ -36,7 +36,7 @@ namespace TravelGuide.Resources {
         ///   Returns the cached ResourceManager instance used by this class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        public static global::System.Resources.ResourceManager ResourceManager {
+        internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
                     global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("TravelGuide.Resources.AppResources", typeof(AppResources).Assembly);
@@ -51,7 +51,7 @@ namespace TravelGuide.Resources {
         ///   resource lookups using this strongly typed resource class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        public static global::System.Globalization.CultureInfo Culture {
+        internal static global::System.Globalization.CultureInfo Culture {
             get {
                 return resourceCulture;
             }
@@ -63,7 +63,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Explore Saigon with us.
         /// </summary>
-        public static string AppTagline {
+        internal static string AppTagline {
             get {
                 return ResourceManager.GetString("AppTagline", resourceCulture);
             }
@@ -72,7 +72,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Travel Guide.
         /// </summary>
-        public static string AppTitle {
+        internal static string AppTitle {
             get {
                 return ResourceManager.GetString("AppTitle", resourceCulture);
             }
@@ -81,7 +81,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Language:.
         /// </summary>
-        public static string AudioLanguage {
+        internal static string AudioLanguage {
             get {
                 return ResourceManager.GetString("AudioLanguage", resourceCulture);
             }
@@ -90,7 +90,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to places.
         /// </summary>
-        public static string AudioPlaces {
+        internal static string AudioPlaces {
             get {
                 return ResourceManager.GetString("AudioPlaces", resourceCulture);
             }
@@ -99,7 +99,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Vinh Khanh Food Street.
         /// </summary>
-        public static string AudioStreetName {
+        internal static string AudioStreetName {
             get {
                 return ResourceManager.GetString("AudioStreetName", resourceCulture);
             }
@@ -108,7 +108,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 🎙 Audio guide.
         /// </summary>
-        public static string AudioTitle {
+        internal static string AudioTitle {
             get {
                 return ResourceManager.GetString("AudioTitle", resourceCulture);
             }
@@ -117,7 +117,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 🎙 Audio.
         /// </summary>
-        public static string BtnAudio {
+        internal static string BtnAudio {
             get {
                 return ResourceManager.GetString("BtnAudio", resourceCulture);
             }
@@ -126,7 +126,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Continue.
         /// </summary>
-        public static string BtnContinue {
+        internal static string BtnContinue {
             get {
                 return ResourceManager.GetString("BtnContinue", resourceCulture);
             }
@@ -135,7 +135,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to English.
         /// </summary>
-        public static string BtnEnglish {
+        internal static string BtnEnglish {
             get {
                 return ResourceManager.GetString("BtnEnglish", resourceCulture);
             }
@@ -144,7 +144,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 📍 Map.
         /// </summary>
-        public static string BtnMap {
+        internal static string BtnMap {
             get {
                 return ResourceManager.GetString("BtnMap", resourceCulture);
             }
@@ -153,7 +153,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 🔍 Nearby.
         /// </summary>
-        public static string BtnNearby {
+        internal static string BtnNearby {
             get {
                 return ResourceManager.GetString("BtnNearby", resourceCulture);
             }
@@ -162,7 +162,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to ▶ Play all.
         /// </summary>
-        public static string BtnPlayAll {
+        internal static string BtnPlayAll {
             get {
                 return ResourceManager.GetString("BtnPlayAll", resourceCulture);
             }
@@ -171,7 +171,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to ⏸ Playing....
         /// </summary>
-        public static string BtnPlaying {
+        internal static string BtnPlaying {
             get {
                 return ResourceManager.GetString("BtnPlaying", resourceCulture);
             }
@@ -180,7 +180,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 🔊 Listen to commentary.
         /// </summary>
-        public static string BtnSpeak {
+        internal static string BtnSpeak {
             get {
                 return ResourceManager.GetString("BtnSpeak", resourceCulture);
             }
@@ -189,7 +189,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Vietnamese.
         /// </summary>
-        public static string BtnVietnamese {
+        internal static string BtnVietnamese {
             get {
                 return ResourceManager.GetString("BtnVietnamese", resourceCulture);
             }
@@ -198,7 +198,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Currency.
         /// </summary>
-        public static string CurrencyLabel {
+        internal static string CurrencyLabel {
             get {
                 return ResourceManager.GetString("CurrencyLabel", resourceCulture);
             }
@@ -207,7 +207,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to VND, USD....
         /// </summary>
-        public static string CurrencyPlaceholder {
+        internal static string CurrencyPlaceholder {
             get {
                 return ResourceManager.GetString("CurrencyPlaceholder", resourceCulture);
             }
@@ -216,7 +216,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Place details.
         /// </summary>
-        public static string DetailTitle {
+        internal static string DetailTitle {
             get {
                 return ResourceManager.GetString("DetailTitle", resourceCulture);
             }
@@ -225,7 +225,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to km.
         /// </summary>
-        public static string DistanceKm {
+        internal static string DistanceKm {
             get {
                 return ResourceManager.GetString("DistanceKm", resourceCulture);
             }
@@ -234,7 +234,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to m.
         /// </summary>
-        public static string DistanceM {
+        internal static string DistanceM {
             get {
                 return ResourceManager.GetString("DistanceM", resourceCulture);
             }
@@ -243,7 +243,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Language.
         /// </summary>
-        public static string LanguageLabel {
+        internal static string LanguageLabel {
             get {
                 return ResourceManager.GetString("LanguageLabel", resourceCulture);
             }
@@ -252,7 +252,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Search language....
         /// </summary>
-        public static string LanguagePlaceholder {
+        internal static string LanguagePlaceholder {
             get {
                 return ResourceManager.GetString("LanguagePlaceholder", resourceCulture);
             }
@@ -261,7 +261,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Loading map....
         /// </summary>
-        public static string LoadingMap {
+        internal static string LoadingMap {
             get {
                 return ResourceManager.GetString("LoadingMap", resourceCulture);
             }
@@ -270,7 +270,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Map.
         /// </summary>
-        public static string MapTitle {
+        internal static string MapTitle {
             get {
                 return ResourceManager.GetString("MapTitle", resourceCulture);
             }
@@ -279,7 +279,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Playing....
         /// </summary>
-        public static string MiniPlaying {
+        internal static string MiniPlaying {
             get {
                 return ResourceManager.GetString("MiniPlaying", resourceCulture);
             }
@@ -288,7 +288,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Switching....
         /// </summary>
-        public static string MiniSwitching {
+        internal static string MiniSwitching {
             get {
                 return ResourceManager.GetString("MiniSwitching", resourceCulture);
             }
@@ -297,7 +297,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 📍 My location.
         /// </summary>
-        public static string MyLocation {
+        internal static string MyLocation {
             get {
                 return ResourceManager.GetString("MyLocation", resourceCulture);
             }
@@ -306,7 +306,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Playing commentary....
         /// </summary>
-        public static string NowPlaying {
+        internal static string NowPlaying {
             get {
                 return ResourceManager.GetString("NowPlaying", resourceCulture);
             }
@@ -315,7 +315,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Popular places.
         /// </summary>
-        public static string PopularPlaces {
+        internal static string PopularPlaces {
             get {
                 return ResourceManager.GetString("PopularPlaces", resourceCulture);
             }
@@ -324,7 +324,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Searching location....
         /// </summary>
-        public static string SearchingLocation {
+        internal static string SearchingLocation {
             get {
                 return ResourceManager.GetString("SearchingLocation", resourceCulture);
             }
@@ -333,7 +333,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Search places....
         /// </summary>
-        public static string SearchPlaceholder {
+        internal static string SearchPlaceholder {
             get {
                 return ResourceManager.GetString("SearchPlaceholder", resourceCulture);
             }
@@ -342,7 +342,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Set up your journey.
         /// </summary>
-        public static string SetupJourney {
+        internal static string SetupJourney {
             get {
                 return ResourceManager.GetString("SetupJourney", resourceCulture);
             }
@@ -351,7 +351,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Translating....
         /// </summary>
-        public static string Translating {
+        internal static string Translating {
             get {
                 return ResourceManager.GetString("Translating", resourceCulture);
             }
@@ -360,7 +360,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to View details &gt;.
         /// </summary>
-        public static string ViewDetail {
+        internal static string ViewDetail {
             get {
                 return ResourceManager.GetString("ViewDetail", resourceCulture);
             }
@@ -369,7 +369,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to 📍 Vinh Khanh Street.
         /// </summary>
-        public static string VinhKhanhStreet {
+        internal static string VinhKhanhStreet {
             get {
                 return ResourceManager.GetString("VinhKhanhStreet", resourceCulture);
             }
@@ -378,7 +378,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to Welcome to Vinh Khanh Food Street!.
         /// </summary>
-        public static string WelcomeText {
+        internal static string WelcomeText {
             get {
                 return ResourceManager.GetString("WelcomeText", resourceCulture);
             }
@@ -387,7 +387,7 @@ namespace TravelGuide.Resources {
         /// <summary>
         ///   Looks up a localized string similar to You are in this area.
         /// </summary>
-        public static string YouAreInZone {
+        internal static string YouAreInZone {
             get {
                 return ResourceManager.GetString("YouAreInZone", resourceCulture);
             }

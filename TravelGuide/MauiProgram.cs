@@ -1,8 +1,9 @@
 ﻿using Microsoft.Maui.Controls.Hosting;
 using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
-using TravelGuide.Resources;
 using LocalizationResourceManager.Maui;
+using System.Globalization;
+using TravelGuide;
 
 namespace TravelGuide;
 
@@ -10,15 +11,17 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
-        // FIX: Load ngôn ngữ đã lưu ngay khi khởi động
+        // ✅ Load ngôn ngữ đã lưu ngay khi app start
         AppLanguage.LoadSaved();
 
         var builder = MauiApp.CreateBuilder();
+
         builder
             .UseMauiApp<App>()
             .UseMauiMaps()
             .UseLocalizationResourceManager(settings =>
             {
+                // ✅ Kết nối với AppResources.resx
                 settings.AddResource(AppResources.ResourceManager);
             })
             .ConfigureFonts(fonts =>
@@ -31,20 +34,23 @@ public static class MauiProgram
         builder.Logging.AddDebug();
 #endif
 
-        // Infrastructure
+        // ========================
+        // 🔧 SERVICES (Singleton)
+        // ========================
         builder.Services.AddSingleton<DatabaseService>();
         builder.Services.AddSingleton<HttpClient>();
         builder.Services.AddSingleton<TranslationService>();
 
-        // FIX: Đăng ký các engine còn thiếu — Singleton vì cần dùng chung state
+        // Engine dùng chung state
         builder.Services.AddSingleton<NarrationEngine>();
         builder.Services.AddSingleton<GeofenceEngine>();
+
+        // ❌ KHÔNG thêm service Android ở đây (Foreground Service không phải DI)
         builder.Services.AddSingleton<GpsBackgroundService>();
 
-        // ── Pages (Transient — tạo mới mỗi lần navigate) ─────────────────
-        // Thứ tự đăng ký không quan trọng với DI container,
-        // nhưng liệt kê theo dependency tree để dễ đọc:
-        // PlaceDetailPage ← HomePage ← MainPage
+        // ========================
+        // 📄 PAGES (Transient)
+        // ========================
         builder.Services.AddTransient<PlaceDetailPage>();
         builder.Services.AddTransient<MapPage>();
         builder.Services.AddTransient<HomePage>();
@@ -53,16 +59,29 @@ public static class MauiProgram
 
         var app = builder.Build();
 
-        // Set culture theo ngôn ngữ đã lưu
-        var savedLang = Preferences.Get("app_language", "vi");
-        var locMgr = app.Services.GetRequiredService<ILocalizationResourceManager>();
-        locMgr.CurrentCulture = new System.Globalization.CultureInfo(savedLang);
-
-        Task.Run(async () =>
+        // ========================
+        // 🌍 SET CULTURE
+        // ========================
+        try
         {
-            var db = app.Services.GetRequiredService<DatabaseService>();
-            await db.SeedDataAsync();
-        });
+            var savedLang = Preferences.Get("app_language", "vi");
+
+            var culture = new CultureInfo(savedLang);
+
+            CultureInfo.DefaultThreadCurrentCulture = culture;
+            CultureInfo.DefaultThreadCurrentUICulture = culture;
+
+            var locMgr = app.Services.GetRequiredService<ILocalizationResourceManager>();
+            locMgr.CurrentCulture = culture;
+        }
+        catch
+        {
+            // fallback nếu lỗi culture
+            var culture = new CultureInfo("vi");
+
+            CultureInfo.DefaultThreadCurrentCulture = culture;
+            CultureInfo.DefaultThreadCurrentUICulture = culture;
+        }
 
         return app;
     }
