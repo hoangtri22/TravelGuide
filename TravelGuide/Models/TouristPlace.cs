@@ -1,4 +1,5 @@
 ﻿using SQLite;
+
 namespace TravelGuide.Models;
 
 public class TouristPlace
@@ -6,6 +7,7 @@ public class TouristPlace
     [PrimaryKey, AutoIncrement]
     public int Id { get; set; }
 
+    // ===== MULTI LANGUAGE =====
     public string NameVi { get; set; } = string.Empty;
     public string NameEn { get; set; } = string.Empty;
     public string DescVi { get; set; } = string.Empty;
@@ -18,44 +20,45 @@ public class TouristPlace
     public string? DescKo { get; set; }
     public string? DescZh { get; set; }
 
+    // ===== LOCATION =====
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public double Radius { get; set; } = 50;
+
+    // ===== UI =====
     public string? ImagePath { get; set; }
 
     [Ignore]
-    public string? ImageSource => string.IsNullOrEmpty(ImagePath)
-        ? "placeholder.png" : ImagePath;
+    public string ImageSource => string.IsNullOrEmpty(ImagePath)
+        ? "placeholder.png"
+        : ImagePath;
 
     [Ignore]
-    public string Name => GetCurrentName();
-    [Ignore]
-    public string Description => GetCurrentDescription();
-    [Ignore]
-    public string Summary => Description?.Length > 100
-        ? Description.Substring(0, 97) + "..." : Description ?? "";
+    public string Name => GetByLanguage(NameVi, NameEn, NameJa, NameKo, NameZh);
 
-    private string GetCurrentName()
+    [Ignore]
+    public string Description => GetByLanguage(DescVi, DescEn, DescJa, DescKo, DescZh);
+
+    [Ignore]
+    public string Summary =>
+        !string.IsNullOrEmpty(Description) && Description.Length > 100
+            ? Description.Substring(0, 97) + "..."
+            : Description ?? "";
+
+    private static string GetByLanguage(
+        string vi,
+        string? en,
+        string? ja,
+        string? ko,
+        string? zh)
     {
         return AppLanguage.Current switch
         {
-            "en" => !string.IsNullOrEmpty(NameEn) ? NameEn : NameVi,
-            "ja" => !string.IsNullOrEmpty(NameJa) ? NameJa : NameVi,
-            "ko" => !string.IsNullOrEmpty(NameKo) ? NameKo : NameVi,
-            "zh" => !string.IsNullOrEmpty(NameZh) ? NameZh : NameVi,
-            _ => NameVi
-        };
-    }
-
-    private string GetCurrentDescription()
-    {
-        return AppLanguage.Current switch
-        {
-            "en" => !string.IsNullOrEmpty(DescEn) ? DescEn : DescVi,
-            "ja" => !string.IsNullOrEmpty(DescJa) ? DescJa : DescVi,
-            "ko" => !string.IsNullOrEmpty(DescKo) ? DescKo : DescVi,
-            "zh" => !string.IsNullOrEmpty(DescZh) ? DescZh : DescVi,
-            _ => DescVi
+            "en" => en ?? vi,
+            "ja" => ja ?? vi,
+            "ko" => ko ?? vi,
+            "zh" => zh ?? vi,
+            _ => vi
         };
     }
 }

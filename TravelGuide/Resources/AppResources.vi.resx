@@ -8,16 +8,16 @@
 					<xsd:element name="data">
 						<xsd:complexType>
 							<xsd:sequence>
-								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="value" type="xsd:string" minOccurs="0" />
 							</xsd:sequence>
-							<xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+							<xsd:attribute name="name" type="xsd:string" use="required" />
 							<xsd:attribute ref="xml:space" />
 						</xsd:complexType>
 					</xsd:element>
 					<xsd:element name="resheader">
 						<xsd:complexType>
 							<xsd:sequence>
-								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="value" type="xsd:string" minOccurs="0" />
 							</xsd:sequence>
 							<xsd:attribute name="name" type="xsd:string" use="required" />
 						</xsd:complexType>
@@ -26,6 +26,7 @@
 			</xsd:complexType>
 		</xsd:element>
 	</xsd:schema>
+
 	<resheader name="resmimetype">
 		<value>text/microsoft-resx</value>
 	</resheader>
@@ -33,59 +34,132 @@
 		<value>2.0</value>
 	</resheader>
 	<resheader name="reader">
-		<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+		<value>System.Resources.ResXResourceReader</value>
 	</resheader>
 	<resheader name="writer">
-		<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+		<value>System.Resources.ResXResourceWriter</value>
 	</resheader>
 
 	<!-- MainPage -->
-	<data name="WelcomeText" xml:space="preserve"><value>Chào mừng đến Phố Ẩm Thực Vĩnh Khánh!</value></data>
-	<data name="SetupJourney" xml:space="preserve"><value>Thiết lập hành trình</value></data>
-	<data name="LanguageLabel" xml:space="preserve"><value>Ngôn ngữ</value></data>
-	<data name="LanguagePlaceholder" xml:space="preserve"><value>Tìm ngôn ngữ...</value></data>
-	<data name="CurrencyLabel" xml:space="preserve"><value>Tiền tệ</value></data>
-	<data name="CurrencyPlaceholder" xml:space="preserve"><value>VND, USD...</value></data>
-	<data name="BtnContinue" xml:space="preserve"><value>Tiếp tục</value></data>
-	<data name="BtnEnglish" xml:space="preserve"><value>Tiếng Anh</value></data>
-	<data name="BtnVietnamese" xml:space="preserve"><value>Tiếng Việt</value></data>
-	<data name="Translating" xml:space="preserve"><value>Đang dịch...</value></data>
+	<data name="WelcomeText">
+		<value>Chào mừng đến Phố Ẩm thực Vĩnh Khánh!</value>
+	</data>
+	<data name="SetupJourney">
+		<value>Thiết lập hành trình</value>
+	</data>
+	<data name="LanguageLabel">
+		<value>Ngôn ngữ</value>
+	</data>
+	<data name="LanguagePlaceholder">
+		<value>Tìm ngôn ngữ...</value>
+	</data>
+	<data name="CurrencyLabel">
+		<value>Tiền tệ</value>
+	</data>
+	<data name="CurrencyPlaceholder">
+		<value>VND, USD...</value>
+	</data>
+	<data name="BtnContinue">
+		<value>Tiếp tục</value>
+	</data>
+	<data name="BtnEnglish">
+		<value>Tiếng Anh</value>
+	</data>
+	<data name="BtnVietnamese">
+		<value>Tiếng Việt</value>
+	</data>
+	<data name="Translating">
+		<value>Đang dịch...</value>
+	</data>
 
 	<!-- HomePage -->
-	<data name="AppTitle" xml:space="preserve"><value>Travel Guide</value></data>
-	<data name="AppTagline" xml:space="preserve"><value>Khám phá Sài Gòn cùng bạn</value></data>
-	<data name="SearchPlaceholder" xml:space="preserve"><value>Tìm kiếm địa điểm...</value></data>
-	<data name="BtnMap" xml:space="preserve"><value>📍 Bản đồ</value></data>
-	<data name="BtnAudio" xml:space="preserve"><value>🎙 Audio</value></data>
-	<data name="BtnNearby" xml:space="preserve"><value>🔍 Gần đây</value></data>
-	<data name="PopularPlaces" xml:space="preserve"><value>Địa điểm phổ biến</value></data>
-	<data name="ViewDetail" xml:space="preserve"><value>Xem chi tiết ></value></data>
+	<data name="AppTitle">
+		<value>Hướng dẫn du lịch</value>
+	</data>
+	<data name="AppTagline">
+		<value>Khám phá Sài Gòn cùng bạn</value>
+	</data>
+	<data name="SearchPlaceholder">
+		<value>Tìm kiếm địa điểm...</value>
+	</data>
+	<data name="BtnMap">
+		<value>📍 Bản đồ</value>
+	</data>
+	<data name="BtnAudio">
+		<value>🎙 Âm thanh</value>
+	</data>
+	<data name="BtnNearby">
+		<value>🔍 Gần đây</value>
+	</data>
+	<data name="PopularPlaces">
+		<value>Địa điểm phổ biến</value>
+	</data>
+	<data name="ViewDetail">
+		<value>Xem chi tiết ></value>
+	</data>
 
 	<!-- MapPage -->
-	<data name="MapTitle" xml:space="preserve"><value>Bản đồ</value></data>
-	<data name="SearchingLocation" xml:space="preserve"><value>Đang tìm vị trí...</value></data>
-	<data name="VinhKhanhStreet" xml:space="preserve"><value>📍 Phố Vĩnh Khánh</value></data>
-	<data name="LoadingMap" xml:space="preserve"><value>Đang tải bản đồ...</value></data>
-	<data name="YouAreHere" xml:space="preserve"><value>📍 Bạn đang ở đây</value></data>
-	<data name="MyLocation" xml:space="preserve"><value>📍 Vị trí của tôi</value></data>
-	<data name="NowPlaying" xml:space="preserve"><value>Đang phát thuyết minh...</value></data>
-	<data name="YouAreInZone" xml:space="preserve"><value>Bạn đang trong vùng này</value></data>
-	<data name="DistanceM" xml:space="preserve"><value>m</value></data>
-	<data name="DistanceKm" xml:space="preserve"><value>km</value></data>
+	<data name="MapTitle">
+		<value>Bản đồ</value>
+	</data>
+	<data name="SearchingLocation">
+		<value>Đang tìm vị trí...</value>
+	</data>
+	<data name="VinhKhanhStreet">
+		<value>📍 Phố Vĩnh Khánh</value>
+	</data>
+	<data name="LoadingMap">
+		<value>Đang tải bản đồ...</value>
+	</data>
+	<data name="MyLocation">
+		<value>📍 Vị trí của tôi</value>
+	</data>
+	<data name="NowPlaying">
+		<value>Đang phát thuyết minh...</value>
+	</data>
+	<data name="YouAreInZone">
+		<value>Bạn đang trong khu vực này</value>
+	</data>
+	<data name="DistanceM">
+		<value>m</value>
+	</data>
+	<data name="DistanceKm">
+		<value>km</value>
+	</data>
 
 	<!-- PlaceDetailPage -->
-	<data name="DetailTitle" xml:space="preserve"><value>Chi tiết địa danh</value></data>
-	<data name="BtnSpeak" xml:space="preserve"><value>🔊 Nghe thuyết minh HDV</value></data>
+	<data name="DetailTitle">
+		<value>Chi tiết địa điểm</value>
+	</data>
+	<data name="BtnSpeak">
+		<value>🔊 Nghe thuyết minh</value>
+	</data>
 
 	<!-- AudioPage -->
-	<data name="AudioTitle" xml:space="preserve"><value>🎙 Thuyết minh</value></data>
-	<data name="AudioStreetName" xml:space="preserve"><value>Phố Ẩm Thực Vĩnh Khánh</value></data>
-	<data name="AudioLanguage" xml:space="preserve"><value>Ngôn ngữ: </value></data>
-	<data name="AudioPlaces" xml:space="preserve"><value> địa điểm</value></data>
-	<data name="BtnPlayAll" xml:space="preserve"><value>▶  Phát tất cả</value></data>
-	<data name="BtnPlaying" xml:space="preserve"><value>⏸  Đang phát...</value></data>
+	<data name="AudioTitle">
+		<value>🎙 Hướng dẫn âm thanh</value>
+	</data>
+	<data name="AudioStreetName">
+		<value>Phố Ẩm thực Vĩnh Khánh</value>
+	</data>
+	<data name="AudioLanguage">
+		<value>Ngôn ngữ:</value>
+	</data>
+	<data name="AudioPlaces">
+		<value>địa điểm</value>
+	</data>
+	<data name="BtnPlayAll">
+		<value>▶ Phát tất cả</value>
+	</data>
+	<data name="BtnPlaying">
+		<value>⏸ Đang phát...</value>
+	</data>
 
 	<!-- MiniPlayer -->
-	<data name="MiniPlaying" xml:space="preserve"><value>Đang phát...</value></data>
-	<data name="MiniSwitching" xml:space="preserve"><value>Đang chuyển...</value></data>
+	<data name="MiniPlaying">
+		<value>Đang phát...</value>
+	</data>
+	<data name="MiniSwitching">
+		<value>Đang chuyển...</value>
+	</data>
 </root>

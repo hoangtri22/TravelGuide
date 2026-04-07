@@ -8,16 +8,16 @@
 					<xsd:element name="data">
 						<xsd:complexType>
 							<xsd:sequence>
-								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="value" type="xsd:string" minOccurs="0" />
 							</xsd:sequence>
-							<xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+							<xsd:attribute name="name" type="xsd:string" use="required" />
 							<xsd:attribute ref="xml:space" />
 						</xsd:complexType>
 					</xsd:element>
 					<xsd:element name="resheader">
 						<xsd:complexType>
 							<xsd:sequence>
-								<xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+								<xsd:element name="value" type="xsd:string" minOccurs="0" />
 							</xsd:sequence>
 							<xsd:attribute name="name" type="xsd:string" use="required" />
 						</xsd:complexType>
@@ -26,6 +26,7 @@
 			</xsd:complexType>
 		</xsd:element>
 	</xsd:schema>
+
 	<resheader name="resmimetype">
 		<value>text/microsoft-resx</value>
 	</resheader>
@@ -33,59 +34,133 @@
 		<value>2.0</value>
 	</resheader>
 	<resheader name="reader">
-		<value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+		<value>System.Resources.ResXResourceReader</value>
 	</resheader>
 	<resheader name="writer">
-		<value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+		<value>System.Resources.ResXResourceWriter</value>
 	</resheader>
 
 	<!-- MainPage -->
-	<data name="WelcomeText" xml:space="preserve"><value>Welcome to Vinh Khanh Food Street!</value></data>
-	<data name="SetupJourney" xml:space="preserve"><value>Setup your journey</value></data>
-	<data name="LanguageLabel" xml:space="preserve"><value>Language</value></data>
-	<data name="LanguagePlaceholder" xml:space="preserve"><value>Search language...</value></data>
-	<data name="CurrencyLabel" xml:space="preserve"><value>Currency</value></data>
-	<data name="CurrencyPlaceholder" xml:space="preserve"><value>VND, USD...</value></data>
-	<data name="BtnContinue" xml:space="preserve"><value>Continue</value></data>
-	<data name="BtnEnglish" xml:space="preserve"><value>English</value></data>
-	<data name="BtnVietnamese" xml:space="preserve"><value>Vietnamese</value></data>
-	<data name="Translating" xml:space="preserve"><value>Translating...</value></data>
+	<data name="WelcomeText">
+		<value>Welcome to Vinh Khanh Food Street!</value>
+	</data>
+	<data name="SetupJourney">
+		<value>Set up your journey</value>
+	</data>
+	<data name="LanguageLabel">
+		<value>Language</value>
+	</data>
+	<data name="LanguagePlaceholder">
+		<value>Search language...</value>
+	</data>
+	<data name="CurrencyLabel">
+		<value>Currency</value>
+	</data>
+	<data name="CurrencyPlaceholder">
+		<value>VND, USD...</value>
+	</data>
+	<data name="BtnContinue">
+		<value>Continue</value>
+	</data>
+	<data name="BtnEnglish">
+		<value>English</value>
+	</data>
+	<data name="BtnVietnamese">
+		<value>Vietnamese</value>
+	</data>
+	<data name="Translating">
+		<value>Translating...</value>
+	</data>
 
 	<!-- HomePage -->
-	<data name="AppTitle" xml:space="preserve"><value>Travel Guide</value></data>
-	<data name="AppTagline" xml:space="preserve"><value>Explore Saigon with us</value></data>
-	<data name="SearchPlaceholder" xml:space="preserve"><value>Search places...</value></data>
-	<data name="BtnMap" xml:space="preserve"><value>📍 Map</value></data>
-	<data name="BtnAudio" xml:space="preserve"><value>🎙 Audio</value></data>
-	<data name="BtnNearby" xml:space="preserve"><value>🔍 Nearby</value></data>
-	<data name="PopularPlaces" xml:space="preserve"><value>Popular Places</value></data>
-	<data name="ViewDetail" xml:space="preserve"><value>View detail ></value></data>
+	<data name="AppTitle">
+		<value>Travel Guide</value>
+	</data>
+	<data name="AppTagline">
+		<value>Explore Saigon with us</value>
+	</data>
+	<data name="SearchPlaceholder">
+		<value>Search places...</value>
+	</data>
+	<data name="BtnMap">
+		<value>📍 Map</value>
+	</data>
+	<data name="BtnAudio">
+		<value>🎙 Audio</value>
+	</data>
+	<data name="BtnNearby">
+		<value>🔍 Nearby</value>
+	</data>
+	<data name="PopularPlaces">
+		<value>Popular places</value>
+	</data>
+	<data name="ViewDetail">
+		<value>View details ></value>
+	</data>
 
 	<!-- MapPage -->
-	<data name="MapTitle" xml:space="preserve"><value>Map</value></data>
-	<data name="SearchingLocation" xml:space="preserve"><value>Searching location...</value></data>
-	<data name="VinhKhanhStreet" xml:space="preserve"><value>📍 Vinh Khanh Street</value></data>
-	<data name="LoadingMap" xml:space="preserve"><value>Loading map...</value></data>
-	<data name="YouAreHere" xml:space="preserve"><value>📍 You are here</value></data>
-	<data name="MyLocation" xml:space="preserve"><value>📍 My location</value></data>
-	<data name="NowPlaying" xml:space="preserve"><value>Playing commentary...</value></data>
-	<data name="YouAreInZone" xml:space="preserve"><value>You are in this area</value></data>
-	<data name="DistanceM" xml:space="preserve"><value>m away</value></data>
-	<data name="DistanceKm" xml:space="preserve"><value>km away</value></data>
+	<data name="MapTitle">
+		<value>Map</value>
+	</data>
+	<data name="SearchingLocation">
+		<value>Searching location...</value>
+	</data>
+	<data name="VinhKhanhStreet">
+		<value>📍 Vinh Khanh Street</value>
+	</data>
+	<data name="LoadingMap">
+		<value>Loading map...</value>
+	</data>
+	<data name="MyLocation">
+		<value>📍 My location</value>
+	</data>
+	<data name="NowPlaying">
+		<value>Playing commentary...</value>
+	</data>
+	<data name="YouAreInZone">
+		<value>You are in this area</value>
+	</data>
+	<data name="DistanceM">
+		<value>m</value>
+	</data>
+	<data name="DistanceKm">
+		<value>km</value>
+	</data>
 
 	<!-- PlaceDetailPage -->
-	<data name="DetailTitle" xml:space="preserve"><value>Place Detail</value></data>
-	<data name="BtnSpeak" xml:space="preserve"><value>🔊 Listen to commentary</value></data>
+	<data name="DetailTitle">
+		<value>Place details</value>
+	</data>
+	<data name="BtnSpeak">
+		<value>🔊 Listen to commentary</value>
+	</data>
 
 	<!-- AudioPage -->
-	<data name="AudioTitle" xml:space="preserve"><value>🎙 Commentary</value></data>
-	<data name="AudioStreetName" xml:space="preserve"><value>Vinh Khanh Food Street</value></data>
-	<data name="AudioLanguage" xml:space="preserve"><value>Language: </value></data>
-	<data name="AudioPlaces" xml:space="preserve"><value> places</value></data>
-	<data name="BtnPlayAll" xml:space="preserve"><value>▶  Play all</value></data>
-	<data name="BtnPlaying" xml:space="preserve"><value>⏸  Playing...</value></data>
+	<data name="AudioTitle">
+		<value>🎙 Audio guide</value>
+	</data>
+	<data name="AudioStreetName">
+		<value>Vinh Khanh Food Street</value>
+	</data>
+	<data name="AudioLanguage">
+		<value>Language:</value>
+	</data>
+	<data name="AudioPlaces">
+		<value>places</value>
+	</data>
+	<data name="BtnPlayAll">
+		<value>▶ Play all</value>
+	</data>
+	<data name="BtnPlaying">
+		<value>⏸ Playing...</value>
+	</data>
 
 	<!-- MiniPlayer -->
-	<data name="MiniPlaying" xml:space="preserve"><value>Playing...</value></data>
-	<data name="MiniSwitching" xml:space="preserve"><value>Switching...</value></data>
+	<data name="MiniPlaying">
+		<value>Playing...</value>
+	</data>
+	<data name="MiniSwitching">
+		<value>Switching...</value>
+	</data>
+
 </root>

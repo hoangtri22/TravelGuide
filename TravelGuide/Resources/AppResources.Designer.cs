@@ -19,7 +19,7 @@ namespace TravelGuide.Resources {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "18.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class AppResources {
@@ -79,7 +79,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Language: .
+        ///   Looks up a localized string similar to Language:.
         /// </summary>
         public static string AudioLanguage {
             get {
@@ -88,7 +88,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to  places.
+        ///   Looks up a localized string similar to places.
         /// </summary>
         public static string AudioPlaces {
             get {
@@ -106,7 +106,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to 🎙 Commentary.
+        ///   Looks up a localized string similar to 🎙 Audio guide.
         /// </summary>
         public static string AudioTitle {
             get {
@@ -160,7 +160,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to ▶  Play all.
+        ///   Looks up a localized string similar to ▶ Play all.
         /// </summary>
         public static string BtnPlayAll {
             get {
@@ -169,7 +169,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to ⏸  Playing....
+        ///   Looks up a localized string similar to ⏸ Playing....
         /// </summary>
         public static string BtnPlaying {
             get {
@@ -214,7 +214,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Place Detail.
+        ///   Looks up a localized string similar to Place details.
         /// </summary>
         public static string DetailTitle {
             get {
@@ -223,7 +223,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to km away.
+        ///   Looks up a localized string similar to km.
         /// </summary>
         public static string DistanceKm {
             get {
@@ -232,7 +232,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to m away.
+        ///   Looks up a localized string similar to m.
         /// </summary>
         public static string DistanceM {
             get {
@@ -313,7 +313,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Popular Places.
+        ///   Looks up a localized string similar to Popular places.
         /// </summary>
         public static string PopularPlaces {
             get {
@@ -340,7 +340,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Setup your journey.
+        ///   Looks up a localized string similar to Set up your journey.
         /// </summary>
         public static string SetupJourney {
             get {
@@ -358,7 +358,7 @@ namespace TravelGuide.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to View detail &gt;.
+        ///   Looks up a localized string similar to View details &gt;.
         /// </summary>
         public static string ViewDetail {
             get {
@@ -381,15 +381,6 @@ namespace TravelGuide.Resources {
         public static string WelcomeText {
             get {
                 return ResourceManager.GetString("WelcomeText", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to 📍 You are here.
-        /// </summary>
-        public static string YouAreHere {
-            get {
-                return ResourceManager.GetString("YouAreHere", resourceCulture);
             }
         }
         

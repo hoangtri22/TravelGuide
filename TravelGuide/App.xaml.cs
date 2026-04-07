@@ -71,7 +71,7 @@ public partial class App : Application
         string key = $"LastSpoken_{placeName.Replace(" ", "_")}";
         DateTime lastSpoken = Preferences.Get(key, DateTime.MinValue);
 
-        // Giữ 5 phút như bạn mong muốn
+        // Giữ 5 phút
         if ((DateTime.Now - lastSpoken).TotalMinutes > 5)
         {
             Preferences.Set(key, DateTime.Now);

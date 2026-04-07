@@ -1,6 +1,7 @@
 ﻿using SQLite;
 using TravelGuide.Models;
 using System.Text.Json;
+using Microsoft.Maui.Devices.Sensors;
 
 namespace TravelGuide
 {
@@ -8,22 +9,49 @@ namespace TravelGuide
     {
         private SQLiteAsyncConnection? _db;
 
-        // ── 1. Khởi tạo Database ────────────────────────────────────────
-        async Task Init()
+        // Lock để tránh nhiều thread cùng init database
+        private readonly SemaphoreSlim _initLock = new(1, 1);
+
+        // Cache dữ liệu để giảm số lần truy vấn database
+        private List<TouristPlace>? _cachedPlaces;
+
+        // =========================================================
+        // Khởi tạo database (thread-safe)
+        // =========================================================
+        private async Task Init()
         {
             if (_db is not null) return;
-            var dbPath = Path.Combine(FileSystem.AppDataDirectory, "TravelGuide.db3");
-            _db = new SQLiteAsyncConnection(dbPath);
-            await _db.CreateTableAsync<TouristPlace>();
+
+            await _initLock.WaitAsync();
+            try
+            {
+                if (_db is null)
+                {
+                    var dbPath = Path.Combine(FileSystem.AppDataDirectory, "TravelGuide.db3");
+                    _db = new SQLiteAsyncConnection(dbPath);
+
+                    await _db.CreateTableAsync<TouristPlace>();
+
+                    // Tạo index để tăng tốc truy vấn theo vị trí
+                    await _db.ExecuteAsync(
+                        "CREATE INDEX IF NOT EXISTS idx_lat_lon ON TouristPlace(Latitude, Longitude)");
+                }
+            }
+            finally
+            {
+                _initLock.Release();
+            }
         }
 
-        // ── 2. Seed dữ liệu từ JSON ─────────────────────────────────────
+        // =========================================================
+        // Nạp dữ liệu từ file JSON vào database (chỉ chạy 1 lần)
+        // =========================================================
         public async Task SeedDataAsync()
         {
             await Init();
 
             var count = await _db!.Table<TouristPlace>().CountAsync();
-            if (count > 0) return; // ← Giữ lại data + bản dịch đã có
+            if (count > 0) return;
 
             try
             {
@@ -31,65 +59,111 @@ namespace TravelGuide
                 using var reader = new StreamReader(stream);
                 var json = await reader.ReadToEndAsync();
 
-                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+
                 var places = JsonSerializer.Deserialize<List<TouristPlace>>(json, options);
 
-                if (places != null && places.Count > 0)
+                if (places?.Count > 0)
                 {
                     foreach (var p in places)
                     {
-                        // NameEn giữ trống — IsTranslatedAsync sẽ phát hiện chưa dịch
-                        if (string.IsNullOrEmpty(p.NameEn)) p.NameEn = "";
-                        if (string.IsNullOrEmpty(p.DescEn)) p.DescEn = "";
+                        // Đảm bảo các field không null để tránh lỗi khi xử lý
+                        p.NameEn ??= "";
+                        p.DescEn ??= "";
+                        p.NameJa ??= "";
+                        p.DescJa ??= "";
+                        p.NameKo ??= "";
+                        p.DescKo ??= "";
+                        p.NameZh ??= "";
+                        p.DescZh ??= "";
                     }
 
-                    await _db!.InsertAllAsync(places);
-                    System.Diagnostics.Debug.WriteLine($"✅ Đã nạp {places.Count} địa điểm.");
+                    await _db.InsertAllAsync(places);
+
+                    // Lưu cache sau khi seed
+                    _cachedPlaces = places;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"❌ Lỗi nạp dữ liệu: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Seed error: {ex.Message}");
             }
         }
 
-        // ── 3. Lấy tất cả địa điểm ─────────────────────────────────────
+        // =========================================================
+        // Lấy toàn bộ danh sách địa điểm (có cache)
+        // =========================================================
         public async Task<List<TouristPlace>> GetPlacesAsync()
         {
             await Init();
-            return await _db!.Table<TouristPlace>().ToListAsync();
+
+            if (_cachedPlaces != null)
+                return _cachedPlaces;
+
+            _cachedPlaces = await _db!.Table<TouristPlace>().ToListAsync();
+            return _cachedPlaces;
         }
 
-        // ── 4. Lấy địa điểm gần người dùng ─────────────────────────────
+        // =========================================================
+        // Lấy các địa điểm gần vị trí người dùng
+        // Có tối ưu bằng bounding box trước khi tính khoảng cách
+        // =========================================================
         public async Task<List<TouristPlace>> GetNearbyPlacesAsync(
-            double userLat, double userLon, double radiusMeters = 1000)
+            double userLat,
+            double userLon,
+            double radiusMeters = 1000)
         {
-            var all = await GetPlacesAsync();
-            return all
-                .Where(p =>
+            var places = await GetPlacesAsync();
+
+            // Tính khoảng giới hạn lat/lon
+            double latRange = radiusMeters / 111000d;
+            double lonRange = radiusMeters / (111000d * Math.Cos(userLat * Math.PI / 180));
+
+            var filtered = places.Where(p =>
+                p.Latitude >= userLat - latRange &&
+                p.Latitude <= userLat + latRange &&
+                p.Longitude >= userLon - lonRange &&
+                p.Longitude <= userLon + lonRange
+            );
+
+            return filtered
+                .Select(p => new
                 {
-                    double dist = Location.CalculateDistance(
+                    Place = p,
+                    Distance = Location.CalculateDistance(
                         userLat, userLon,
                         p.Latitude, p.Longitude,
-                        DistanceUnits.Kilometers) * 1000;
-                    return dist <= radiusMeters;
+                        DistanceUnits.Kilometers)
                 })
-                .OrderBy(p => Location.CalculateDistance(
-                    userLat, userLon,
-                    p.Latitude, p.Longitude,
-                    DistanceUnits.Kilometers))
+                .Where(x => x.Distance * 1000 <= radiusMeters)
+                .OrderBy(x => x.Distance)
+                .Select(x => x.Place)
                 .ToList();
         }
 
-        // ── 5. Cập nhật 1 địa điểm (sau khi dịch xong) ─────────────────
+        // =========================================================
+        // Cập nhật dữ liệu một địa điểm
+        // Đồng thời update cache nếu có
+        // =========================================================
         public async Task UpdatePlaceAsync(TouristPlace place)
         {
             await Init();
             await _db!.UpdateAsync(place);
+
+            if (_cachedPlaces != null)
+            {
+                var index = _cachedPlaces.FindIndex(p => p.Id == place.Id);
+                if (index >= 0)
+                    _cachedPlaces[index] = place;
+            }
         }
 
-        // ── 6. Kiểm tra đã dịch ngôn ngữ nào chưa ──────────────────────
-        // FIX: Kiểm tra TẤT CẢ địa điểm, không chỉ place đầu tiên
+        // =========================================================
+        // Kiểm tra đã dịch xong toàn bộ dữ liệu cho một ngôn ngữ chưa
+        // =========================================================
         public async Task<bool> IsTranslatedAsync(string langCode)
         {
             var places = await GetPlacesAsync();
@@ -101,8 +175,16 @@ namespace TravelGuide
                 "ja" => places.All(p => !string.IsNullOrEmpty(p.NameJa) && p.NameJa != p.NameVi),
                 "ko" => places.All(p => !string.IsNullOrEmpty(p.NameKo) && p.NameKo != p.NameVi),
                 "zh" => places.All(p => !string.IsNullOrEmpty(p.NameZh) && p.NameZh != p.NameVi),
-                _ => true // "vi" luôn có sẵn
+                _ => true
             };
+        }
+
+        // =========================================================
+        // Xóa cache để reload dữ liệu từ database khi cần
+        // =========================================================
+        public void ClearCache()
+        {
+            _cachedPlaces = null;
         }
     }
 }
