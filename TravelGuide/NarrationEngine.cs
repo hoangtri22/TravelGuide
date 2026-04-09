@@ -153,19 +153,10 @@ public class NarrationEngine
     // ─── Private: Tạo nội dung TTS ────────────────────────────────────────
 
     /// <summary>
-    /// Tạo câu giới thiệu địa điểm theo ngôn ngữ hiện tại của ứng dụng.
-    /// Kết hợp tên địa điểm (đã dịch) và mô tả vào một câu hoàn chỉnh.
+    /// Nội dung TTS: chỉ mô tả theo ngôn ngữ hiện tại (Name/Description đã localize sẵn).
     /// </summary>
     private static string BuildNarrationText(TouristPlace place) =>
-        AppLanguage.Current switch
-        {
-            "vi" => $"Bạn đang đến gần {place.Name}. {place.Description}",
-            "en" => $"You are approaching {place.Name}. {place.Description}",
-            "ja" => $"{place.Name}に近づいています。{place.Description}",
-            "ko" => $"{place.Name}에 가까워지고 있습니다. {place.Description}",
-            "zh" => $"您正在接近{place.Name}。{place.Description}",
-            _ => $"{place.Name}. {place.Description}" // Fallback cho ngôn ngữ không hỗ trợ
-        };
+        string.IsNullOrWhiteSpace(place.Description) ? place.Name : place.Description;
 
     /// <summary>
     /// Tìm locale TTS phù hợp nhất với ngôn ngữ hiện tại từ danh sách thiết bị hỗ trợ.

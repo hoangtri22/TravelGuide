@@ -52,12 +52,15 @@ public class TouristPlace
         string? ko,
         string? zh)
     {
+        static string Pick(string fallback, string? candidate) =>
+            string.IsNullOrWhiteSpace(candidate) ? fallback : candidate;
+
         return AppLanguage.Current switch
         {
-            "en" => en ?? vi,
-            "ja" => ja ?? vi,
-            "ko" => ko ?? vi,
-            "zh" => zh ?? vi,
+            "en" => Pick(vi, en),
+            "ja" => Pick(vi, ja),
+            "ko" => Pick(vi, ko),
+            "zh" => Pick(vi, zh),
             _ => vi
         };
     }

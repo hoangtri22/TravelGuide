@@ -19,8 +19,8 @@
 
 ## ✨ Tính năng chính
 
-### 🗺️ Bản đồ tương tác (Mapbox GL JS)
-- Hiển thị các POI (Point of Interest) trực quan trên nền bản đồ Mapbox
+### 🗺️ Bản đồ tương tác (WebView + Leaflet/OSM)
+- Hiển thị các POI (Point of Interest) trực quan trên bản đồ trong WebView
 - Phân loại màu sắc: đỏ cho địa điểm nhỏ, xanh cho khu vực lớn
 - Tự động highlight địa điểm gần nhất khi người dùng đến gần
 - Popup thông tin địa điểm khi nhấn vào marker
@@ -45,8 +45,8 @@
 
 ### 🌐 Đa ngôn ngữ (i18n)
 - Hỗ trợ 5 ngôn ngữ: 🇻🇳 Tiếng Việt, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇨🇳 中文
-- Giao diện tự động dịch qua `MyMemory API` và file `.resx`
-- Nội dung địa điểm được dịch tự động qua **Claude API (claude-haiku)** và lưu vào SQLite
+- Giao diện dùng `.resx` + LocalizationResourceManager
+- Nội dung địa điểm được tự dịch qua **MyMemory API** và lưu vào backend/SQLite
 - Chọn ngôn ngữ bằng grid button cờ quốc gia — không cần gõ tìm kiếm
 - Bản dịch được lưu lại, không dịch lại khi mở app lần sau
 
@@ -61,7 +61,7 @@
 | Thành phần      | Công nghệ                                      |
 |-----------------|------------------------------------------------|
 | Framework       | .NET 9.0 MAUI (Native)                         |
-| Bản đồ          | Mapbox GL JS v2.15 (nhúng trong WebView)       |    
+| Bản đồ          | WebView + Leaflet + OpenStreetMap              |    
 | Text-to-Speech  | Microsoft.Maui.Media.TextToSpeech              |
 | Cơ sở dữ liệu   | SQLite-net-pcl                                 |
 | Dịch thuật      | MyMemory API                                   |
@@ -75,6 +75,10 @@
 ## 📁 Cấu trúc project
 ```
 TravelGuide/
+├── TravelGuide.AdminWeb/              # Web admin (POI/Audio/Tài khoản/Bản dịch)
+├── PRD_TravelGuide_Standard.md        # PRD chuẩn dạng Markdown
+├── TravelGuide_PRD.docx               # PRD chuẩn dạng Word
+│
 ├── Models/
 │   ├── LocationMessage.cs           # Message GPS dùng cho WeakReferenceMessenger
 │   └── TouristPlace.cs              # Model địa điểm, computed Name/Description theo ngôn ngữ
@@ -115,12 +119,12 @@ TravelGuide/
 ├── GpsBackgroundService.cs          # Theo dõi GPS liên tục, gửi LocationMessage
 ├── HomePage.xaml / .cs              # Danh sách địa điểm, tìm kiếm, điều hướng
 ├── MainPage.xaml / .cs              # Chọn ngôn ngữ, tiền tệ, khởi động app
-├── MapPage.xaml / .cs               # Bản đồ Mapbox, geofence, GPS
+├── MapPage.xaml / .cs               # Bản đồ WebView (Leaflet/OSM), geofence, GPS
 ├── MauiProgram.cs                   # DI container, khởi tạo services
 ├── MiniPlayerView.xaml / .cs        # Thanh mini player cố định đáy màn hình
 ├── NarrationEngine.cs               # Quản lý TTS queue, skip, stop
 ├── PlaceDetailPage.xaml / .cs       # Chi tiết địa điểm, nghe thuyết minh
-└── TranslationService.cs            # Gọi Claude API để dịch nội dung
+└── TranslationService.cs            # Gọi MyMemory API để dịch nội dung
 ```
 
 ---
@@ -156,11 +160,27 @@ Nhấn **Code → Download ZIP** → Giải nén ra thư mục
 
 > ⚠️ **Lưu ý:** Khi khởi động lần đầu, hãy **chấp nhận quyền vị trí (Location Permission)** để tính năng bản đồ và thuyết minh tự động hoạt động đúng.
 
+### Cấu hình Android Emulator khuyến nghị (ổn định)
+- Device: `Pixel 5`
+- Image: `Android 14 (API 34) - x86_64 - Google APIs`
+- Cold Boot lần đầu
+- Kiểm tra ADB trước khi chạy:
+  - `adb kill-server`
+  - `adb start-server`
+  - `adb devices` phải thấy trạng thái `device`
+
+### Chạy Web Admin
+```bash
+dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj"
+```
+- Mở URL mặc định: `http://localhost:5280`
+- Tài khoản mặc định: `admin / admin123`
+
 ## 🔄 Luồng hoạt động
 
 Khởi động app
     → Chọn ngôn ngữ (MainPage) — grid button 5 cờ quốc gia
-    → Nhấn "Tiếp tục" → Dịch nội dung qua Claude API (nếu chưa dịch)
+    → Nhấn "Tiếp tục" → App gọi API để tải/dịch nội dung theo ngôn ngữ đã chọn
     → Vào HomePage — danh sách địa điểm theo ngôn ngữ đã chọn
 
 Khi mở MapPage
@@ -176,6 +196,6 @@ Khi đổi ngôn ngữ
 ## 📝 Ghi chú
 
 - Ứng dụng tập trung vào khu vực **Phố Ẩm Thực Vĩnh Khánh, Quận 4, TP. HCM**
-- Dữ liệu địa điểm được load từ file `extra_places.json` (seed lần đầu)
-- Bản dịch được lưu vào SQLite — **không gọi API lại** khi mở app lần sau
-- Mapbox token đã được tích hợp sẵn trong mã nguồn
+- Dữ liệu địa điểm được seed từ `extra_places.json` và đồng bộ qua web admin
+- Bản dịch được cache/lưu để tránh dịch lặp
+- Tài liệu PRD chuẩn: `PRD_TravelGuide_Standard.md` và `TravelGuide_PRD.docx`

@@ -186,10 +186,11 @@ public class TranslationService
     private static bool AlreadyTranslated(TouristPlace place, string lang) =>
         lang switch
         {
-            "ja" => !string.IsNullOrEmpty(place.NameJa),
-            "ko" => !string.IsNullOrEmpty(place.NameKo),
-            "zh" => !string.IsNullOrEmpty(place.NameZh),
-            "en" => !string.IsNullOrEmpty(place.NameEn) && place.NameEn != place.NameVi,
+            "ja" => !string.IsNullOrWhiteSpace(place.NameJa) && !string.IsNullOrWhiteSpace(place.DescJa),
+            "ko" => !string.IsNullOrWhiteSpace(place.NameKo) && !string.IsNullOrWhiteSpace(place.DescKo),
+            "zh" => !string.IsNullOrWhiteSpace(place.NameZh) && !string.IsNullOrWhiteSpace(place.DescZh),
+            "en" => !string.IsNullOrWhiteSpace(place.NameEn) && place.NameEn != place.NameVi
+                    && !string.IsNullOrWhiteSpace(place.DescEn),
             _ => true // Ngôn ngữ không hỗ trợ → coi như đã xử lý, bỏ qua
         };
 

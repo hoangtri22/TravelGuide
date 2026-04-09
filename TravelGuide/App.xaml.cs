@@ -46,8 +46,8 @@ public partial class App : Application
             {
                 if (ShouldSpeak(place.Name))
                 {
-                    // Phát giọng nói thuyết minh chuyên nghiệp từ Description trong JSON
-                    await SpeakVietnameseAsync($"{place.Name}. {place.Description}");
+                    var narration = string.IsNullOrWhiteSpace(place.Description) ? place.Name : place.Description;
+                    await SpeakVietnameseAsync(narration);
                 }
             }
         }

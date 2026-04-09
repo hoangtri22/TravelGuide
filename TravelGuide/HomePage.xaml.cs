@@ -16,21 +16,38 @@ public partial class HomePage : ContentPage
 
         AppLanguage.OnLanguageChanged += _ =>
             MainThread.BeginInvokeOnMainThread(async () =>
-                await LoadPlacesAsync());
+            {
+                UpdateLocalizedChrome();
+                await LoadPlacesAsync();
+            });
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
         MiniPlayer.Attach(_narrationEngine);
+        UpdateLocalizedChrome();
         await LoadPlacesAsync();
     }
 
     private async Task LoadPlacesAsync()
     {
         _allPlaces = await _dbService.GetPlacesAsync();
+        LblTotalPoi.Text = $"{_allPlaces.Count} POI";
         PlacesCollection.ItemsSource = null;  // ← force refresh
         PlacesCollection.ItemsSource = _allPlaces;
+    }
+
+    private void UpdateLocalizedChrome()
+    {
+        LblDashboardTitle.Text = AppLanguage.Current switch
+        {
+            "en" => "Dashboard",
+            "ja" => "ダッシュボード",
+            "ko" => "대시보드",
+            "zh" => "仪表盘",
+            _ => "Dashboard"
+        };
     }
 
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)

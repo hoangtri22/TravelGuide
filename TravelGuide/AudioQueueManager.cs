@@ -123,7 +123,9 @@ public class AudioQueueManager
                 _lastPlayed[_currentPlace.Id] = DateTime.Now;
                 OnStarted?.Invoke(_currentPlace);
 
-                var text = $"{_currentPlace.Name}. {_currentPlace.Description}";
+                var text = string.IsNullOrWhiteSpace(_currentPlace.Description)
+                    ? _currentPlace.Name
+                    : _currentPlace.Description;
                 var opts = new SpeechOptions
                 {
                     Volume = 1.0f,

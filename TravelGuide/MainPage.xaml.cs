@@ -6,7 +6,6 @@ namespace TravelGuide;
 public partial class MainPage : ContentPage
 {
     private readonly DatabaseService _dbService;
-    private readonly TranslationService _translationService;
 
     private string _selectedLang = "vi";
 
@@ -21,14 +20,14 @@ public partial class MainPage : ContentPage
         { "zh", "🇨🇳 中文" },
     };
 
-    public MainPage(DatabaseService dbService, TranslationService translationService)
+    public MainPage(DatabaseService dbService)
     {
         InitializeComponent();
         _dbService = dbService;
-        _translationService = translationService;
 
         LoadCurrencies();
         LoadSavedSettings();
+        UpdateCustomLocalizedText();
 
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
     }
@@ -93,9 +92,8 @@ public partial class MainPage : ContentPage
         Preferences.Set("app_language", code);
         AppLanguage.SetLanguage(code);
         SyncLocalization(code);
+        UpdateCustomLocalizedText();
 
-        if (code is "en" or "ja" or "ko" or "zh")
-            _ = TranslateIfNeededAsync(code);
     }
 
     private void OnCurrencySearch(object sender, TextChangedEventArgs e)
@@ -127,68 +125,12 @@ public partial class MainPage : ContentPage
     private async void GoHome(object sender, EventArgs e)
     {
         AppLanguage.SetLanguage(_selectedLang);
-
-        // Dịch theo ngôn ngữ đang chọn (bao gồm cả EN)
-        if (_selectedLang is "en" or "ja" or "ko" or "zh")
-        {
-            bool done = await _dbService.IsTranslatedAsync(_selectedLang);
-            if (!done)
-                await ShowTranslatingAsync(_selectedLang);
-        }
+        _dbService.ClearCache();
+        await _dbService.GetPlacesAsync();
 
         if (Handler?.MauiContext == null) return;
         var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
         await Navigation.PushAsync(homePage);
-    }
-
-    private async Task ShowTranslatingAsync(string lang)
-    {
-        try
-        {
-            if (TranslatingBar != null) TranslatingBar.IsVisible = true;
-            if (ContinueBtn != null)
-            {
-                ContinueBtn.IsEnabled = false;
-                ContinueBtn.Opacity = 0.6;
-            }
-
-            var places = await _dbService.GetPlacesAsync();
-            var progress = new Progress<(int current, int total)>(p =>
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    if (LblTranslating != null)
-                        LblTranslating.Text = $"{p.current}/{p.total}...";
-                });
-            });
-
-            await _translationService.TranslateAllAsync(places, lang, progress);
-        }
-        finally
-        {
-            if (TranslatingBar != null) TranslatingBar.IsVisible = false;
-            if (ContinueBtn != null)
-            {
-                ContinueBtn.IsEnabled = true;
-                ContinueBtn.Opacity = 1;
-            }
-        }
-    }
-
-    private async Task TranslateIfNeededAsync(string lang)
-    {
-        try
-        {
-            bool done = await _dbService.IsTranslatedAsync(lang);
-            if (done) return;
-            var places = await _dbService.GetPlacesAsync();
-            await _translationService.TranslateAllAsync(places, lang);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[MainPage] TranslateIfNeeded error: {ex.Message}");
-        }
     }
 
     private void SyncLocalization(string code)
@@ -201,5 +143,17 @@ public partial class MainPage : ContentPage
                 locMgr.CurrentCulture = new CultureInfo(code);
         }
         catch { }
+    }
+
+    private void UpdateCustomLocalizedText()
+    {
+        LblSyncHint.Text = AppLanguage.Current switch
+        {
+            "en" => "The app automatically syncs POI, audio and translations from the admin web.",
+            "ja" => "アプリは管理WebからPOI・音声・翻訳データを自動同期します。",
+            "ko" => "앱은 관리자 웹에서 POI, 오디오, 번역 데이터를 자동 동기화합니다.",
+            "zh" => "应用会自动从管理后台同步POI、音频和翻译数据。",
+            _ => "App tự đồng bộ dữ liệu POI/AUDIO/Bản dịch từ web admin."
+        };
     }
 }
