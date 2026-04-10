@@ -34,6 +34,7 @@ public class GeofenceEngine
     public event Action<TouristPlace>? OnPoiTriggered;
     public event Action? OnPoiExited;
 
+    /// <summary>Tiêm dịch vụ POI và engine TTS dùng khi trigger tự động.</summary>
     public GeofenceEngine(DatabaseService dbService, NarrationEngine narrationEngine)
     {
         _dbService = dbService;
@@ -47,23 +48,21 @@ public class GeofenceEngine
     {
         var places = await _dbService.GetPlacesAsync();
 
-        // Tìm POI gần nhất đang trong phạm vi Radius
-        TouristPlace? insidePoi = null;
-        double minDist = double.MaxValue;
-
-        foreach (var p in places)
-        {
-            double dist = Location.CalculateDistance(
-                userLocation.Latitude, userLocation.Longitude,
-                p.Latitude, p.Longitude,
-                DistanceUnits.Kilometers) * 1000; // → mét
-
-            if (dist <= p.Radius && dist < minDist)
+        // Nhiều vùng chồng nhau: ưu tiên Priority cao, sau đó khoảng cách nhỏ nhất
+        var insidePoi = places
+            .Select(p => new
             {
-                minDist = dist;
-                insidePoi = p;
-            }
-        }
+                P = p,
+                DistM = Location.CalculateDistance(
+                    userLocation.Latitude, userLocation.Longitude,
+                    p.Latitude, p.Longitude,
+                    DistanceUnits.Kilometers) * 1000
+            })
+            .Where(x => x.DistM <= x.P.Radius)
+            .OrderByDescending(x => x.P.Priority)
+            .ThenBy(x => x.DistM)
+            .Select(x => x.P)
+            .FirstOrDefault();
 
         if (insidePoi != null)
             await HandleInsidePoi(insidePoi);

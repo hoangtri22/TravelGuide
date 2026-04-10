@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- Trang chi tiết POI: ảnh, tên, mô tả, phát thuyết minh, link bản đồ (nếu CMS có MapLink), mini player -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:TravelGuide"
@@ -14,9 +15,14 @@
                 <VerticalStackLayout Padding="20" Spacing="15">
                     <Label x:Name="LblName"
                            FontSize="26" FontAttributes="Bold" TextColor="#1E88E5"/>
+                    <!-- Phát TTS / audio URL qua NarrationEngine -->
                     <Button Text="{loc:Translate BtnSpeak}"
                             BackgroundColor="#4CAF50" TextColor="White"
                             CornerRadius="20" Clicked="OnSpeakClicked"/>
+                    <!-- Mở URL bản đồ (Google Maps, Mapbox share link, …) — hiện khi có MapLink -->
+                    <Button x:Name="BtnMapLink" Text="🗺 Mở bản đồ"
+                            BackgroundColor="#1E88E5" TextColor="White"
+                            CornerRadius="20" IsVisible="False" Clicked="OnMapLinkClicked"/>
                     <BoxView HeightRequest="1" Color="#EEEEEE"/>
                     <Label x:Name="LblDescription"
                            FontSize="16" LineHeight="1.5" TextColor="#333333"/>

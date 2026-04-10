@@ -2,3 +2,6 @@ bin/
 obj/
 .vs/
 *.user
+
+# Mapbox public token (Resources/Raw/mapbox_token.secret.txt); do not commit.
+TravelGuide/Resources/Raw/mapbox_token.secret.txt

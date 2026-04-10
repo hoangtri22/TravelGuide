@@ -1,45 +1,69 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- HomePage: danh sách địa điểm, tìm kiếm, lối tới Map / Audio -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:TravelGuide"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.HomePage"
-             BackgroundColor="#F3F6FB"
+             BackgroundColor="#EEF2F6"
              Title="{loc:Translate AppTitle}">
 
     <ContentPage.Resources>
         <Style x:Key="CategoryBtnStyle" TargetType="Button">
             <Setter Property="BackgroundColor" Value="White"/>
-            <Setter Property="TextColor" Value="#2E86DE"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="TextColor" Value="#2563EB"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontAttributes" Value="Bold"/>
-            <Setter Property="HeightRequest" Value="45"/>
-            <Setter Property="BorderColor" Value="#E0E0E0"/>
+            <Setter Property="HeightRequest" Value="46"/>
+            <Setter Property="BorderColor" Value="#E2E8F0"/>
             <Setter Property="BorderWidth" Value="1"/>
+            <Setter Property="Shadow">
+                <Shadow Brush="#0F172A" Offset="0,2" Radius="6" Opacity="0.05"/>
+            </Setter>
         </Style>
     </ContentPage.Resources>
 
     <Grid RowDefinitions="*, Auto">
 
         <ScrollView Grid.Row="0">
-            <VerticalStackLayout Padding="16" Spacing="14">
+            <VerticalStackLayout Padding="16" Spacing="16">
 
-                <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                        <Label x:Name="LblDashboardTitle" Grid.Row="0" Grid.Column="0" Text="Dashboard"
-                               FontSize="28" FontAttributes="Bold" TextColor="#0F172A"/>
-                        <Label Grid.Row="1" Grid.Column="0" Text="{loc:Translate AppTagline}"
-                               FontSize="13" TextColor="#64748B"/>
-                        <Border Grid.RowSpan="2" Grid.Column="1" BackgroundColor="#DBEAFE" Padding="10,6" StrokeThickness="0" StrokeShape="RoundRectangle 12">
-                            <Label x:Name="LblTotalPoi" Text="0 POI" FontAttributes="Bold" TextColor="#1D4ED8"/>
+                <Border StrokeThickness="0" StrokeShape="RoundRectangle 22" Padding="20,18">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#FFFFFF" Offset="0"/>
+                            <GradientStop Color="#F4F7FF" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.Shadow>
+                        <Shadow Brush="#0F172A" Offset="0,8" Radius="20" Opacity="0.06"/>
+                    </Border.Shadow>
+                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="10" ColumnSpacing="12">
+                        <Label Grid.Row="0" Grid.ColumnSpan="2"
+                               Text="{loc:Translate HomeHeroTitle}"
+                               FontSize="22" FontAttributes="Bold" TextColor="#0B1220"/>
+                        <Label Grid.Row="1" Grid.Column="0"
+                               Text="{loc:Translate AppTagline}"
+                               FontSize="14" TextColor="#64748B" LineBreakMode="WordWrap"
+                               VerticalOptions="Center"/>
+                        <Border Grid.Row="1" Grid.Column="1"
+                                BackgroundColor="#EEF2FF" Padding="14,10"
+                                StrokeThickness="0" StrokeShape="RoundRectangle 18"
+                                VerticalOptions="Center">
+                            <Label x:Name="LblTotalPoi"
+                                   FontSize="12" FontAttributes="Bold" TextColor="#4338CA"
+                                   HorizontalTextAlignment="Center"/>
                         </Border>
                     </Grid>
                 </Border>
 
-                <Border StrokeShape="RoundRectangle 14"
-                        Padding="5" BackgroundColor="White"
+                <Border StrokeShape="RoundRectangle 16"
+                        Padding="4" BackgroundColor="White"
                         Stroke="#E2E8F0" StrokeThickness="1">
+                    <Border.Shadow>
+                        <Shadow Brush="#0F172A" Offset="0,2" Radius="8" Opacity="0.04"/>
+                    </Border.Shadow>
                     <SearchBar Placeholder="{loc:Translate SearchPlaceholder}"
                                TextChanged="OnSearchBarTextChanged"/>
                 </Border>

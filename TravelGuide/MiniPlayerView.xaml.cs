@@ -2,15 +2,20 @@
 
 namespace TravelGuide;
 
+/// <summary>
+/// Thanh phát nhỏ: hiển thị tên POI đang TTS, nút dừng/next; lắng nghe <see cref="NarrationEngine"/>.
+/// </summary>
 public partial class MiniPlayerView : ContentView
 {
     private NarrationEngine? _engine;
 
+    /// <summary>Khởi tạo XAML.</summary>
     public MiniPlayerView()
     {
         InitializeComponent();
     }
 
+    /// <summary>Gỡ/bật handler cũ, subscribe sự kiện engine và đồng bộ trạng thái đang phát.</summary>
     public void Attach(NarrationEngine engine)
     {
         if (_engine != null)
@@ -28,6 +33,7 @@ public partial class MiniPlayerView : ContentView
             PlayerBar.IsVisible = false;
     }
 
+    /// <summary>Callback <see cref="NarrationEngine.OnStartedPlaying"/>: hiện thanh và cập nhật nhãn.</summary>
     private void OnStarted(TouristPlace place)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -46,6 +52,7 @@ public partial class MiniPlayerView : ContentView
         });
     }
 
+    /// <summary>Callback <see cref="NarrationEngine.OnStoppedPlaying"/>: ẩn thanh.</summary>
     private void OnStopped()
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -54,12 +61,14 @@ public partial class MiniPlayerView : ContentView
         });
     }
 
+    /// <summary>Người dùng chạm dừng → <see cref="NarrationEngine.StopAsync"/>.</summary>
     private async void OnStopTapped(object sender, TappedEventArgs e)
     {
         if (_engine != null)
             await _engine.StopAsync();
     }
 
+    /// <summary>Người dùng chạm bỏ qua → <see cref="NarrationEngine.SkipNext"/>.</summary>
     private void OnNextTapped(object sender, TappedEventArgs e)
     {
         _engine?.SkipNext();

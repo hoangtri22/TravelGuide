@@ -2,12 +2,16 @@
 
 namespace TravelGuide;
 
+/// <summary>
+/// Trang chủ: danh sách địa điểm, tìm kiếm, lối tới bản đồ / âm thanh / gần đây.
+/// </summary>
 public partial class HomePage : ContentPage
 {
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
     private List<TouristPlace> _allPlaces = new();
 
+    /// <summary>Đăng ký lắng nghe đổi ngôn ngữ để reload danh sách và chrome.</summary>
     public HomePage(DatabaseService dbService, NarrationEngine narrationEngine)
     {
         InitializeComponent();
@@ -22,6 +26,7 @@ public partial class HomePage : ContentPage
             });
     }
 
+    /// <summary>Gắn mini player và tải lại danh sách POI.</summary>
     protected override async void OnAppearing()
     {
         base.OnAppearing();
@@ -30,26 +35,32 @@ public partial class HomePage : ContentPage
         await LoadPlacesAsync();
     }
 
+    /// <summary>Nạp POI từ <see cref="DatabaseService"/> và gán <c>ItemsSource</c>.</summary>
     private async Task LoadPlacesAsync()
     {
         _allPlaces = await _dbService.GetPlacesAsync();
-        LblTotalPoi.Text = $"{_allPlaces.Count} POI";
+        LblTotalPoi.Text = FormatPlacesCount(_allPlaces.Count);
         PlacesCollection.ItemsSource = null;  // ← force refresh
         PlacesCollection.ItemsSource = _allPlaces;
     }
 
+    /// <summary>Cập nhật nhãn số địa điểm khi đổi ngôn ngữ (tiêu đề hero dùng ResX trong XAML).</summary>
     private void UpdateLocalizedChrome()
     {
-        LblDashboardTitle.Text = AppLanguage.Current switch
-        {
-            "en" => "Dashboard",
-            "ja" => "ダッシュボード",
-            "ko" => "대시보드",
-            "zh" => "仪表盘",
-            _ => "Dashboard"
-        };
+        LblTotalPoi.Text = FormatPlacesCount(_allPlaces.Count);
     }
 
+    /// <summary>Chuỗi ngắn cho badge (không emoji — hiển thị gọn cạnh tagline).</summary>
+    private static string FormatPlacesCount(int n) => AppLanguage.Current switch
+    {
+        "en" => n == 1 ? $"{n} place" : $"{n} places",
+        "ja" => $"{n}か所",
+        "ko" => $"{n}곳",
+        "zh" => $"{n} 个景点",
+        _ => $"{n} địa điểm"
+    };
+
+    /// <summary>Lọc danh sách theo từ khóa (tên/mô tả đa ngôn ngữ).</summary>
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").Trim().ToLower();
@@ -66,6 +77,7 @@ public partial class HomePage : ContentPage
               .ToList();
     }
 
+    /// <summary>Mở <see cref="PlaceDetailPage"/> với POI được chọn.</summary>
     private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is not TouristPlace place) return;
@@ -77,6 +89,7 @@ public partial class HomePage : ContentPage
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
+    /// <summary>Điều hướng tới <see cref="MapPage"/>.</summary>
     private async void OpenMap(object sender, EventArgs e)
     {
         if (Handler?.MauiContext == null) return;
@@ -84,6 +97,7 @@ public partial class HomePage : ContentPage
         await Navigation.PushAsync(mapPage);
     }
 
+    /// <summary>Điều hướng tới <see cref="AudioPage"/>.</summary>
     private async void OpenAudio(object sender, EventArgs e)
     {
         if (Handler?.MauiContext == null) return;
@@ -91,6 +105,7 @@ public partial class HomePage : ContentPage
         await Navigation.PushAsync(audioPage);
     }
 
+    /// <summary>Lấy vị trí hiện tại và hiển thị POI trong bán kính 1km (hoặc toàn bộ nếu rỗng).</summary>
     private async void OpenNearby(object sender, EventArgs e)
     {
         try

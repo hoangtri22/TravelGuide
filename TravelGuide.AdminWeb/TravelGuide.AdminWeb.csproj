@@ -10,4 +10,8 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\TravelGuide\Resources\Raw\extra_places.json" Link="extra_places.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

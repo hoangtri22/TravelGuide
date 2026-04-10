@@ -34,9 +34,7 @@ public static class AppLanguage
         { "zh", "中文" },
     };
 
-    // =========================================================
-    // Đổi ngôn ngữ
-    // =========================================================
+    /// <summary>Đặt ngôn ngữ UI, lưu Preferences, áp culture thread và bắn <see cref="OnLanguageChanged"/>.</summary>
     public static void SetLanguage(string langCode)
     {
         // Validate ngôn ngữ
@@ -59,9 +57,7 @@ public static class AppLanguage
         OnLanguageChanged?.Invoke(langCode);
     }
 
-    // =========================================================
-    // Load ngôn ngữ đã lưu
-    // =========================================================
+    /// <summary>Đọc mã ngôn ngữ đã lưu khi mở app; fallback <c>vi</c> nếu không hợp lệ.</summary>
     public static void LoadSaved()
     {
         var saved = Preferences.Get("app_language", "vi");
@@ -75,9 +71,7 @@ public static class AppLanguage
         OnLanguageChanged?.Invoke(saved);
     }
 
-    // =========================================================
-    // Áp dụng culture cho hệ thống (resx)
-    // =========================================================
+    /// <summary>Gán <see cref="CultureInfo.DefaultThreadCurrentCulture"/> / UICulture cho thread hiện tại.</summary>
     private static void ApplyCulture(string langCode)
     {
         try
@@ -97,9 +91,7 @@ public static class AppLanguage
         }
     }
 
-    // =========================================================
-    // Lấy tên hiển thị của ngôn ngữ
-    // =========================================================
+    /// <summary>Trả về nhãn hiển thị (vd. <c>en</c> → <c>English</c>) từ <see cref="SupportedLanguages"/>.</summary>
     public static string GetLanguageName(string code)
     {
         return SupportedLanguages.TryGetValue(code, out var name)

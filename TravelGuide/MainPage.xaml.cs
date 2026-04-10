@@ -3,6 +3,9 @@ using LocalizationResourceManager.Maui;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Màn hình cài đặt ban đầu: chọn ngôn ngữ, tiền tệ, đồng bộ culture với ResX và chuyển tới <see cref="HomePage"/>.
+/// </summary>
 public partial class MainPage : ContentPage
 {
     private readonly DatabaseService _dbService;
@@ -20,6 +23,7 @@ public partial class MainPage : ContentPage
         { "zh", "🇨🇳 中文" },
     };
 
+    /// <summary>Khởi tạo UI, nạp danh sách tiền tệ và cài đặt đã lưu.</summary>
     public MainPage(DatabaseService dbService)
     {
         InitializeComponent();
@@ -27,11 +31,11 @@ public partial class MainPage : ContentPage
 
         LoadCurrencies();
         LoadSavedSettings();
-        UpdateCustomLocalizedText();
 
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
     }
 
+    /// <summary>Lấy danh sách mã tiền tệ từ <see cref="CultureInfo"/> (fallback cố định nếu lỗi).</summary>
     private void LoadCurrencies()
     {
         try
@@ -52,6 +56,7 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>Đọc ngôn ngữ và chuỗi tiền tệ từ Preferences; cập nhật highlight nút ngôn ngữ.</summary>
     private void LoadSavedSettings()
     {
         _selectedLang = Preferences.Get("app_language", "vi");
@@ -59,6 +64,7 @@ public partial class MainPage : ContentPage
         HighlightSelectedLang(_selectedLang);
     }
 
+    /// <summary>Đổi màu border/label các nút ngôn ngữ theo mã đang chọn.</summary>
     private void HighlightSelectedLang(string code)
     {
         var allCodes = new[] { "vi", "en", "ja", "ko", "zh" };
@@ -81,6 +87,7 @@ public partial class MainPage : ContentPage
             LblSelectedLang.Text = name;
     }
 
+    /// <summary>Tap cờ ngôn ngữ: lưu Preferences, gọi <see cref="AppLanguage.SetLanguage"/>, sync ResX.</summary>
     private void OnLanguageTapped(object sender, TappedEventArgs e)
     {
         if (e.Parameter is not string code) return;
@@ -92,10 +99,10 @@ public partial class MainPage : ContentPage
         Preferences.Set("app_language", code);
         AppLanguage.SetLanguage(code);
         SyncLocalization(code);
-        UpdateCustomLocalizedText();
 
     }
 
+    /// <summary>Lọc danh sách tiền tệ theo từ khóa (tối đa 20 dòng).</summary>
     private void OnCurrencySearch(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").ToLower();
@@ -111,6 +118,7 @@ public partial class MainPage : ContentPage
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = result.Any();
     }
 
+    /// <summary>Chọn một dòng tiền tệ từ gợi ý và lưu Preferences.</summary>
     private void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is string selected)
@@ -122,6 +130,7 @@ public partial class MainPage : ContentPage
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
+    /// <summary>Áp ngôn ngữ, xóa cache POI, điều hướng tới dashboard <see cref="HomePage"/>.</summary>
     private async void GoHome(object sender, EventArgs e)
     {
         AppLanguage.SetLanguage(_selectedLang);
@@ -133,6 +142,7 @@ public partial class MainPage : ContentPage
         await Navigation.PushAsync(homePage);
     }
 
+    /// <summary>Cập nhật <see cref="ILocalizationResourceManager.CurrentCulture"/> theo mã ngôn ngữ.</summary>
     private void SyncLocalization(string code)
     {
         try
@@ -143,17 +153,5 @@ public partial class MainPage : ContentPage
                 locMgr.CurrentCulture = new CultureInfo(code);
         }
         catch { }
-    }
-
-    private void UpdateCustomLocalizedText()
-    {
-        LblSyncHint.Text = AppLanguage.Current switch
-        {
-            "en" => "The app automatically syncs POI, audio and translations from the admin web.",
-            "ja" => "アプリは管理WebからPOI・音声・翻訳データを自動同期します。",
-            "ko" => "앱은 관리자 웹에서 POI, 오디오, 번역 데이터를 자동 동기화합니다.",
-            "zh" => "应用会自动从管理后台同步POI、音频和翻译数据。",
-            _ => "App tự đồng bộ dữ liệu POI/AUDIO/Bản dịch từ web admin."
-        };
     }
 }

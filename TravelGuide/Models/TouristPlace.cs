@@ -1,13 +1,16 @@
 ﻿using SQLite;
+using TravelGuide;
 
 namespace TravelGuide.Models;
 
+/// <summary>
+/// Một điểm POI: tọa độ, bán kính, đa ngôn ngữ, ảnh, URL audio (ưu tiên hơn TTS), mức ưu tiên geofence, link bản đồ ngoài.
+/// </summary>
 public class TouristPlace
 {
     [PrimaryKey, AutoIncrement]
     public int Id { get; set; }
 
-    // ===== MULTI LANGUAGE =====
     public string NameVi { get; set; } = string.Empty;
     public string NameEn { get; set; } = string.Empty;
     public string DescVi { get; set; } = string.Empty;
@@ -20,13 +23,20 @@ public class TouristPlace
     public string? DescKo { get; set; }
     public string? DescZh { get; set; }
 
-    // ===== LOCATION =====
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public double Radius { get; set; } = 50;
 
-    // ===== UI =====
+    /// <summary>Số càng lớn càng ưu tiên khi nhiều POI chồng vùng (geofence).</summary>
+    public int Priority { get; set; }
+
     public string? ImagePath { get; set; }
+
+    /// <summary>URL file audio (http/https); nếu có và tải được thì phát trước, không thì TTS.</summary>
+    public string? AudioUrl { get; set; }
+
+    /// <summary>Link Google Maps / Mapbox / web mở bằng trình duyệt (tuỳ chọn).</summary>
+    public string? MapLink { get; set; }
 
     [Ignore]
     public string ImageSource => string.IsNullOrEmpty(ImagePath)

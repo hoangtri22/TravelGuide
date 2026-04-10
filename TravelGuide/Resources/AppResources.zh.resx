@@ -54,6 +54,7 @@
 	<!-- HomePage -->
 	<data name="AppTitle" xml:space="preserve"><value>旅行指南</value></data>
 	<data name="AppTagline" xml:space="preserve"><value>与您一起探索西贡</value></data>
+	<data name="HomeHeroTitle" xml:space="preserve"><value>首页</value></data>
 	<data name="SearchPlaceholder" xml:space="preserve"><value>搜索地点...</value></data>
 	<data name="BtnMap" xml:space="preserve"><value>📍 地图</value></data>
 	<data name="BtnAudio" xml:space="preserve"><value>🎙 音频</value></data>

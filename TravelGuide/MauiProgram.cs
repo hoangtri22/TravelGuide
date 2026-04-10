@@ -3,16 +3,22 @@ using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
 using LocalizationResourceManager.Maui;
 using System.Globalization;
+using Plugin.Maui.Audio;
 using TravelGuide;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Điểm vào cấu hình MAUI: fonts, localization, đăng ký DI (Database, TTS, Geofence, trang).
+/// </summary>
 public static class MauiProgram
 {
+    /// <summary>Tạo <see cref="MauiApp"/>, áp dụng culture đã lưu và trả về instance cho platform.</summary>
     public static MauiApp CreateMauiApp()
     {
         // ✅ Load ngôn ngữ đã lưu ngay khi app start
         AppLanguage.LoadSaved();
+        MapboxTokenBootstrap.TryLoadFromBundledSecretFile();
 
         var builder = MauiApp.CreateBuilder();
 
@@ -29,6 +35,8 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
+
+        builder.AddAudio();
 
 #if DEBUG
         builder.Logging.AddDebug();

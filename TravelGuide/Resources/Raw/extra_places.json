@@ -1,74 +1,90 @@
-﻿[
+[
   {
-    "NameVi": "Cổng chào Phố Ẩm thực Vĩnh Khánh",
-    "DescVi": "Chào mừng bạn đến với phố ẩm thực Vĩnh Khánh, Quận 4. Đây là thiên đường đồ ăn đêm nổi tiếng nhất Sài Gòn với hàng trăm quán ốc và hải sản tươi ngon.",
-    "Latitude": 10.7595,
-    "Longitude": 106.7012,
-    "Radius": 80,
-    "ImagePath": "gatevinhkhanh.jpg"
+    "nameVi": "Cổng chào Phố Ẩm thực Vĩnh Khánh",
+    "descVi": "Chào mừng bạn đến với phố ẩm thực Vĩnh Khánh, Quận 4. Đây là thiên đường đồ ăn đêm nổi tiếng nhất Sài Gòn với hàng trăm quán ốc và hải sản tươi ngon.",
+    "latitude": 10.7595,
+    "longitude": 106.7012,
+    "radius": 80,
+    "imagePath": "gatevinhkhanh.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Ốc Oanh",
-    "DescVi": "Bạn đang ở gần Ốc Oanh, quán ốc đông khách bậc nhất con phố này. Đừng bỏ lỡ món càng ghẹ rang muối và các loại ốc xào bơ tỏi thơm nức mũi nhé.",
-    "Latitude": 10.7588,
-    "Longitude": 106.7018,
-    "Radius": 50,
-    "ImagePath": "ocoanh.jpg"
+    "nameVi": "Ốc Oanh",
+    "descVi": "Bạn đang ở gần Ốc Oanh, quán ốc đông khách bậc nhất con phố này. Đừng bỏ lỡ món càng ghẹ rang muối và các loại ốc xào bơ tỏi thơm nức mũi nhé.",
+    "latitude": 10.7588,
+    "longitude": 106.7018,
+    "radius": 50,
+    "imagePath": "ocoanh.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Cafe Era",
-    "DescVi": "Phía trước là Cafe Era. Một không gian cà phê ấm cúng và yên tĩnh, rất thích hợp để bạn dừng chân nghỉ ngơi sau khi dạo quanh phố ẩm thực.",
-    "Latitude": 10.7585,
-    "Longitude": 106.7025,
-    "Radius": 45,
-    "ImagePath": "cafeera.jpg"
+    "nameVi": "Ốc Đào 2",
+    "descVi": "Bạn đang đi ngang qua Ốc Đào 2, một chi nhánh của thương hiệu ốc nổi tiếng Sài Gòn. Nơi đây thu hút thực khách bởi nước sốt đậm đà và hải sản rất tươi.",
+    "latitude": 10.7582,
+    "longitude": 106.7032,
+    "radius": 50,
+    "imagePath": "ocdao.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Ốc Đào 2",
-    "DescVi": "Bạn đang đi ngang qua Ốc Đào 2, một chi nhánh của thương hiệu ốc nổi tiếng Sài Gòn. Nơi đây thu hút thực khách bởi nước sốt đậm đà và hải sản rất tươi.",
-    "Latitude": 10.7582,
-    "Longitude": 106.7032,
-    "Radius": 50,
-    "ImagePath": "ocdao.jpg"
+    "nameVi": "Sủi cảo Tân Tòng Lợi",
+    "descVi": "Bên tay trái bạn là Sủi cảo Tân Tòng Lợi. Nếu đã chán đồ biển, hãy thử món sủi cảo tôm thịt chuẩn vị người Hoa tại đây, rất thơm ngon và đậm đà.",
+    "latitude": 10.758,
+    "longitude": 106.7038,
+    "radius": 50,
+    "imagePath": "suicao.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Sủi cảo Tân Tòng Lợi",
-    "DescVi": "Bên tay trái bạn là Sủi cảo Tân Tòng Lợi. Nếu đã chán đồ biển, hãy thử món sủi cảo tôm thịt chuẩn vị người Hoa tại đây, rất thơm ngon và đậm đà.",
-    "Latitude": 10.7580,
-    "Longitude": 106.7038,
-    "Radius": 50,
-    "ImagePath": "suicao.jpg"
+    "nameVi": "Lẩu bò Khu Nhà Cháy",
+    "descVi": "Chào mừng bạn đến với Lẩu bò Khu Nhà Cháy. Đây là điểm dừng chân lý tưởng cho những tín đồ lẩu bò với nước dùng thanh ngọt và các loại topping phong phú.",
+    "latitude": 10.7575,
+    "longitude": 106.7045,
+    "radius": 60,
+    "imagePath": "laubo.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Lẩu bò Khu Nhà Cháy",
-    "DescVi": "Chào mừng bạn đến với Lẩu bò Khu Nhà Cháy. Đây là điểm dừng chân lý tưởng cho những tín đồ lẩu bò với nước dùng thanh ngọt và các loại topping phong phú.",
-    "Latitude": 10.7575,
-    "Longitude": 106.7045,
-    "Radius": 60,
-    "ImagePath": "laubo.jpg"
+    "nameVi": "Ốc Vũ",
+    "descVi": "Bạn đang ở gần Ốc Vũ. Quán nổi tiếng với không gian rộng rãi, thoáng mát và thực đơn đa dạng từ các loại ốc bình dân đến hải sản cao cấp.",
+    "latitude": 10.7568,
+    "longitude": 106.7058,
+    "radius": 50,
+    "imagePath": "ocvu.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Ốc Vũ",
-    "DescVi": "Bạn đang đến gần Ốc Vũ. Quán nổi tiếng với không gian rộng rãi, thoáng mát và thực đơn đa dạng từ các loại ốc bình dân đến hải sản cao cấp.",
-    "Latitude": 10.7568,
-    "Longitude": 106.7058,
-    "Radius": 50,
-    "ImagePath": "ocvu.jpg"
+    "nameVi": "Ốc Linh",
+    "descVi": "Phía trước là Ốc Linh, một quán ăn vỉa hè đúng chất Sài Gòn. Đồ ăn ở đây giá cả rất phải chăng nhưng chất lượng lại không hề thua kém các quán lớn.",
+    "latitude": 10.7562,
+    "longitude": 106.7065,
+    "radius": 50,
+    "imagePath": "oclinh.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   },
   {
-    "NameVi": "Ốc Linh",
-    "DescVi": "Phía trước là Ốc Linh, một quán ăn vỉa hè đúng chất Sài Gòn. Đồ ăn ở đây giá cả rất phải chăng nhưng chất lượng lại không hề thua kém các quán lớn.",
-    "Latitude": 10.7562,
-    "Longitude": 106.7065,
-    "Radius": 50,
-    "ImagePath": "oclinh.jpg"
-  },
-  {
-    "NameVi": "Cuối đường Vĩnh Khánh",
-    "DescVi": "Bạn đã đi đến cuối trục đường ẩm thực Vĩnh Khánh. Hy vọng bạn đã có một hành trình khám phá ẩm thực Quận 4 thật thú vị và đầy ắp kỷ niệm.",
-    "Latitude": 10.7555,
-    "Longitude": 106.7072,
-    "Radius": 80,
-    "ImagePath": "endroad.jpg"
+    "nameVi": "Cuối đường Vĩnh Khánh",
+    "descVi": "Bạn đã đi đến cuối trục đường ẩm thực Vĩnh Khánh. Hy vọng bạn đã có một hành trình khám phá ẩm thực Quận 4 thật thú vị và đầy ắp kỷ niệm.",
+    "latitude": 10.7555,
+    "longitude": 106.7072,
+    "radius": 80,
+    "imagePath": "endroad.jpg",
+    "audioUrl": "",
+    "priority": 0,
+    "mapLink": ""
   }
 ]

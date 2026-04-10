@@ -79,6 +79,9 @@
 	<data name="AppTagline">
 		<value>サイゴンを一緒に探索しよう</value>
 	</data>
+	<data name="HomeHeroTitle">
+		<value>トップ</value>
+	</data>
 	<data name="SearchPlaceholder">
 		<value>場所を検索...</value>
 	</data>

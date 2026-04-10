@@ -1,4 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
+<!-- MainPage: chọn ngôn ngữ / tiền tệ, vào Home -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
@@ -25,16 +26,10 @@
                 <VerticalStackLayout Padding="20" Spacing="16" Margin="0,-28,0,0">
 
                     <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
-                        <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*">
-                            <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
-                                <Label Text="{loc:Translate WelcomeText}" FontSize="24" FontAttributes="Bold" TextColor="#0F172A"/>
-                                <Label Text="{loc:Translate SetupJourney}" FontSize="13" TextColor="#64748B"/>
-                            </VerticalStackLayout>
-                            <Label Grid.Row="1" Grid.ColumnSpan="1"
-                                   x:Name="LblSyncHint"
-                                   Text="App tự đồng bộ dữ liệu POI/AUDIO/Bản dịch từ web admin."
-                                   FontSize="12" TextColor="#64748B" Margin="0,10,0,0"/>
-                        </Grid>
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="{loc:Translate WelcomeText}" FontSize="24" FontAttributes="Bold" TextColor="#0F172A"/>
+                            <Label Text="{loc:Translate SetupJourney}" FontSize="13" TextColor="#64748B"/>
+                        </VerticalStackLayout>
                     </Border>
 
                     <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">

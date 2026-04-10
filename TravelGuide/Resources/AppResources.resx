@@ -79,6 +79,9 @@
 	<data name="AppTagline">
 		<value>Explore Saigon with us</value>
 	</data>
+	<data name="HomeHeroTitle">
+		<value>Home</value>
+	</data>
 	<data name="SearchPlaceholder">
 		<value>Search places...</value>
 	</data>

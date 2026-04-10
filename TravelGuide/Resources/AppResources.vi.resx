@@ -79,6 +79,9 @@
 	<data name="AppTagline">
 		<value>Khám phá Sài Gòn cùng bạn</value>
 	</data>
+	<data name="HomeHeroTitle">
+		<value>Trang chủ</value>
+	</data>
 	<data name="SearchPlaceholder">
 		<value>Tìm kiếm địa điểm...</value>
 	</data>

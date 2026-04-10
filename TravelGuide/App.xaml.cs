@@ -5,15 +5,20 @@ using TravelGuide.Models;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Ứng dụng gốc: seed/sync POI khi mở, lắng nghe <see cref="LocationMessage"/> và logic geofence/TTS song song với <see cref="GeofenceEngine"/> (legacy path).
+/// </summary>
 public partial class App : Application
 {
     private readonly DatabaseService _dbService;
+    private readonly NarrationEngine _narrationEngine;
 
-    // 1. Sửa Constructor để nhận DatabaseService từ MauiProgram
-    public App(DatabaseService dbService)
+    /// <summary>Khởi tạo app, chạy <see cref="DatabaseService.SeedDataAsync"/> nền và đăng ký messenger GPS.</summary>
+    public App(DatabaseService dbService, NarrationEngine narrationEngine)
     {
         InitializeComponent();
         _dbService = dbService;
+        _narrationEngine = narrationEngine;
 
         // Gọi nạp dữ liệu từ file JSON vào SQLite khi khởi động
         Task.Run(async () => await _dbService.SeedDataAsync());
@@ -28,11 +33,23 @@ public partial class App : Application
         });
     }
 
+    /// <summary>Tạo cửa sổ chính chứa <see cref="AppShell"/> (điều hướng Shell).</summary>
     protected override Window CreateWindow(IActivationState? activationState)
     {
         return new Window(new AppShell());
     }
 
+    /// <summary>App vào nền / mất focus: dừng TTS và audio để tránh chồng lấn với thông báo hệ thống.</summary>
+    protected override void OnSleep()
+    {
+        base.OnSleep();
+        _ = _narrationEngine.StopAsync();
+    }
+
+    /// <summary>
+    /// (Legacy) So khoảng cách user–POI; nếu trong bán kính và qua cooldown 5 phút thì gọi TTS tiếng Việt trực tiếp.
+    /// Luồng chính trên map/home thường dùng <see cref="GeofenceEngine"/> + <see cref="NarrationEngine"/>.
+    /// </summary>
     private async Task CheckGeofenceAndSpeak(Location userLocation)
     {
         // 2. Lấy dữ liệu thực từ SQLite thay vì DataService
@@ -52,6 +69,8 @@ public partial class App : Application
             }
         }
     }
+
+    /// <summary>Phát một đoạn văn bản bằng TTS, ưu tiên locale tiếng Việt nếu thiết bị có.</summary>
     private async Task SpeakVietnameseAsync(string text)
     {
         // Tìm tất cả ngôn ngữ có trên máy
@@ -66,6 +85,8 @@ public partial class App : Application
         var options = new SpeechOptions { Locale = vnLocale };
         await TextToSpeech.Default.SpeakAsync(text, options);
     }
+
+    /// <summary>Cooldown theo tên POI (Preferences) để tránh lặp lại thuyết minh quá sớm (~5 phút).</summary>
     private bool ShouldSpeak(string placeName)
     {
         string key = $"LastSpoken_{placeName.Replace(" ", "_")}";

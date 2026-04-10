@@ -36,6 +36,7 @@ public class TranslationService
 
     // ─── Constructor ───────────────────────────────────────────────────────
 
+    /// <summary>Tiêm HTTP client và database để dịch + cập nhật cache cục bộ.</summary>
     public TranslationService(HttpClient http, DatabaseService db)
     {
         _http = http;

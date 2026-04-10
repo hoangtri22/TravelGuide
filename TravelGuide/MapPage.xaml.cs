@@ -2,10 +2,15 @@
 using Microsoft.Maui.Devices.Sensors;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using TravelGuide.Models;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Trang bản đồ WebView: hiển thị POI, vị trí user, highlight POI đang trong geofence,
+/// và bridge <c>app://</c> để TTS / định vị. Luôn dùng Mapbox GL (token: Preferences, env, hoặc file Raw).
+/// </summary>
 public partial class MapPage : ContentPage
 {
     private readonly DatabaseService _dbService;
@@ -16,6 +21,7 @@ public partial class MapPage : ContentPage
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
 
+    /// <summary>Chọn chuỗi theo ngôn ngữ UI hiện tại (<see cref="AppLanguage"/>).</summary>
     private static string T(string vi, string en, string ja, string ko, string zh) =>
         AppLanguage.Current switch
         {
@@ -56,6 +62,7 @@ public partial class MapPage : ContentPage
         LoadMap();
     }
 
+    /// <summary>Khi trang hiện: gắn mini player và bật vòng lặp GPS.</summary>
     protected override async void OnAppearing()
     {
         base.OnAppearing();
@@ -63,6 +70,7 @@ public partial class MapPage : ContentPage
         await _gpsService.StartAsync();
     }
 
+    /// <summary>Khi rời trang: tắt GPS và gỡ đăng ký sự kiện geofence / messenger.</summary>
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
@@ -73,6 +81,7 @@ public partial class MapPage : ContentPage
         _geofenceEngine.OnPoiExited -= OnPoiExited;
     }
 
+    /// <summary>Callback <see cref="GeofenceEngine.OnPoiEntered"/>: banner + highlight marker.</summary>
     private void OnPoiEntered(TouristPlace poi)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -85,6 +94,7 @@ public partial class MapPage : ContentPage
         });
     }
 
+    /// <summary>Callback khi geofence quyết định phát thuyết minh: cập nhật text banner.</summary>
     private void OnPoiTriggered(TouristPlace poi)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -94,6 +104,7 @@ public partial class MapPage : ContentPage
         });
     }
 
+    /// <summary>Rời khỏi mọi POI: ẩn banner và bỏ highlight.</summary>
     private void OnPoiExited()
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -104,17 +115,20 @@ public partial class MapPage : ContentPage
         });
     }
 
+    /// <summary>Nút tải lại: rebuild HTML bản đồ (POI trong 1km).</summary>
     private void OnReloadClicked(object sender, EventArgs e)
     {
         LoadingOverlay.IsVisible = true;
         LoadMap();
     }
 
+    /// <summary>Phát thủ công POI đang được coi là “gần nhất” trên banner.</summary>
     private async void OnSpeakNearbyClicked(object sender, EventArgs e)
     {
         if (_nearestPlace != null) await _narrationEngine.SpeakAsync(_nearestPlace);
     }
 
+    /// <summary>Xử lý custom URL từ JavaScript: lỗi, TTS từ popup, nút định vị, map đã load.</summary>
     private async void MapView_Navigating(object sender, WebNavigatingEventArgs e)
     {
         if (!e.Url.StartsWith("app://")) return;
@@ -143,6 +157,7 @@ public partial class MapPage : ContentPage
         }
     }
 
+    /// <summary>Lấy GPS một lần (nút trên map), cập nhật marker và banner gần POI.</summary>
     private async Task GetUserLocationAsync()
     {
         try
@@ -166,10 +181,14 @@ public partial class MapPage : ContentPage
         }
     }
 
+    /// <summary>So POI gần nhất với user; hiện banner nếu trong ~2× bán kính POI.</summary>
     private async Task UpdateNearbyBanner(Location userLocation)
     {
         var places = await _dbService.GetPlacesAsync();
-        _nearestPlace = places.OrderBy(p => Location.CalculateDistance(userLocation.Latitude, userLocation.Longitude, p.Latitude, p.Longitude, DistanceUnits.Kilometers)).FirstOrDefault();
+        _nearestPlace = places
+            .OrderByDescending(p => p.Priority)
+            .ThenBy(p => Location.CalculateDistance(userLocation.Latitude, userLocation.Longitude, p.Latitude, p.Longitude, DistanceUnits.Kilometers))
+            .FirstOrDefault();
         if (_nearestPlace == null) return;
 
         double dist = Location.CalculateDistance(userLocation.Latitude, userLocation.Longitude, _nearestPlace.Latitude, _nearestPlace.Longitude, DistanceUnits.Kilometers) * 1000;
@@ -186,12 +205,14 @@ public partial class MapPage : ContentPage
         }
     }
 
+    /// <summary>Cập nhật nhãn trạng thái GPS + màu chấm chỉ báo.</summary>
     private void UpdateGpsStatus(string message, string colorHex)
     {
         LblGpsStatus.Text = message;
         GpsIndicator.Fill = new SolidColorBrush(Color.FromArgb(colorHex));
     }
 
+    /// <summary>Tải HTML map: lấy vị trí khởi tạo, thêm lệnh <c>addPlace</c> cho POI trong 1km.</summary>
     async void LoadMap()
     {
         Location userLocation;
@@ -215,9 +236,7 @@ public partial class MapPage : ContentPage
             if (dist <= 1000)
             {
                 string color = p.Radius <= 100 ? "#F44336" : "#2196F3";
-                string safeName = p.Name.Replace("'", "\\'");
-                string safeDesc = p.Description.Replace("'", "\\'");
-                sb.AppendLine($"addPlace({F(p.Longitude)},{F(p.Latitude)},'{safeName}','{safeDesc}','{color}');");
+                AppendAddPlaceJavaScript(sb, p, color);
             }
         }
 
@@ -227,29 +246,80 @@ public partial class MapPage : ContentPage
         }
     }
 
-    private string BuildMapHtml(Location center, string markersJs) => $@"
+    /// <summary>Sinh lệnh JS <c>addPlace(...)</c> an toàn (JSON encode tên/mô tả).</summary>
+    private static void AppendAddPlaceJavaScript(StringBuilder sb, TouristPlace p, string color)
+    {
+        string jLng = JsonSerializer.Serialize(p.Longitude);
+        string jLat = JsonSerializer.Serialize(p.Latitude);
+        string jName = JsonSerializer.Serialize(p.Name ?? "");
+        string jDesc = JsonSerializer.Serialize(p.Description ?? "");
+        string jColor = JsonSerializer.Serialize(color);
+        sb.AppendLine($"addPlace({jLng},{jLat},{jName},{jDesc},{jColor});");
+    }
+
+    /// <summary>Sinh HTML Mapbox GL (token rỗng thì Mapbox báo lỗi cấu hình — không dùng OSM/Leaflet).</summary>
+    private string BuildMapHtml(Location center, string markersJs) =>
+        BuildMapboxHtml(center, markersJs, JsonSerializer.Serialize(MapboxConfig.GetAccessToken()));
+
+    /// <summary>HTML Mapbox GL JS: style vector, marker tùy màu, API <c>addPlace</c>/<c>updateLocation</c>/<c>highlight</c>.</summary>
+    private string BuildMapboxHtml(Location center, string markersJs, string accessTokenJson) => $@"
 <!DOCTYPE html><html><head>
   <meta charset='utf-8'><meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'>
-  <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' />
-  <style>body{{margin:0;padding:0;}} #map{{position:absolute;top:0;bottom:0;width:100%;}} #locateBtn{{position:absolute;top:16px;right:16px;z-index:10;background:#1E88E5;color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:bold;}}</style>
+  <link href='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css' rel='stylesheet' />
+  <style>body{{margin:0;padding:0;}} #map{{position:absolute;top:0;bottom:0;width:100%;}} #locateBtn{{position:absolute;top:16px;right:16px;z-index:1;background:#1E88E5;color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:bold;font-size:14px;}}</style>
 </head><body>
   <div id='map'></div>
-  <button id='locateBtn'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
-  <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
+  <button id='locateBtn' type='button'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
+  <script src='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js'></script>
   <script>
     window.onerror=function(msg,src,line,col,err){{window.location.href='app://error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
-    const map=L.map('map').setView([{F(center.Latitude)},{F(center.Longitude)}],15);
-    L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}}).addTo(map);
-    setTimeout(()=>{{window.location.href='app://loaded';}},300);
-    var userMarker=null, markerMap={{}};
-    function speak(t){{window.location.href='app://speak?text='+encodeURIComponent(t);}}
-    function addPlace(lng,lat,name,desc,color){{const key=lng+'_'+lat; const marker=L.circleMarker([lat,lng],{{radius:8,color:color,fillColor:color,fillOpacity:0.9,weight:2}}).addTo(map); marker.bindPopup('<b>'+name+'</b><p style=""font-size:12px;margin:4px 0 0"">'+desc+'</p>'); marker.on('click',()=>speak(name+'. '+desc)); markerMap[key]={{marker,defaultColor:color}};}}
-    function updateLocation(lng,lat){{if(userMarker) map.removeLayer(userMarker); userMarker=L.marker([lat,lng]).addTo(map); map.flyTo([lat,lng],16);}}
-    function highlightMarker(lng,lat){{Object.values(markerMap).forEach(m=>m.marker.setStyle({{color:m.defaultColor,fillColor:m.defaultColor,radius:8,weight:2}})); const key=lng+'_'+lat; if(markerMap[key]) markerMap[key].marker.setStyle({{color:'#FFD700',fillColor:'#FFD700',radius:11,weight:3}});}}
-    function clearHighlight(){{Object.values(markerMap).forEach(m=>m.marker.setStyle({{color:m.defaultColor,fillColor:m.defaultColor,radius:8,weight:2}}));}}
-    document.getElementById('locateBtn').addEventListener('click',()=>window.location.href='app://locate');
+    mapboxgl.accessToken = {accessTokenJson};
+    const map = new mapboxgl.Map({{
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [{F(center.Longitude)},{F(center.Latitude)}],
+      zoom: 15
+    }});
+    map.on('load', () => {{ setTimeout(() => window.location.href='app://loaded', 100); }});
+    var userMarker = null, markerMap = {{}};
+    function speak(t){{ window.location.href='app://speak?text='+encodeURIComponent(t); }}
+    function addPlace(lng,lat,name,desc,color){{
+      const key = lng+'_'+lat;
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);background:'+color+';cursor:pointer;';
+      const popup = new mapboxgl.Popup({{ offset: 20 }}).setHTML('<b>'+name+'</b><p style=""font-size:12px;margin:4px 0 0"">'+desc+'</p>');
+      const m = new mapboxgl.Marker({{ element: el }}).setLngLat([lng,lat]).setPopup(popup).addTo(map);
+      el.addEventListener('click', () => speak(name+'. '+desc));
+      markerMap[key] = {{ marker: m, el: el, defaultColor: color }};
+    }}
+    function updateLocation(lng,lat){{
+      if (userMarker) userMarker.remove();
+      userMarker = new mapboxgl.Marker({{ color: '#1E88E5' }}).setLngLat([lng,lat]).addTo(map);
+      map.flyTo({{ center: [lng, lat], zoom: 16 }});
+    }}
+    function highlightMarker(lng,lat){{
+      Object.keys(markerMap).forEach(k => {{
+        const o = markerMap[k];
+        o.el.style.background = o.defaultColor;
+        o.el.style.width = '16px'; o.el.style.height = '16px';
+      }});
+      const key = lng+'_'+lat;
+      if (markerMap[key]) {{
+        markerMap[key].el.style.background = '#FFD700';
+        markerMap[key].el.style.width = '22px';
+        markerMap[key].el.style.height = '22px';
+      }}
+    }}
+    function clearHighlight(){{
+      Object.keys(markerMap).forEach(k => {{
+        const o = markerMap[k];
+        o.el.style.background = o.defaultColor;
+        o.el.style.width = '16px'; o.el.style.height = '16px';
+      }});
+    }}
+    document.getElementById('locateBtn').addEventListener('click', () => window.location.href='app://locate');
     {markersJs}
-    setTimeout(()=>window.location.href='app://locate',1500);
+    setTimeout(() => window.location.href='app://locate', 1500);
   </script>
 </body></html>";
 }

@@ -4,10 +4,14 @@ using Microsoft.Maui.Devices.Sensors;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 
-namespace TravelGuide
+namespace TravelGuide;
+
+/// <summary>
+/// Tải và cache danh sách <see cref="TouristPlace"/>: ưu tiên API admin (<c>/api/public/pois</c>), fallback <c>extra_places.json</c>,
+/// bổ sung dịch MyMemory khi thiếu field theo ngôn ngữ. Xóa cache khi sự kiện đổi ngôn ngữ của <see cref="AppLanguage"/>.
+/// </summary>
+public class DatabaseService
 {
-    public class DatabaseService
-    {
         private readonly HttpClient _httpClient;
         private readonly SemaphoreSlim _syncLock = new(1, 1);
         private List<TouristPlace>? _cachedPlaces;
@@ -19,23 +23,20 @@ namespace TravelGuide
             PropertyNameCaseInsensitive = true
         };
 
+        /// <summary>Tiêm <see cref="HttpClient"/> và đăng ký xóa cache khi đổi ngôn ngữ.</summary>
         public DatabaseService(HttpClient httpClient)
         {
             _httpClient = httpClient;
             AppLanguage.OnLanguageChanged += _ => ClearCache();
         }
 
-        // =========================================================
-        // Nạp dữ liệu từ file JSON vào database (chỉ chạy 1 lần)
-        // =========================================================
+        /// <summary>Buộc làm mới dữ liệu POI (gọi khi khởi động app qua <see cref="App"/>).</summary>
         public async Task SeedDataAsync()
         {
             await RefreshFromApiOrFallbackAsync(force: true);
         }
 
-        // =========================================================
-        // Lấy toàn bộ danh sách địa điểm (có cache)
-        // =========================================================
+        /// <summary>Danh sách POI đã cache (~30s); đồng bộ API/fallback khi hết hạn.</summary>
         public async Task<List<TouristPlace>> GetPlacesAsync()
         {
             if (_cachedPlaces != null && DateTime.UtcNow - _lastSyncUtc < CacheDuration)
@@ -45,10 +46,7 @@ namespace TravelGuide
             return _cachedPlaces ?? new List<TouristPlace>();
         }
 
-        // =========================================================
-        // Lấy các địa điểm gần vị trí người dùng
-        // Có tối ưu bằng bounding box trước khi tính khoảng cách
-        // =========================================================
+        /// <summary>Lọc POI trong <paramref name="radiusMeters"/> quanh (<paramref name="userLat"/>, <paramref name="userLon"/>), có bounding box.</summary>
         public async Task<List<TouristPlace>> GetNearbyPlacesAsync(
             double userLat,
             double userLon,
@@ -77,15 +75,13 @@ namespace TravelGuide
                         DistanceUnits.Kilometers)
                 })
                 .Where(x => x.Distance * 1000 <= radiusMeters)
-                .OrderBy(x => x.Distance)
+                .OrderByDescending(x => x.Place.Priority)
+                .ThenBy(x => x.Distance)
                 .Select(x => x.Place)
                 .ToList();
         }
 
-        // =========================================================
-        // Cập nhật dữ liệu một địa điểm
-        // Đồng thời update cache nếu có
-        // =========================================================
+        /// <summary>Cập nhật một phần tử trong cache nếu tồn tại (không ghi file/SQLite cục bộ).</summary>
         public async Task UpdatePlaceAsync(TouristPlace place)
         {
             if (_cachedPlaces != null)
@@ -97,9 +93,7 @@ namespace TravelGuide
             await Task.CompletedTask;
         }
 
-        // =========================================================
-        // Kiểm tra đã dịch xong toàn bộ dữ liệu cho một ngôn ngữ chưa
-        // =========================================================
+        /// <summary>True nếu mọi POI có tên+mô tả đủ cho <paramref name="langCode"/> (en/ja/ko/zh).</summary>
         public async Task<bool> IsTranslatedAsync(string langCode)
         {
             var places = await GetPlacesAsync();
@@ -116,15 +110,14 @@ namespace TravelGuide
             };
         }
 
-        // =========================================================
-        // Xóa cache để reload dữ liệu từ database khi cần
-        // =========================================================
+        /// <summary>Xóa cache trong RAM để lần gọi sau tải lại từ API/fallback.</summary>
         public void ClearCache()
         {
             _cachedPlaces = null;
             _lastSyncUtc = DateTime.MinValue;
         }
 
+        /// <summary>URL gốc API admin (Preferences <c>api_base_url</c> hoặc mặc định theo nền tảng).</summary>
         public string GetCurrentApiBaseUrl()
         {
             var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android
@@ -133,6 +126,7 @@ namespace TravelGuide
             return Preferences.Get("api_base_url", defaultUrl);
         }
 
+        /// <summary>Đồng bộ cache: API trước, nếu rỗng và chưa có cache thì đọc JSON nhúng.</summary>
         private async Task RefreshFromApiOrFallbackAsync(bool force)
         {
             await _syncLock.WaitAsync();
@@ -164,6 +158,7 @@ namespace TravelGuide
             }
         }
 
+        /// <summary>GET <c>/api/public/pois?lang=</c> và map sang <see cref="TouristPlace"/>.</summary>
         private async Task<List<TouristPlace>> TryGetFromApiAsync()
         {
             try
@@ -231,6 +226,7 @@ namespace TravelGuide
             }
         }
 
+        /// <summary>Lấy tên theo mã ngôn ngữ (field tương ứng trên POI).</summary>
         private static string? GetNameForLang(TouristPlace p, string lang) => lang switch
         {
             "en" => p.NameEn,
@@ -240,6 +236,7 @@ namespace TravelGuide
             _ => null
         };
 
+        /// <summary>Lấy mô tả theo mã ngôn ngữ.</summary>
         private static string? GetDescForLang(TouristPlace p, string lang) => lang switch
         {
             "en" => p.DescEn,
@@ -249,6 +246,7 @@ namespace TravelGuide
             _ => null
         };
 
+        /// <summary>Gán tên đã dịch vào field phù hợp.</summary>
         private static void SetNameForLang(TouristPlace p, string lang, string value)
         {
             switch (lang)
@@ -260,6 +258,7 @@ namespace TravelGuide
             }
         }
 
+        /// <summary>Gán mô tả đã dịch vào field phù hợp.</summary>
         private static void SetDescForLang(TouristPlace p, string lang, string value)
         {
             switch (lang)
@@ -271,6 +270,7 @@ namespace TravelGuide
             }
         }
 
+        /// <summary>Gọi API MyMemory (vi→target) cho một chuỗi.</summary>
         private static async Task<string?> MyMemoryTranslateAsync(HttpClient http, string sourceText, string targetLang)
         {
             if (string.IsNullOrWhiteSpace(sourceText)) return sourceText;
@@ -293,6 +293,7 @@ namespace TravelGuide
             }
         }
 
+        /// <summary>Ánh xạ DTO JSON API → entity app.</summary>
         private static TouristPlace MapFromApi(ApiPoi p)
         {
             return new TouristPlace
@@ -311,10 +312,14 @@ namespace TravelGuide
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 Radius = p.Radius <= 0 ? 50 : p.Radius,
-                ImagePath = p.ImagePath ?? ""
+                ImagePath = p.ImagePath ?? "",
+                AudioUrl = string.IsNullOrWhiteSpace(p.AudioUrl) ? null : p.AudioUrl.Trim(),
+                Priority = p.Priority,
+                MapLink = string.IsNullOrWhiteSpace(p.MapLink) ? null : p.MapLink.Trim()
             };
         }
 
+        /// <summary>Đọc <c>extra_places.json</c> từ package nếu API không có dữ liệu.</summary>
         private static async Task<List<TouristPlace>> LoadLocalFallbackAsync()
         {
             try
@@ -342,25 +347,27 @@ namespace TravelGuide
                 return new List<TouristPlace>();
             }
         }
-    }
+}
 
-    internal sealed class ApiPoi
-    {
-        public int Id { get; set; }
-        public string? NameVi { get; set; }
-        public string? NameEn { get; set; }
-        public string? NameJa { get; set; }
-        public string? NameKo { get; set; }
-        public string? NameZh { get; set; }
-        public string? DescVi { get; set; }
-        public string? DescEn { get; set; }
-        public string? DescJa { get; set; }
-        public string? DescKo { get; set; }
-        public string? DescZh { get; set; }
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
-        public double Radius { get; set; }
-        public string? ImagePath { get; set; }
-        public string? AudioUrl { get; set; }
-    }
+/// <summary>Dạng JSON một POI từ API public (khớp tên thuộc tính server).</summary>
+internal sealed class ApiPoi
+{
+    public int Id { get; set; }
+    public string? NameVi { get; set; }
+    public string? NameEn { get; set; }
+    public string? NameJa { get; set; }
+    public string? NameKo { get; set; }
+    public string? NameZh { get; set; }
+    public string? DescVi { get; set; }
+    public string? DescEn { get; set; }
+    public string? DescJa { get; set; }
+    public string? DescKo { get; set; }
+    public string? DescZh { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public double Radius { get; set; }
+    public string? ImagePath { get; set; }
+    public string? AudioUrl { get; set; }
+    public int Priority { get; set; }
+    public string? MapLink { get; set; }
 }
