@@ -36,6 +36,24 @@
                             <Label Text="{loc:Translate HomeGreeting}" FontSize="30" FontAttributes="Bold" TextColor="White"/>
                             <Label Text="{loc:Translate HomeGreetingSub}" FontSize="13" TextColor="#DBEEFF"/>
                         </VerticalStackLayout>
+                        <Border x:Name="PremiumCard"
+                                StrokeThickness="0"
+                                BackgroundColor="#FFFFFF"
+                                StrokeShape="RoundRectangle 14"
+                                Padding="12,10"
+                                IsVisible="False">
+                            <VerticalStackLayout Spacing="0">
+                                <Button x:Name="BtnUpgradePremiumHome"
+                                        Text="Nâng cấp Premium"
+                                        Clicked="OnUpgradePremiumClicked"
+                                        BackgroundColor="#F59E0B"
+                                        TextColor="White"
+                                        FontAttributes="Bold"
+                                        HeightRequest="38"
+                                        CornerRadius="12"
+                                        IsVisible="False"/>
+                            </VerticalStackLayout>
+                        </Border>
                         <Border StrokeThickness="0" BackgroundColor="#FFFFFF" StrokeShape="RoundRectangle 16" Padding="8,2">
                             <SearchBar Placeholder="{loc:Translate SearchPlaceholder}" TextChanged="OnSearchBarTextChanged"/>
                         </Border>
@@ -43,6 +61,61 @@
                 </Border>
 
                 <VerticalStackLayout Padding="16,14,16,16" Spacing="14">
+                    <ScrollView Orientation="Horizontal">
+                        <HorizontalStackLayout x:Name="CategoryChips" Spacing="8">
+                            <Button x:Name="ChipAll"
+                                    Text="🔥 Nổi bật"
+                                    Clicked="OnCategoryChipClicked"
+                                    CommandParameter="all"
+                                    BackgroundColor="#1A7FD4"
+                                    TextColor="White"
+                                    CornerRadius="18"
+                                    FontSize="12"
+                                    FontAttributes="Bold"
+                                    Padding="14,6"/>
+                            <Button x:Name="ChipFood"
+                                    Text="🍜 Ẩm thực"
+                                    Clicked="OnCategoryChipClicked"
+                                    CommandParameter="quan an"
+                                    BackgroundColor="White"
+                                    TextColor="#445566"
+                                    CornerRadius="18"
+                                    FontSize="12"
+                                    FontAttributes="Bold"
+                                    Padding="14,6"/>
+                            <Button x:Name="ChipDrink"
+                                    Text="☕ Cà phê"
+                                    Clicked="OnCategoryChipClicked"
+                                    CommandParameter="quan nuoc"
+                                    BackgroundColor="White"
+                                    TextColor="#445566"
+                                    CornerRadius="18"
+                                    FontSize="12"
+                                    FontAttributes="Bold"
+                                    Padding="14,6"/>
+                            <Button x:Name="ChipSight"
+                                    Text="🏛️ Di tích"
+                                    Clicked="OnCategoryChipClicked"
+                                    CommandParameter="di tich lich su"
+                                    BackgroundColor="White"
+                                    TextColor="#445566"
+                                    CornerRadius="18"
+                                    FontSize="12"
+                                    FontAttributes="Bold"
+                                    Padding="14,6"/>
+                            <Button x:Name="ChipOther"
+                                    Text="📍 Khác"
+                                    Clicked="OnCategoryChipClicked"
+                                    CommandParameter="dia diem du lich"
+                                    BackgroundColor="White"
+                                    TextColor="#445566"
+                                    CornerRadius="18"
+                                    FontSize="12"
+                                    FontAttributes="Bold"
+                                    Padding="14,6"/>
+                        </HorizontalStackLayout>
+                    </ScrollView>
+
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Text="{loc:Translate HomeFeaturedTitle}" FontSize="24" FontAttributes="Bold" TextColor="#0B1E34"/>
                         <Label Grid.Column="1" x:Name="LblTotalPoi" VerticalOptions="End" TextColor="#0B74B2" FontAttributes="Bold"/>
@@ -61,8 +134,8 @@
                                     <Grid RowDefinitions="140,Auto">
                                         <Grid Grid.Row="0">
                                             <Image Source="{Binding ImageSource}" Aspect="AspectFill"/>
-                                            <Border BackgroundColor="#FFA21A" StrokeThickness="0" StrokeShape="RoundRectangle 12" Padding="8,4" Margin="10,10,0,0" HorizontalOptions="Start" VerticalOptions="Start">
-                                                <Label Text="{loc:Translate HomeHotBadge}" FontSize="11" FontAttributes="Bold" TextColor="White"/>
+                                            <Border BackgroundColor="#E8391D" StrokeThickness="0" StrokeShape="RoundRectangle 12" Padding="8,4" Margin="10,10,0,0" HorizontalOptions="Start" VerticalOptions="Start">
+                                                <Label Text="Hot" FontSize="11" FontAttributes="Bold" TextColor="White"/>
                                             </Border>
                                         </Grid>
                                         <VerticalStackLayout Grid.Row="1" Padding="12,10,12,14" Spacing="4">
@@ -70,6 +143,33 @@
                                             <Label Text="{Binding Summary}" FontSize="12" TextColor="#64748B" MaxLines="2"/>
                                             <Label Text="{loc:Translate ViewDetail}" FontSize="12" TextColor="#0B74B2"/>
                                         </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="📍 Gần bạn" FontSize="21" FontAttributes="Bold" TextColor="#0B1E34"/>
+                        <Label Grid.Column="1" Text="Xem tất cả" VerticalOptions="End" TextColor="#0B74B2" FontAttributes="Bold"/>
+                    </Grid>
+
+                    <CollectionView x:Name="NearbyCollection"
+                                    SelectionMode="Single"
+                                    SelectionChanged="OnPlaceSelected">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border StrokeThickness="0" BackgroundColor="White" StrokeShape="RoundRectangle 14" Padding="12" Margin="0,0,0,8">
+                                    <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="12">
+                                        <Border Grid.Column="0" StrokeThickness="0" BackgroundColor="#E8F4FF" StrokeShape="RoundRectangle 10">
+                                            <Label Text="📍" HorizontalOptions="Center" VerticalOptions="Center" FontSize="26"/>
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="1" Spacing="3">
+                                            <Label Text="{Binding Name}" FontAttributes="Bold" TextColor="#1A2A3A" LineBreakMode="TailTruncation"/>
+                                            <Label Text="{Binding Tag}" FontSize="12" TextColor="#7C8A9A"/>
+                                            <Label Text="{Binding Summary}" FontSize="11" TextColor="#8A97A6" LineBreakMode="TailTruncation" MaxLines="1"/>
+                                        </VerticalStackLayout>
+                                        <Label Grid.Column="2" Text="›" FontSize="20" TextColor="#9AA8B5" VerticalOptions="Center"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

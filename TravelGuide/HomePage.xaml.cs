@@ -11,7 +11,10 @@ public partial class HomePage : ContentPage
 {
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
+    private readonly TouristAuthService _touristAuthService;
     private List<TouristPlace> _allPlaces = new();
+    private string _selectedCategory = "all";
+    private string _currentKeyword = "";
     private readonly List<LangOption> _languageOptions =
     [
         new("vi", "🇻🇳 Tiếng Việt"),
@@ -22,11 +25,12 @@ public partial class HomePage : ContentPage
     ];
 
     /// <summary>Đăng ký lắng nghe đổi ngôn ngữ để reload danh sách và chrome.</summary>
-    public HomePage(DatabaseService dbService, NarrationEngine narrationEngine)
+    public HomePage(DatabaseService dbService, NarrationEngine narrationEngine, TouristAuthService touristAuthService)
     {
         InitializeComponent();
         _dbService = dbService;
         _narrationEngine = narrationEngine;
+        _touristAuthService = touristAuthService;
         UpdateLanguageButton(AppLanguage.Current);
 
         AppLanguage.OnLanguageChanged += _ =>
@@ -36,6 +40,8 @@ public partial class HomePage : ContentPage
                 UpdateLocalizedChrome();
                 await LoadPlacesAsync();
             });
+
+        UpdateCategoryChipState();
     }
 
     /// <summary>Gắn mini player và tải lại danh sách POI.</summary>
@@ -46,6 +52,7 @@ public partial class HomePage : ContentPage
         SyncLocalization(AppLanguage.Current);
         UpdateLanguageButton(AppLanguage.Current);
         UpdateLocalizedChrome();
+        await RefreshPremiumUiAsync();
         _dbService.ClearCache();
         await LoadPlacesAsync();
     }
@@ -81,15 +88,13 @@ public partial class HomePage : ContentPage
     private async Task LoadPlacesAsync()
     {
         _allPlaces = await _dbService.GetPlacesAsync();
-        LblTotalPoi.Text = FormatPlacesCount(_allPlaces.Count);
-        PlacesCollection.ItemsSource = null;  // ← force refresh
-        PlacesCollection.ItemsSource = _allPlaces;
+        ApplyFilters();
     }
 
     /// <summary>Cập nhật nhãn số địa điểm khi đổi ngôn ngữ (tiêu đề hero dùng ResX trong XAML).</summary>
     private void UpdateLocalizedChrome()
     {
-        LblTotalPoi.Text = FormatPlacesCount(_allPlaces.Count);
+        ApplyFilters();
     }
 
     private void SyncLocalization(string code)
@@ -116,21 +121,37 @@ public partial class HomePage : ContentPage
         _ => $"{n} địa điểm"
     };
 
+    private async Task RefreshPremiumUiAsync()
+    {
+        if (PremiumCard == null || BtnUpgradePremiumHome == null) return;
+
+        var me = await _touristAuthService.GetMeAsync();
+        if (!me.Ok)
+        {
+            PremiumCard.IsVisible = false;
+            return;
+        }
+
+        var isPremium = string.Equals(me.AccountTier, "premium", StringComparison.OrdinalIgnoreCase);
+        PremiumCard.IsVisible = !isPremium;
+        BtnUpgradePremiumHome.IsVisible = !isPremium;
+    }
+
     /// <summary>Lọc danh sách theo từ khóa (tên/mô tả đa ngôn ngữ).</summary>
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
-        var keyword = (e.NewTextValue ?? "").Trim().ToLower();
-        PlacesCollection.ItemsSource = null;
-        PlacesCollection.ItemsSource = string.IsNullOrEmpty(keyword)
-            ? _allPlaces
-            : _allPlaces.Where(p =>
-                p.NameVi.ToLower().Contains(keyword) ||
-                p.NameEn.ToLower().Contains(keyword) ||
-                p.DescVi.ToLower().Contains(keyword) ||
-                (p.NameJa != null && p.NameJa.ToLower().Contains(keyword)) ||
-                (p.NameKo != null && p.NameKo.ToLower().Contains(keyword)) ||
-                (p.NameZh != null && p.NameZh.ToLower().Contains(keyword)))
-              .ToList();
+        _currentKeyword = (e.NewTextValue ?? "").Trim().ToLowerInvariant();
+        ApplyFilters();
+    }
+
+    private void OnCategoryChipClicked(object sender, EventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var category = (btn.CommandParameter as string)?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(category)) return;
+        _selectedCategory = category;
+        UpdateCategoryChipState();
+        ApplyFilters();
     }
 
     /// <summary>Mở <see cref="PlaceDetailPage"/> với POI được chọn.</summary>
@@ -186,6 +207,72 @@ public partial class HomePage : ContentPage
         catch (Exception ex)
         {
             await DisplayAlert("Navigation error", $"Cannot open scan history: {ex.Message}", "OK");
+        }
+    }
+
+    private async void OnUpgradePremiumClicked(object sender, EventArgs e)
+    {
+        var fee = TouristPricing.PremiumActivationVnd;
+        var confirm = await DisplayAlert(
+            "Nâng cấp Premium",
+            $"Phí nâng cấp (mô phỏng): {fee:N0} VND.\n\nXác nhận đã thanh toán để nâng cấp tài khoản?",
+            "Xác nhận",
+            "Huỷ");
+        if (!confirm) return;
+
+        var (ok, message) = await _touristAuthService.RegisterPremiumAsync(fee);
+        await DisplayAlert(ok ? "Thành công" : "Thất bại", message, "OK");
+        await RefreshPremiumUiAsync();
+    }
+
+    private void ApplyFilters()
+    {
+        IEnumerable<TouristPlace> filtered = _allPlaces;
+
+        if (_selectedCategory != "all")
+        {
+            filtered = filtered.Where(p =>
+                string.Equals((p.Tag ?? "").Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentKeyword))
+        {
+            var keyword = _currentKeyword;
+            filtered = filtered.Where(p =>
+                p.NameVi.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                p.NameEn.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                p.DescVi.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (p.NameJa ?? "").Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (p.NameKo ?? "").Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                (p.NameZh ?? "").Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var list = filtered.ToList();
+        LblTotalPoi.Text = FormatPlacesCount(list.Count);
+
+        PlacesCollection.ItemsSource = null;
+        PlacesCollection.ItemsSource = list;
+
+        NearbyCollection.ItemsSource = null;
+        NearbyCollection.ItemsSource = list.Take(4).ToList();
+    }
+
+    private void UpdateCategoryChipState()
+    {
+        var chips = new Dictionary<string, Button>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["all"] = ChipAll,
+            ["quan an"] = ChipFood,
+            ["quan nuoc"] = ChipDrink,
+            ["di tich lich su"] = ChipSight,
+            ["dia diem du lich"] = ChipOther
+        };
+
+        foreach (var kv in chips)
+        {
+            var isActive = string.Equals(kv.Key, _selectedCategory, StringComparison.OrdinalIgnoreCase);
+            kv.Value.BackgroundColor = isActive ? Color.FromArgb("#1A7FD4") : Colors.White;
+            kv.Value.TextColor = isActive ? Colors.White : Color.FromArgb("#445566");
         }
     }
 
