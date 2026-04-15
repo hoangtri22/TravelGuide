@@ -4,6 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <WebRoot>WEB</WebRoot>
     <!-- Tránh khóa TravelGuide.AdminWeb.exe khi process đang chạy (build lại vẫn tạo DLL). -->
     <UseAppHost>false</UseAppHost>
   </PropertyGroup>

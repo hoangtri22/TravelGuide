@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:TravelGuide"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.QrScanHistoryPage"
              BackgroundColor="#F3F6FB"
              Title="{loc:Translate ScanHistoryTitle}">
 
-    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="12">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="16" RowSpacing="12">
         <Label x:Name="HintLabel"
                Text="{loc:Translate ScanHistoryLoginRequired}"
                IsVisible="False"
@@ -37,5 +38,7 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+
+        <local:BottomNavBarView Grid.Row="2"/>
     </Grid>
 </ContentPage>

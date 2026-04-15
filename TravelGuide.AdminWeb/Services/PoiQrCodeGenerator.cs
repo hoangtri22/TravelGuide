@@ -19,7 +19,7 @@ public sealed class PoiQrOptions
     public string? DataUrlTemplate { get; set; }
 }
 
-/// <summary>Tải ảnh QR từ dịch vụ công khai và lưu dưới wwwroot/qrcodes, hoặc lưu URL từ xa nếu lỗi.</summary>
+/// <summary>Tải ảnh QR từ dịch vụ công khai và lưu dưới WEB/qrcodes, hoặc lưu URL từ xa nếu lỗi.</summary>
 public static class PoiQrCodeGenerator
 {
     public static string BuildPayload(int poiId, PoiDto poi, string? dataUrlTemplate)

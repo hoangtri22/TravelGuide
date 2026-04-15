@@ -11,6 +11,7 @@ using TravelGuide.AdminWeb.Services;
 // =============================================================================
 
 var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.UseWebRoot("WEB");
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
