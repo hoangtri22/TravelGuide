@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- Trang chi tiết POI: ảnh, tên, mô tả, phát thuyết minh, link bản đồ (nếu CMS có MapLink), mini player -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:TravelGuide"
@@ -6,25 +7,185 @@
              x:Class="TravelGuide.PlaceDetailPage"
              Title="{loc:Translate DetailTitle}">
 
-    <Grid RowDefinitions="*, Auto">
+    <Grid RowDefinitions="*, Auto, Auto" BackgroundColor="#F3F6FB">
 
         <ScrollView Grid.Row="0">
-            <VerticalStackLayout Spacing="20" Padding="0,0,0,20">
-                <Image x:Name="ImgPlace" HeightRequest="300" Aspect="AspectFill"/>
-                <VerticalStackLayout Padding="20" Spacing="15">
-                    <Label x:Name="LblName"
-                           FontSize="26" FontAttributes="Bold" TextColor="#1E88E5"/>
-                    <Button Text="{loc:Translate BtnSpeak}"
-                            BackgroundColor="#4CAF50" TextColor="White"
-                            CornerRadius="20" Clicked="OnSpeakClicked"/>
-                    <BoxView HeightRequest="1" Color="#EEEEEE"/>
-                    <Label x:Name="LblDescription"
-                           FontSize="16" LineHeight="1.5" TextColor="#333333"/>
-                </VerticalStackLayout>
+            <VerticalStackLayout Spacing="0" Padding="0,0,0,20">
+                <Image x:Name="ImgPlace" HeightRequest="230" Aspect="AspectFill"/>
+
+                <Border BackgroundColor="White"
+                        StrokeThickness="0"
+                        StrokeShape="RoundRectangle 18,18,0,0"
+                        Margin="0,-14,0,0"
+                        Padding="16,14,16,16">
+                    <VerticalStackLayout Spacing="12">
+                        <Label x:Name="LblName"
+                               FontSize="38"
+                               FontAttributes="Bold"
+                               TextColor="#1A2A3A"
+                               LineBreakMode="TailTruncation"/>
+
+                        <Label x:Name="LblSubTitle"
+                               FontSize="16"
+                               TextColor="#5B6773"/>
+
+                        <HorizontalStackLayout Spacing="8">
+                            <Label x:Name="LblRating"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="#1A2A3A"/>
+                            <Label x:Name="LblReviewCount"
+                                   FontSize="15"
+                                   TextColor="#5B6773"/>
+                        </HorizontalStackLayout>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <Button Grid.Column="0"
+                                    Text="{loc:Translate BtnSpeak}"
+                                    BackgroundColor="#0B74B2"
+                                    TextColor="White"
+                                    CornerRadius="12"
+                                    Clicked="OnSpeakClicked"/>
+                            <Button Grid.Column="1"
+                                    x:Name="BtnMapLink"
+                                    Text="🗺 Chỉ đường"
+                                    BackgroundColor="#E8F4FC"
+                                    TextColor="#0B74B2"
+                                    CornerRadius="12"
+                                    IsVisible="False"
+                                    Clicked="OnMapLinkClicked"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="0">
+                            <Button x:Name="TabOverview"
+                                    Grid.Column="0"
+                                    Text="Overview"
+                                    Clicked="OnTabClicked"
+                                    CommandParameter="overview"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#0B74B2"
+                                    FontAttributes="Bold"/>
+                            <Button x:Name="TabReviews"
+                                    Grid.Column="1"
+                                    Text="Reviews"
+                                    Clicked="OnTabClicked"
+                                    CommandParameter="reviews"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#6B7280"/>
+                            <Button x:Name="TabAbout"
+                                    Grid.Column="2"
+                                    Text="About"
+                                    Clicked="OnTabClicked"
+                                    CommandParameter="about"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#6B7280"/>
+                            <Button x:Name="TabQr"
+                                    Grid.Column="3"
+                                    Text="QR"
+                                    Clicked="OnTabClicked"
+                                    CommandParameter="qr"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#6B7280"/>
+                        </Grid>
+
+                        <BoxView x:Name="TabIndicator" HeightRequest="2" Color="#0B74B2" HorizontalOptions="Fill"/>
+
+                        <VerticalStackLayout x:Name="SectionOverview" Spacing="10">
+                            <Label x:Name="LblDescription"
+                                   FontSize="15"
+                                   LineHeight="1.45"
+                                   TextColor="#374151"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="SectionReviews" IsVisible="False" Spacing="10">
+                            <Label x:Name="LblReviewSummary"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="#111827"/>
+                            <Label x:Name="LblReviewKeywords"
+                                   FontSize="13"
+                                   TextColor="#6B7280"/>
+                            <Border BackgroundColor="#F8FAFC"
+                                    Stroke="#E5E7EB"
+                                    StrokeThickness="1"
+                                    StrokeShape="RoundRectangle 12"
+                                    Padding="12">
+                                <VerticalStackLayout Spacing="8">
+                                    <Label Text="Write a review" FontAttributes="Bold" TextColor="#111827"/>
+                                    <Picker x:Name="ReviewRatingPicker"
+                                            Title="Chọn số sao"
+                                            SelectedIndex="0">
+                                        <Picker.Items>
+                                            <x:String>5 ★</x:String>
+                                            <x:String>4 ★</x:String>
+                                            <x:String>3 ★</x:String>
+                                            <x:String>2 ★</x:String>
+                                            <x:String>1 ★</x:String>
+                                        </Picker.Items>
+                                    </Picker>
+                                    <Editor x:Name="ReviewContentEditor"
+                                            AutoSize="TextChanges"
+                                            Placeholder="Chia sẻ trải nghiệm của bạn..."
+                                            MaxLength="420"/>
+                                    <Button Text="Gửi đánh giá"
+                                            CornerRadius="10"
+                                            BackgroundColor="#0B74B2"
+                                            TextColor="White"
+                                            Clicked="OnSubmitReviewClicked"/>
+                                </VerticalStackLayout>
+                            </Border>
+                            <CollectionView x:Name="ReviewsCollection" SelectionMode="None">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BackgroundColor="#F8FAFC"
+                                                Stroke="#E5E7EB"
+                                                StrokeThickness="1"
+                                                StrokeShape="RoundRectangle 10"
+                                                Padding="10"
+                                                Margin="0,0,0,8">
+                                            <VerticalStackLayout Spacing="5">
+                                                <Label Text="{Binding Author}" FontAttributes="Bold" TextColor="#111827"/>
+                                                <Label Text="{Binding RatingText}" TextColor="#F59E0B"/>
+                                                <Label Text="{Binding TimeText}" FontSize="12" TextColor="#6B7280"/>
+                                                <Label Text="{Binding Content}" FontSize="13" TextColor="#374151"/>
+                                                <Label Text="{Binding AdminReplyText}" FontSize="12" TextColor="#1D4ED8"/>
+                                            </VerticalStackLayout>
+                                        </Border>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="SectionAbout" IsVisible="False" Spacing="9">
+                            <Label x:Name="LblAboutTag" FontSize="14" TextColor="#374151"/>
+                            <Label x:Name="LblAboutPrice" FontSize="14" TextColor="#374151"/>
+                            <Label x:Name="LblAboutCoords" FontSize="14" TextColor="#374151"/>
+                            <Label x:Name="LblAboutMapLink" FontSize="14" TextColor="#0B74B2" LineBreakMode="TailTruncation"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="SectionQr" IsVisible="False" Spacing="10">
+                            <Image x:Name="ImgQr"
+                                   HeightRequest="180"
+                                   WidthRequest="180"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   Aspect="AspectFit"/>
+                            <Button Text="Quét QR để nhận mã khuyến mãi"
+                                    BackgroundColor="#E8F4FC"
+                                    TextColor="#0B74B2"
+                                    BorderColor="#9BD0F5"
+                                    BorderWidth="1"
+                                    CornerRadius="12"
+                                    HeightRequest="42"
+                                    FontAttributes="Bold"
+                                    Clicked="OnOpenQrScannerClicked"/>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
             </VerticalStackLayout>
         </ScrollView>
 
         <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="1"/>
-
+        <local:BottomNavBarView Grid.Row="2"/>
     </Grid>
 </ContentPage>

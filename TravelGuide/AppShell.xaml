@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!-- Shell: màn hình đầu TouristLoginPage -->
 <Shell
     x:Class="TravelGuide.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -8,7 +9,7 @@
     Title="{x:Static local:AppResources.AppTitle}">
 
     <ShellContent
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
+        ContentTemplate="{DataTemplate local:TouristLoginPage}"
+        Route="TouristLoginPage" />
 
 </Shell>

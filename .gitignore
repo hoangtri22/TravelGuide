@@ -1,4 +1,7 @@
+.tmp-*/
+~$*
 bin/
 obj/
 .vs/
 *.user
+TravelGuide/Resources/Raw/mapbox_token.secret.txt

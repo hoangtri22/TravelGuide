@@ -1,12 +1,16 @@
-﻿using System.Globalization;
+using System.Globalization;
 using LocalizationResourceManager.Maui;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Màn hình cài đặt ban đầu: chọn ngôn ngữ, tiền tệ, đồng bộ culture với ResX và chuyển tới <see cref="HomePage"/>.
+/// </summary>
 public partial class MainPage : ContentPage
 {
     private readonly DatabaseService _dbService;
-    private readonly TranslationService _translationService;
+    private readonly TouristAuthService _touristAuthService;
+    private bool _isTouristLoggedIn;
 
     private string _selectedLang = "vi";
 
@@ -21,18 +25,27 @@ public partial class MainPage : ContentPage
         { "zh", "🇨🇳 中文" },
     };
 
-    public MainPage(DatabaseService dbService, TranslationService translationService)
+    /// <summary>Khởi tạo UI, nạp danh sách tiền tệ và cài đặt đã lưu.</summary>
+    public MainPage(DatabaseService dbService, TouristAuthService touristAuthService)
     {
         InitializeComponent();
         _dbService = dbService;
-        _translationService = translationService;
+        _touristAuthService = touristAuthService;
 
         LoadCurrencies();
         LoadSavedSettings();
 
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
+        _ = RefreshTouristAuthStatusAsync();
     }
 
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        await RefreshTouristAuthStatusAsync();
+    }
+
+    /// <summary>Lấy danh sách mã tiền tệ từ <see cref="CultureInfo"/> (fallback cố định nếu lỗi).</summary>
     private void LoadCurrencies()
     {
         try
@@ -53,6 +66,7 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>Đọc ngôn ngữ và chuỗi tiền tệ từ Preferences; cập nhật highlight nút ngôn ngữ.</summary>
     private void LoadSavedSettings()
     {
         _selectedLang = Preferences.Get("app_language", "vi");
@@ -60,6 +74,7 @@ public partial class MainPage : ContentPage
         HighlightSelectedLang(_selectedLang);
     }
 
+    /// <summary>Đổi màu border/label các nút ngôn ngữ theo mã đang chọn.</summary>
     private void HighlightSelectedLang(string code)
     {
         var allCodes = new[] { "vi", "en", "ja", "ko", "zh" };
@@ -82,6 +97,7 @@ public partial class MainPage : ContentPage
             LblSelectedLang.Text = name;
     }
 
+    /// <summary>Tap cờ ngôn ngữ: lưu Preferences, gọi <see cref="AppLanguage.SetLanguage"/>, sync ResX.</summary>
     private void OnLanguageTapped(object sender, TappedEventArgs e)
     {
         if (e.Parameter is not string code) return;
@@ -94,10 +110,9 @@ public partial class MainPage : ContentPage
         AppLanguage.SetLanguage(code);
         SyncLocalization(code);
 
-        if (code is "en" or "ja" or "ko" or "zh")
-            _ = TranslateIfNeededAsync(code);
     }
 
+    /// <summary>Lọc danh sách tiền tệ theo từ khóa (tối đa 20 dòng).</summary>
     private void OnCurrencySearch(object sender, TextChangedEventArgs e)
     {
         var keyword = (e.NewTextValue ?? "").ToLower();
@@ -113,6 +128,7 @@ public partial class MainPage : ContentPage
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = result.Any();
     }
 
+    /// <summary>Chọn một dòng tiền tệ từ gợi ý và lưu Preferences.</summary>
     private void OnCurrencySelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is string selected)
@@ -124,73 +140,25 @@ public partial class MainPage : ContentPage
         if (sender is CollectionView cv) cv.SelectedItem = null;
     }
 
+    /// <summary>Áp ngôn ngữ, xóa cache POI, điều hướng tới dashboard <see cref="HomePage"/>.</summary>
     private async void GoHome(object sender, EventArgs e)
     {
-        AppLanguage.SetLanguage(_selectedLang);
-
-        // Dịch theo ngôn ngữ đang chọn (bao gồm cả EN)
-        if (_selectedLang is "en" or "ja" or "ko" or "zh")
+        if (!_isTouristLoggedIn)
         {
-            bool done = await _dbService.IsTranslatedAsync(_selectedLang);
-            if (!done)
-                await ShowTranslatingAsync(_selectedLang);
+            await DisplayAlert("Thông báo", "Vui lòng đăng nhập du khách trước khi tiếp tục.", "OK");
+            return;
         }
+
+        AppLanguage.SetLanguage(_selectedLang);
+        _dbService.ClearCache();
+        await _dbService.GetPlacesAsync();
 
         if (Handler?.MauiContext == null) return;
         var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
         await Navigation.PushAsync(homePage);
     }
 
-    private async Task ShowTranslatingAsync(string lang)
-    {
-        try
-        {
-            if (TranslatingBar != null) TranslatingBar.IsVisible = true;
-            if (ContinueBtn != null)
-            {
-                ContinueBtn.IsEnabled = false;
-                ContinueBtn.Opacity = 0.6;
-            }
-
-            var places = await _dbService.GetPlacesAsync();
-            var progress = new Progress<(int current, int total)>(p =>
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    if (LblTranslating != null)
-                        LblTranslating.Text = $"{p.current}/{p.total}...";
-                });
-            });
-
-            await _translationService.TranslateAllAsync(places, lang, progress);
-        }
-        finally
-        {
-            if (TranslatingBar != null) TranslatingBar.IsVisible = false;
-            if (ContinueBtn != null)
-            {
-                ContinueBtn.IsEnabled = true;
-                ContinueBtn.Opacity = 1;
-            }
-        }
-    }
-
-    private async Task TranslateIfNeededAsync(string lang)
-    {
-        try
-        {
-            bool done = await _dbService.IsTranslatedAsync(lang);
-            if (done) return;
-            var places = await _dbService.GetPlacesAsync();
-            await _translationService.TranslateAllAsync(places, lang);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[MainPage] TranslateIfNeeded error: {ex.Message}");
-        }
-    }
-
+    /// <summary>Cập nhật <see cref="ILocalizationResourceManager.CurrentCulture"/> theo mã ngôn ngữ.</summary>
     private void SyncLocalization(string code)
     {
         try
@@ -201,5 +169,33 @@ public partial class MainPage : ContentPage
                 locMgr.CurrentCulture = new CultureInfo(code);
         }
         catch { }
+    }
+
+    private async Task RefreshTouristAuthStatusAsync()
+    {
+        var me = await _touristAuthService.GetMeAsync();
+        if (LblTouristAuthStatus == null) return;
+        _isTouristLoggedIn = me.Ok;
+        LblTouristAuthStatus.Text = me.Ok
+            ? $"Đã đăng nhập: {me.Username} ({me.AccountTier})"
+            : "Chưa đăng nhập";
+        if (ContinueBtn != null)
+            ContinueBtn.IsEnabled = _isTouristLoggedIn;
+    }
+
+    private async void OnTouristLoginClicked(object sender, EventArgs e)
+    {
+        if (Handler?.MauiContext == null) return;
+        var page = Handler.MauiContext.Services.GetRequiredService<TouristLoginPage>();
+        await Navigation.PushAsync(page);
+        await RefreshTouristAuthStatusAsync();
+        if (_isTouristLoggedIn)
+            GoHome(this, EventArgs.Empty);
+    }
+
+    private async void OnTouristLogoutClicked(object sender, EventArgs e)
+    {
+        _touristAuthService.Logout();
+        await RefreshTouristAuthStatusAsync();
     }
 }

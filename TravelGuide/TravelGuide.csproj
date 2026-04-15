@@ -29,15 +29,17 @@
 
 	<ItemGroup>
 		<PackageReference Include="LocalizationResourceManager.Maui" Version="1.2.2" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Maps" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Maui.Maps" Version="9.0.40" />
 
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+
+		<PackageReference Include="ZXing.Net.Maui.Controls" Version="0.6.0" />
 
 		<PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
 	</ItemGroup>

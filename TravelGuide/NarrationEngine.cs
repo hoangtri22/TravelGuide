@@ -1,37 +1,79 @@
-﻿using Microsoft.Maui.Media;
+﻿using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Media;
 using TravelGuide.Models;
 
 namespace TravelGuide;
 
+/// <summary>
+/// Hàng đợi thuyết minh: luôn dùng TTS theo <see cref="AppLanguage.Current"/> (tên/mô tả POI đã theo ngôn ngữ).
+/// </summary>
 public class NarrationEngine
 {
-    private bool _isSpeaking = false;
+    private Task? _processTask;
+    private bool _isSpeaking;
     private CancellationTokenSource? _cts;
     private IEnumerable<Locale>? _cachedLocales;
     private readonly Queue<TouristPlace> _queue = new();
 
     public bool IsSpeaking => _isSpeaking;
+
     public TouristPlace? CurrentPlace { get; private set; }
 
     public event Action<TouristPlace>? OnStartedPlaying;
     public event Action? OnStoppedPlaying;
 
-    public async Task SpeakAsync(TouristPlace place)
+    public Task SpeakAsync(TouristPlace place)
     {
         _queue.Enqueue(place);
-        if (!_isSpeaking)
-            await ProcessQueueAsync();
+        if (_processTask is null || _processTask.IsCompleted)
+            _processTask = ProcessQueueAsync();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Dừng mọi bài đang phát, xóa hàng đợi, chỉ phát đúng một POI (màn chi tiết / map / audio).</summary>
+    public async Task SpeakExclusiveAsync(TouristPlace place)
+    {
+        _cts?.Cancel();
+        _queue.Clear();
+        if (_processTask != null)
+        {
+            try
+            {
+                await _processTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                /* hủy / lỗi phiên trước */
+            }
+
+            _processTask = null;
+        }
+
+        _queue.Enqueue(place);
+        _processTask = ProcessQueueAsync();
+        await _processTask.ConfigureAwait(false);
     }
 
     public async Task StopAsync()
     {
         _cts?.Cancel();
         _queue.Clear();
-        _isSpeaking = false;
+        if (_processTask != null)
+        {
+            try
+            {
+                await _processTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            _processTask = null;
+        }
+
         CurrentPlace = null;
         OnStoppedPlaying?.Invoke();
-        await TextToSpeech.Default.SpeakAsync("",
-            new SpeechOptions { Volume = 0 });
     }
 
     public void SkipNext() => _cts?.Cancel();
@@ -40,41 +82,47 @@ public class NarrationEngine
     {
         _isSpeaking = true;
 
-        // Reset cache locales mỗi lần để lấy đúng locale theo ngôn ngữ hiện tại
-        _cachedLocales = await TextToSpeech.Default.GetLocalesAsync();
-
         try
         {
+            try
+            {
+                var localeTask = TextToSpeech.Default.GetLocalesAsync();
+                var completed = await Task.WhenAny(localeTask, Task.Delay(TimeSpan.FromSeconds(2)));
+                _cachedLocales = completed == localeTask
+                    ? await localeTask
+                    : Array.Empty<Locale>();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[TTS] GetLocales failed: {ex.Message}");
+                _cachedLocales = Array.Empty<Locale>();
+            }
+
             while (_queue.Count > 0)
             {
                 _cts = new CancellationTokenSource();
-
                 var place = _queue.Dequeue();
                 CurrentPlace = place;
-
                 OnStartedPlaying?.Invoke(place);
-
-                var text = BuildNarrationText(place);
-                var opts = BuildSpeechOptions(_cachedLocales);
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"[TTS] Speaking [{AppLanguage.Current}]: {place.Name}");
-                System.Diagnostics.Debug.WriteLine(
-                    $"[TTS] Text: {text}");
-                System.Diagnostics.Debug.WriteLine(
-                    $"[TTS] Locale: {opts.Locale?.Language}-{opts.Locale?.Country}");
 
                 try
                 {
-                    await TextToSpeech.Default.SpeakAsync(text, opts, _cts.Token);
+                    var text = BuildNarrationText(place);
+                    var opts = BuildSpeechOptions(_cachedLocales!);
+                    await RunSpeechOnMainThreadAsync(() =>
+                        TextToSpeech.Default.SpeakAsync(text, opts, _cts.Token)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Skip — tiếp tục item tiếp theo nếu còn
+                    // bỏ qua / dừng
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Narration] {place.Name}: {ex.Message}");
                 }
 
                 if (_queue.Count > 0)
-                    await Task.Delay(600).ContinueWith(_ => { });
+                    await Task.Delay(600).ConfigureAwait(false);
             }
         }
         finally
@@ -86,15 +134,7 @@ public class NarrationEngine
     }
 
     private static string BuildNarrationText(TouristPlace place) =>
-        AppLanguage.Current switch
-        {
-            "vi" => $"Bạn đang đến gần {place.Name}. {place.Description}",
-            "en" => $"You are approaching {place.Name}. {place.Description}",
-            "ja" => $"{place.Name}に近づいています。{place.Description}",
-            "ko" => $"{place.Name}에 가까워지고 있습니다. {place.Description}",
-            "zh" => $"您正在接近{place.Name}。{place.Description}",
-            _ => $"{place.Name}. {place.Description}"
-        };
+        string.IsNullOrWhiteSpace(place.Description) ? place.Name : place.Description;
 
     private static SpeechOptions BuildSpeechOptions(IEnumerable<Locale> available)
     {
@@ -105,31 +145,25 @@ public class NarrationEngine
             "ja" => ("ja", "JP"),
             "ko" => ("ko", "KR"),
             "zh" => ("zh", "CN"),
-            _ => ("vi", "VN") // FIX: fallback về VI thay vì EN
+            _ => ("vi", "VN")
         };
 
-        var list = available.ToList();
-
-        // DEBUG: Log tất cả locales có sẵn trên thiết bị — xem trong Output window
-        System.Diagnostics.Debug.WriteLine(
-            $"[TTS] Available locales ({list.Count}): " +
-            string.Join(", ", list.Select(l => $"{l.Language}-{l.Country}")));
-
-        // Tìm locale khớp cả language lẫn country
+        var list = (available ?? Array.Empty<Locale>()).ToList();
         var matched =
             list.FirstOrDefault(l =>
                 string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(l.Country, country, StringComparison.OrdinalIgnoreCase))
-            // Fallback: chỉ khớp language (ví dụ en-GB khi không có en-US)
             ?? list.FirstOrDefault(l =>
                 string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase));
-        // FIX: Bỏ fallback EN-US cuối — nếu không có locale nào khớp thì
-        // trả null để TTS tự chọn system default, tránh phát sai ngôn ngữ
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[TTS] Matched locale: {matched?.Language}-{matched?.Country} " +
-            $"(requested: {lang}-{country})");
+        return new SpeechOptions { Volume = 1f, Pitch = 1f, Locale = matched };
+    }
 
-        return new SpeechOptions { Volume = 1.0f, Pitch = 1.0f, Locale = matched };
+    /// <summary>Android: TTS thường cần main thread; nếu không có thể im lặng.</summary>
+    private static Task RunSpeechOnMainThreadAsync(Func<Task> speak)
+    {
+        if (MainThread.IsMainThread)
+            return speak();
+        return MainThread.InvokeOnMainThreadAsync(speak);
     }
 }

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <WebRoot>WEB</WebRoot>
+    <!-- Loại trừ thư mục build tạm tự tạo khỏi default glob Compile/Content. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
+    <!-- Tránh khóa TravelGuide.AdminWeb.exe khi process đang chạy (build lại vẫn tạo DLL). -->
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\TravelGuide\Resources\Raw\extra_places.json" Link="extra_places.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,16 +1,14 @@
 ﻿using ObjCRuntime;
 using UIKit;
 
-namespace TravelGuide
+namespace TravelGuide;
+
+/// <summary>Entry Mac Catalyst — <see cref="UIApplication.Main"/> với <see cref="AppDelegate"/>.</summary>
+public class Program
 {
-    public class Program
+    /// <summary>Điểm vào native.</summary>
+    static void Main(string[] args)
     {
-        // This is the main entry point of the application.
-        static void Main(string[] args)
-        {
-            // if you want to use a different Application Delegate class from "AppDelegate"
-            // you can specify it here.
-            UIApplication.Main(args, null, typeof(AppDelegate));
-        }
+        UIApplication.Main(args, null, typeof(AppDelegate));
     }
 }

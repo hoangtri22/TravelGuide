@@ -79,6 +79,9 @@
 	<data name="AppTagline">
 		<value>Explore Saigon with us</value>
 	</data>
+	<data name="HomeHeroTitle">
+		<value>Home</value>
+	</data>
 	<data name="SearchPlaceholder">
 		<value>Search places...</value>
 	</data>
@@ -96,6 +99,54 @@
 	</data>
 	<data name="ViewDetail">
 		<value>View details ></value>
+	</data>
+	<data name="HomeGreeting">
+		<value>Hello, Traveler! 👋</value>
+	</data>
+	<data name="HomeGreetingSub">
+		<value>📍 Ha Noi, Viet Nam • Many nearby places for you today</value>
+	</data>
+	<data name="HomeFeaturedTitle">
+		<value>🔥 Featured places</value>
+	</data>
+	<data name="HomeHotBadge">
+		<value>🔥 Hot</value>
+	</data>
+	<data name="HomeMapSectionTitle">
+		<value>🗺️ Travel map</value>
+	</data>
+	<data name="HomeExpand">
+		<value>Expand →</value>
+	</data>
+	<data name="HomeNearbyTitle">
+		<value>📍 Places near you</value>
+	</data>
+	<data name="HomeFullScreen">
+		<value>Fullscreen</value>
+	</data>
+	<data name="NavTabAudio">
+		<value>Audio</value>
+	</data>
+	<data name="NavTabSaved">
+		<value>Saved</value>
+	</data>
+	<data name="NavTabProfile">
+		<value>Profile</value>
+	</data>
+	<data name="NavTabScanHistory">
+		<value>Scan history</value>
+	</data>
+	<data name="ScanHistoryTitle">
+		<value>Scan history</value>
+	</data>
+	<data name="ScanHistoryEmpty">
+		<value>No POIs opened via QR yet. Scan a code to see it here.</value>
+	</data>
+	<data name="ScanHistoryLoginRequired">
+		<value>Sign in as a tourist to see your scan history.</value>
+	</data>
+	<data name="ScanHistoryPlaceMissing">
+		<value>This place is no longer in the public list.</value>
 	</data>
 
 	<!-- MapPage -->

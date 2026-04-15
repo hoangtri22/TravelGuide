@@ -1,6 +1,7 @@
 # 📍 Travel Guide — Ứng dụng khám phá phố ẩm thực Vĩnh Khánh
 
 > **Đồ án môn học: Ngôn ngữ lập trình C# (841423)**
+
 > Lớp: DCT123C2
 
 
@@ -14,113 +15,142 @@
 
 ## 📖 Giới thiệu
 
-**Travel Guide** là ứng dụng di động được xây dựng bằng **.NET MAUI Native**, hỗ trợ du khách khám phá **Phố Ẩm Thực Vĩnh Khánh (Quận 4, TP. HCM)** thông qua bản đồ tương tác, thuyết minh tự động bằng giọng nói và hệ thống đa ngôn ngữ.
+**Travel Guide** là ứng dụng di động **.NET MAUI Native** phục vụ du khách khám phá **Phố Ẩm Thực Vĩnh Khánh (Quận 4, TP. HCM)**: bản đồ **Mapbox GL** trong WebView, thuyết minh (TTS và/hoặc audio URL), geofence GPS, quét QR, lịch sử quét và giao diện đa ngôn ngữ.
+
+Hệ thống gồm 3 phần chạy cùng nhau:
+- **TravelGuide** (MAUI mobile app)
+- **TravelGuide.API** (ASP.NET Core Minimal API cho du khách: auth, premium, unlock POI, scan-log, public POI)
+- **TravelGuide.AdminWeb** (ASP.NET Core Minimal API + SPA tĩnh trong thư mục `WEB`: `index.html`, `app.js`, `styles.css`)
+
+Admin/owner đăng nhập và quản trị dữ liệu trên **SQL Server**: chỉnh sửa POI (tên, mô tả, tọa độ, ảnh, link bản đồ ngoài, URL audio, mức ưu tiên geofence), duyệt/từ chối bài đăng, sửa bản dịch, quản lý user (gồm **khóa/mở khóa** đăng nhập) và **xuất `extra_places.json`** để đồng bộ với app.
 
 
 ## ✨ Tính năng chính
 
-### 🗺️ Bản đồ tương tác (Mapbox GL JS)
-- Hiển thị các POI (Point of Interest) trực quan trên nền bản đồ Mapbox
-- Phân loại màu sắc: đỏ cho địa điểm nhỏ, xanh cho khu vực lớn
-- Tự động highlight địa điểm gần nhất khi người dùng đến gần
-- Popup thông tin địa điểm khi nhấn vào marker
+### 🗺️ Bản đồ tương tác (WebView + Mapbox GL)
+- Bản đồ vector **Mapbox GL JS** (style streets)
+- Token Mapbox: `Preferences`, biến môi trường `MAPBOX_ACCESS_TOKEN`, hoặc file local `Resources/Raw/mapbox_token.secret.txt` (
+- Hiển thị POI trên bản đồ, màu marker theo bán kính; popup và nút định vị
+- Highlight địa điểm khi vào vùng geofence; đồng bộ vị trí người dùng
 
-### 🎙️ Thuyết minh tự động (Text-to-Speech)
-- Sử dụng `Microsoft.Maui.Media.TextToSpeech` để tự động đọc thông tin địa danh
-- Hỗ trợ hàng đợi phát (Queue) — phát tuần tự nhiều địa điểm
-- Chức năng Skip, Stop, và Shuffle
-- Giọng đọc tự động chọn đúng theo ngôn ngữ hiện tại (vi/en/ja/ko/zh)
+### 🎙️ Thuyết minh tự động (TTS + Audio URL)
+- Nếu POI có **Audio URL** hợp lệ → phát qua **Plugin.Maui.Audio**; lỗi hoặc không có URL → **Text-to-Speech** (`Microsoft.Maui.Media.TextToSpeech`)
+- Hàng đợi phát, Skip, Stop, Shuffle (màn **Âm thanh**)
+- Giọng TTS theo ngôn ngữ UI (vi/en/ja/ko/zh)
 
 ### 📡 Geofence Engine
-- Theo dõi vị trí GPS liên tục qua `GpsBackgroundService`
-- Tự động phát thuyết minh khi người dùng bước vào vùng bán kính của POI
-- Cơ chế **Debounce** (3 giây) tránh kích hoạt khi chỉ đi ngang qua
-- Cơ chế **Cooldown** (60 giây) tránh phát lặp lại liên tục
-- Gửi sự kiện `OnPoiEntered`, `OnPoiTriggered`, `OnPoiExited` ra UI
+- Theo dõi GPS qua `GpsBackgroundService` (Android có foreground service khi cấu hình)
+- Tự động kích hoạt thuyết minh khi vào bán kính POI; **ưu tiên** (`Priority`) khi nhiều vùng chồng nhau
+- **Debounce** 3 giây trong vùng trước khi coi là “vào điểm”
+- **Cooldown** 60 giây giữa hai lần phát cùng một POI
+- Sự kiện `OnPoiEntered`, `OnPoiTriggered`, `OnPoiExited` cho UI
 
 ### 🔊 Mini Player
-- Hiển thị cố định ở đáy màn hình khi đang phát thuyết minh
-- Hoạt động liên tục khi điều hướng giữa các trang
-- Nút Stop và Skip ngay trên thanh player
+- Thanh phát cố định đáy màn hình khi đang thuyết minh
+- Hoạt động khi chuyển trang; nút điều khiển trên thanh player
 
 ### 🌐 Đa ngôn ngữ (i18n)
-- Hỗ trợ 5 ngôn ngữ: 🇻🇳 Tiếng Việt, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇨🇳 中文
-- Giao diện tự động dịch qua `MyMemory API` và file `.resx`
-- Nội dung địa điểm được dịch tự động qua **Claude API (claude-haiku)** và lưu vào SQLite
-- Chọn ngôn ngữ bằng grid button cờ quốc gia — không cần gõ tìm kiếm
-- Bản dịch được lưu lại, không dịch lại khi mở app lần sau
+- 5 ngôn ngữ: 🇻🇳 Tiếng Việt, 🇬🇧 English, 🇯🇵 日本語, 🇰🇷 한국어, 🇨🇳 中文
+- Giao diện: `.resx` + LocalizationResourceManager.Maui
+- Nội dung địa điểm: đồng bộ API / dịch (MyMemory qua admin) và cache SQLite trên app
 
 ### 💱 Đơn vị tiền tệ
-- Tìm kiếm và chọn tiền tệ từ toàn bộ danh sách `CultureInfo` hệ thống
-- Lưu lựa chọn qua `Preferences`
+- Chọn tiền tệ từ danh sách `CultureInfo`, lưu bằng `Preferences`
+
+### 🖥️ Web quản trị — TravelGuide.AdminWeb
+- **Đăng nhập** → nhận Bearer token (lưu RAM server); vai trò **admin** (toàn quyền) hoặc **owner** (POI của mình, trừ một số thao tác chỉ admin)
+- **Quản lý POI & audio**: tạo/sửa/xóa (xóa chỉ admin), hiển thị trạng thái Published / Pending / Rejected; admin **duyệt** hoặc **từ chối** kèm lý do
+- **Bản dịch**: chỉnh tên/mô tả EN, JA, KO, ZH từng POI; có thể bổ sung dịch gợi ý qua MyMemory (server)
+- **Tài khoản** (admin): tạo user, xóa (không xóa `admin`), **khóa / mở khóa** — user bị khóa không đăng nhập được
+- **Xuất** file JSON `extra_places.json` định dạng phù hợp app offline/seed
+- **Công nghệ**: SQL Server + API REST + file tĩnh trong `WEB` (không có Razor/Blazor)
 
 ---
 
 ## 🛠️ Công nghệ sử dụng
 
-| Thành phần      | Công nghệ                                      |
-|-----------------|------------------------------------------------|
-| Framework       | .NET 9.0 MAUI (Native)                         |
-| Bản đồ          | Mapbox GL JS v2.15 (nhúng trong WebView)       |    
-| Text-to-Speech  | Microsoft.Maui.Media.TextToSpeech              |
-| Cơ sở dữ liệu   | SQLite-net-pcl                                 |
-| Dịch thuật      | MyMemory API                                   |
-| Đa ngôn ngữ UI  | LocalizationResourceManager.Maui + .resx       |
-| Messaging       | CommunityToolkit.Mvvm (WeakReferenceMessenger) |
-| Lưu trữ cài đặt | Microsoft.Maui.Storage.Preferences             |
-| Định vị         | Microsoft.Maui.Devices.Sensors.Geolocation     |
+| Thành phần       | Công nghệ                                              |
+|------------------|--------------------------------------------------------|
+| Framework app    | .NET 9.0 MAUI (Native)                                 |
+| Bản đồ           | WebView + Mapbox GL JS                                 |
+| Âm thanh         | Plugin.Maui.Audio + MAUI TextToSpeech                  |
+| Cơ sở dữ liệu app| sqlite-net-pcl                                         |
+| Tourist API      | ASP.NET Core 9 Minimal API + SQL Server                |
+| Web admin        | ASP.NET Core 9 Minimal API + static `WEB` + SQL Server |
+| Dịch thuật (CMS) | MyMemory API (trong AdminWeb)                          |
+| Đa ngôn ngữ UI   | LocalizationResourceManager.Maui + `.resx`             |
+| Messaging        | CommunityToolkit.Mvvm (WeakReferenceMessenger)         |
+| Cài đặt          | Microsoft.Maui.Storage.Preferences                     |
+| Định vị          | Microsoft.Maui.Devices.Sensors.Geolocation             |
 
 ---
 
 ## 📁 Cấu trúc project
 ```
-TravelGuide/
-├── Models/
-│   ├── LocationMessage.cs           # Message GPS dùng cho WeakReferenceMessenger
-│   └── TouristPlace.cs              # Model địa điểm, computed Name/Description theo ngôn ngữ
+TravelGuide/                                 # Thư mục gốc solution
+├── TravelGuide.sln
+├── README.md
+├── AUDIO/                                   # Audio mẫu / tài nguyên media ngoài app
+├── TravelGuide/                             # Project ứng dụng MAUI
+│   ├── Models/
+│   │   ├── LocationMessage.cs
+│   │   ├── TouristPlaceReview.cs
+│   │   └── TouristPlace.cs
+│   ├── Platforms/
+│   │   ├── Android/   (Manifest, MainActivity, LocationService, …)
+│   │   ├── iOS/
+│   │   ├── MacCatalyst/
+│   │   └── Windows/
+│   ├── Resources/
+│   │   ├── AppIcon/, Fonts/, Images/, Splash/, Styles/
+│   │   └── Raw/
+│   │       ├── AboutAssets.txt
+│   │       ├── extra_places.json          # Seed địa điểm ban đầu
+│   │       └── mapbox_token.secret.txt    # (tự tạo, local) token Mapbox pk…
+│   ├── AppResources*.resx                 # Chuỗi UI đa ngôn ngữ
+│   ├── App.xaml / AppShell.xaml
+│   ├── MainPage.xaml / .cs                  # Chọn ngôn ngữ, tiền tệ
+│   ├── HomePage.xaml / .cs                  # Trang chủ, danh sách địa điểm
+│   ├── MapPage.xaml / .cs                   # WebView Mapbox, GPS, geofence UI
+│   ├── PlaceDetailPage.xaml / .cs
+│   ├── AudioPage.xaml / .cs
+│   ├── MiniPlayerView.xaml / .cs
+│   ├── QrScannerPage.xaml / .cs
+│   ├── QrScanHistoryPage.xaml / .cs
+│   ├── TouristLoginPage.xaml / .cs
+│   ├── TouristRegisterPage.xaml / .cs
+│   ├── DatabaseService.cs
+│   ├── GeofenceEngine.cs
+│   ├── GpsBackgroundService.cs
+│   ├── NarrationEngine.cs
+│   ├── TranslationService.cs
+│   ├── TouristAuthService.cs
+│   ├── EndpointResolver.cs
+│   ├── MapboxConfig.cs
+│   ├── MapboxTokenBootstrap.cs
+│   └── MauiProgram.cs
 │
-├── Platforms/
-│   ├── Android/
-│   │   ├── Resources/
-│   │   │   └── AndroidManifest.xml  # Khai báo quyền GPS, Internet
-│   │   ├── LocationService.cs       # Foreground Service theo dõi GPS nền (Android)
-│   │   ├── MainActivity.cs
-│   │   └── MainApplication.cs
-│   ├── iOS/
-│   ├── MacCatalyst/
-│   ├── Tizen/
-│   └── Windows/
+├── TravelGuide.API/                         # API cho du khách
+│   ├── Program.cs
+│   └── Data/TouristDb.cs
 │
-├── Resources/
-│   ├── AppIcon/
-│   ├── Fonts/
-│   ├── Images/
-│   ├── Raw/
-│   │   ├── AboutAssets.txt
-│   │   └── extra_places.json        # Dữ liệu địa điểm gốc (seed lần đầu)
-│   ├── Splash/
-│   ├── Styles/
-│   ├── AppResources.resx            # Chuỗi giao diện tiếng Anh (default)
-│   ├── AppResources_vi.resx         # Tiếng Việt
-│   ├── AppResources_ja.resx         # Tiếng Nhật
-│   ├── AppResources_ko.resx         # Tiếng Hàn
-│   └── AppResources_zh.resx         # Tiếng Trung
+├── TravelGuide.AdminWeb/                    # CMS: API + SPA
+│   ├── Program.cs                           # Minimal API, static files
+│   ├── Data/TravelGuideDb.cs                # SQL Server admin (POI, UserAccount, khóa TK…)
+│   ├── Models/Dtos.cs
+│   ├── Auth/
+│   ├── WEB/
+│   │   ├── index.html / app.js / styles.css
+│   │   ├── poi-create.html / poi-create.js  # Form tạo/sửa POI
+│   │   ├── qr-noapp.html / scan-poi.html    # Luồng quét QR và fallback
+│   │   ├── audio/                           # audio upload từ admin
+│   │   └── qrcodes/                         # ảnh QR sinh tự động
+│   └── Properties/launchSettings.json       # http://localhost:5280
 │
-├── App.xaml
-├── AppLanguage.cs                   # Quản lý ngôn ngữ hiện tại toàn app
-├── AppShell.xaml
-├── AudioPage.xaml / .cs             # Danh sách audio, phát tất cả, shuffle
-├── DatabaseService.cs               # SQLite: CRUD địa điểm, seed data
-├── GeofenceEngine.cs                # So sánh vị trí với POI, debounce, cooldown
-├── GpsBackgroundService.cs          # Theo dõi GPS liên tục, gửi LocationMessage
-├── HomePage.xaml / .cs              # Danh sách địa điểm, tìm kiếm, điều hướng
-├── MainPage.xaml / .cs              # Chọn ngôn ngữ, tiền tệ, khởi động app
-├── MapPage.xaml / .cs               # Bản đồ Mapbox, geofence, GPS
-├── MauiProgram.cs                   # DI container, khởi tạo services
-├── MiniPlayerView.xaml / .cs        # Thanh mini player cố định đáy màn hình
-├── NarrationEngine.cs               # Quản lý TTS queue, skip, stop
-├── PlaceDetailPage.xaml / .cs       # Chi tiết địa điểm, nghe thuyết minh
-└── TranslationService.cs            # Gọi Claude API để dịch nội dung
+├── Diagrams/                                # Sơ đồ UML / quy trình
+├── TravelGuide.sql
+├── SCAN_HISTORY_IMPLEMENTATION_NOTES.md
+└── TravelGuide_PRD.docx
 ```
 
 ---
@@ -128,54 +158,79 @@ TravelGuide/
 ## 🚀 Hướng dẫn cài đặt và chạy
 
 ### Yêu cầu hệ thống
-- Visual Studio 2022 (v17.12 trở lên)
-- .NET 9 SDK
-- Workload **.NET Multi-platform App UI development**
-- Android Emulator API 30–34 (khuyến nghị Pixel 5 API 34)
+- Visual Studio 2022 (v17.12 trở lên) hoặc VS Code + .NET SDK
+- **.NET 9 SDK**
+- Workload **.NET Multi-platform App UI development** (khi dùng Visual Studio)
+- Android Emulator API 24+ (theo `csproj`; khuyến nghị API 33–34)
 
 ### Các bước thực hiện
 
 **1. Tải mã nguồn**
 ```
-https://github.com/hoangtri22/demo-git
+https://github.com/hoangtri22/TravelGuide
 ```
 Nhấn **Code → Download ZIP** → Giải nén ra thư mục
 
 **2. Mở dự án**
-- Khởi động Visual Studio 2022
-- Chọn **Open a project or solution**
-- Mở file `TravelGuide.sln`
+- Visual Studio: **Open a project or solution** → mở `TravelGuide.sln`
+- Đảm bảo thư mục làm việc khi chạy lệnh terminal là thư mục chứa `TravelGuide.sln` và hai project con `TravelGuide/`, `TravelGuide.AdminWeb/`
 
 **3. Restore packages**
-- Visual Studio sẽ tự động restore NuGet packages
-- Nếu không, chạy: `dotnet restore`
+- Visual Studio tự restore NuGet
+- Hoặc: `dotnet restore`
 
 **4. Chạy ứng dụng**
-- Chọn thiết bị: **Android Emulator** (API 30–34)
-- Nhấn **F5** hoặc nút Run ▶
+- **Mapbox:** tạo `TravelGuide/Resources/Raw/mapbox_token.secret.txt` (một dòng token `pk…` từ [Mapbox](https://account.mapbox.com/access-tokens/)) — file đã `.gitignore`, **không commit**; sau đó **Clean + Rebuild**
+- **Startup project**: `TravelGuide` (không chọn AdminWeb khi chạy app điện thoại/emulator)
+- Chọn **Android Emulator** (hoặc máy thật), nhấn **F5**
 
-> ⚠️ **Lưu ý:** Khi khởi động lần đầu, hãy **chấp nhận quyền vị trí (Location Permission)** để tính năng bản đồ và thuyết minh tự động hoạt động đúng.
+> ⚠️ **Lưu ý:** Cấp quyền **vị trí** để bản đồ và geofence hoạt động đúng.
+
+### Cấu hình Android Emulator khuyến nghị (ổn định)
+- Device: `Pixel 5`
+- Image: `Android 14 (API 34) - x86_64 - Google APIs`
+- Cold Boot lần đầu
+- Kiểm tra ADB:
+  - `adb kill-server`
+  - `adb start-server`
+  - `adb devices` → trạng thái `device`
+
+### Chạy Web Admin
+```bash
+cd <duong-dan-toi-thu-muc-TravelGuide>
+dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj" --launch-profile http
+```
+- URL: **`http://localhost:5280`**
+- Mặc định: **`admin` / `admin123`**
+- Demo owner:  **`owner_oc_oanh`**, **`owner_oc_dao_2`**, **`owner_sui_cao_tan_tong_loi`**, **`owner_lau_bo_khu_nha_chay`**, **`owner_oc_vu`**, **`owner_oc_linh`** — cùng mật khẩu **`VkQuan@123`** (hash được đồng bộ mỗi lần khởi động Admin Web)
+- Nếu build báo **file .exe đang bị khóa**: đang có tiến trình `TravelGuide.AdminWeb` chạy — tắt cửa sổ `dotnet run` cũ hoặc `taskkill /F /IM TravelGuide.AdminWeb.exe`, rồi chạy lại
+- **Quản lý tài khoản**: admin có thể **khóa / mở khóa** user (trừ tài khoản `admin`); user bị khóa không đăng nhập được
+
+### Chạy Tourist API (cho app du khách)
+```bash
+cd <duong-dan-toi-thu-muc-TravelGuide>
+dotnet run --project "TravelGuide.API/TravelGuide.API.csproj"
+```
+- Swagger: `http://localhost:5096/swagger` (tuỳ launch settings)
+- Cấu hình giá mô phỏng: `TravelGuide.API/appsettings.json` (`TouristPricing`)
 
 ## 🔄 Luồng hoạt động
 
 Khởi động app
-    → Chọn ngôn ngữ (MainPage) — grid button 5 cờ quốc gia
-    → Nhấn "Tiếp tục" → Dịch nội dung qua Claude API (nếu chưa dịch)
-    → Vào HomePage — danh sách địa điểm theo ngôn ngữ đã chọn
+    → Chọn ngôn ngữ, tiền tệ (MainPage)
+    → Nhấn "Tiếp tục" → Tải/đồng bộ danh sách địa điểm (API + cache SQLite)
+    → HomePage — danh sách, tìm kiếm, lối tới Bản đồ / Âm thanh / Gần đây
 
 Khi mở MapPage
-    → GpsBackgroundService bắt đầu theo dõi GPS mỗi 5 giây
-    → GeofenceEngine so sánh vị trí với từng POI
-    → Khi vào vùng POI → debounce 3s → phát thuyết minh TTS
-    → MiniPlayer hiển thị ở đáy màn hình
+    → GPS cập nhật vị trí; WebView Mapbox hiển thị POI
+    → GeofenceEngine so khớp vị trí với POI (debounce + priority + cooldown)
+    → Phát audio URL hoặc TTS; MiniPlayer hiển thị đáy màn hình
 
 Khi đổi ngôn ngữ
-    → AppLanguage.OnLanguageChanged fired
-    → Tất cả trang tự reload nội dung
-    → LocalizationResourceManager cập nhật giao diện
+    → `AppLanguage.OnLanguageChanged` → reload chrome + dữ liệu theo ngôn ngữ
+    → LocalizationResourceManager cập nhật chuỗi UI từ `.resx`
+
 ## 📝 Ghi chú
 
-- Ứng dụng tập trung vào khu vực **Phố Ẩm Thực Vĩnh Khánh, Quận 4, TP. HCM**
-- Dữ liệu địa điểm được load từ file `extra_places.json` (seed lần đầu)
-- Bản dịch được lưu vào SQLite — **không gọi API lại** khi mở app lần sau
-- Mapbox token đã được tích hợp sẵn trong mã nguồn
+- Ứng dụng tập trung khu vực **Phố Ẩm Thực Vĩnh Khánh, Quận 4, TP. HCM**
+- Dữ liệu: seed `extra_places.json` + quản lý qua **Admin Web** (CRUD POI, duyệt, bản dịch, export JSON cho app)

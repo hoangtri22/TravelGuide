@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tao QR mo web tung quan</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #fff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --primary: #1d4ed8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.55; }
+    .hint { color: var(--muted); }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+      align-items: center;
+    }
+    input {
+      min-width: 260px;
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .poi {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+    .poi h3 { margin: 0 0 6px; font-size: 16px; }
+    .poi .small { font-size: 12px; color: var(--muted); }
+    .qr {
+      width: 180px;
+      height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      margin: 10px 0;
+      background: #fff;
+    }
+    .links a {
+      display: inline-block;
+      margin-right: 8px;
+      margin-top: 6px;
+      color: #1e40af;
+      text-decoration: none;
+      font-size: 13px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Tao QR theo tung quan (khong can app/GPS)</h1>
+      <p class="hint">
+        Quet QR se mo thang trang web chi tiet quan:
+        <code>scan-poi.html?id=&lt;POI_ID&gt;</code>
+      </p>
+      <div class="row">
+        <input id="baseUrl" type="text" placeholder="https://ten-mien-cua-ban">
+        <button id="btnReload" type="button">Tai lai danh sach quan</button>
+      </div>
+    </div>
+
+    <div class="grid" id="list"></div>
+  </div>
+
+  <script>
+    function normalizeBaseUrl(raw) {
+      var x = String(raw || "").trim();
+      if (!x) x = window.location.origin;
+      if (!/^https?:\/\//i.test(x)) x = "https://" + x;
+      return x.replace(/\/+$/, "");
+    }
+
+    function buildScanUrl(baseUrl, poiId) {
+      return normalizeBaseUrl(baseUrl) + "/scan-poi.html?id=" + encodeURIComponent(String(poiId));
+    }
+
+    function buildQrImageUrl(targetUrl) {
+      return "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=" + encodeURIComponent(targetUrl);
+    }
+
+    function renderPois(pois, baseUrl) {
+      var list = document.getElementById("list");
+      list.innerHTML = "";
+      pois.forEach(function (p) {
+        var id = Number(p.id || 0);
+        if (!id) return;
+        var targetUrl = buildScanUrl(baseUrl, id);
+        var qrUrl = buildQrImageUrl(targetUrl);
+
+        var box = document.createElement("article");
+        box.className = "poi";
+        box.innerHTML =
+          "<h3>" + (p.nameVi || ("Dia diem #" + id)) + "</h3>" +
+          "<div class='small'>POI ID: " + id + "</div>" +
+          "<img class='qr' alt='QR POI " + id + "' src='" + qrUrl + "' loading='lazy'>" +
+          "<div class='links'>" +
+          "<a href='" + targetUrl + "' target='_blank' rel='noopener noreferrer'>Mo trang dich</a>" +
+          "<a href='" + qrUrl + "' target='_blank' rel='noopener noreferrer'>Mo/Tai anh QR</a>" +
+          "</div>";
+        list.appendChild(box);
+      });
+
+      if (!list.children.length) {
+        list.innerHTML = "<div class='card hint'>Chua co POI public de tao QR.</div>";
+      }
+    }
+
+    async function loadPois() {
+      var input = document.getElementById("baseUrl");
+      var baseUrl = normalizeBaseUrl(input.value);
+      input.value = baseUrl;
+      var res = await fetch("/api/public/pois", { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("Khong the tai /api/public/pois");
+      var data = await res.json();
+      renderPois(Array.isArray(data) ? data : [], baseUrl);
+    }
+
+    document.getElementById("btnReload").addEventListener("click", function () {
+      loadPois().catch(function (e) { alert(e.message || String(e)); });
+    });
+
+    document.getElementById("baseUrl").value = window.location.origin;
+    loadPois().catch(function (e) { alert(e.message || String(e)); });
+  </script>
+</body>
+</html>
