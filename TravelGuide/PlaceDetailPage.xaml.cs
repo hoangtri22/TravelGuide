@@ -1,4 +1,4 @@
-﻿using TravelGuide.Models;
+using TravelGuide.Models;
 using Microsoft.Maui.ApplicationModel;
 
 namespace TravelGuide;
@@ -36,6 +36,17 @@ public partial class PlaceDetailPage : ContentPage
         var map = (_currentPlace.MapLink ?? "").Trim();
         BtnMapLink.IsVisible = map.Length > 0 && Uri.TryCreate(map, UriKind.Absolute, out var u) &&
                                (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
+        var qr = (_currentPlace.QrImagePath ?? "").Trim();
+        if (qr.Length > 0)
+        {
+            ImgQr.Source = qr;
+            QrSection.IsVisible = true;
+        }
+        else
+        {
+            ImgQr.Source = null;
+            QrSection.IsVisible = false;
+        }
     }
 
     /// <summary>Gắn mini player và refresh nội dung.</summary>

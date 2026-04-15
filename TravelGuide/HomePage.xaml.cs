@@ -1,4 +1,6 @@
-﻿using TravelGuide.Models;
+﻿using LocalizationResourceManager.Maui;
+using TravelGuide.Models;
+using System.Globalization;
 
 namespace TravelGuide;
 
@@ -10,6 +12,14 @@ public partial class HomePage : ContentPage
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
     private List<TouristPlace> _allPlaces = new();
+    private readonly List<LangOption> _languageOptions =
+    [
+        new("vi", "🇻🇳 Tiếng Việt"),
+        new("en", "🇬🇧 English"),
+        new("ja", "🇯🇵 日本語"),
+        new("ko", "🇰🇷 한국어"),
+        new("zh", "🇨🇳 中文")
+    ];
 
     /// <summary>Đăng ký lắng nghe đổi ngôn ngữ để reload danh sách và chrome.</summary>
     public HomePage(DatabaseService dbService, NarrationEngine narrationEngine)
@@ -17,10 +27,12 @@ public partial class HomePage : ContentPage
         InitializeComponent();
         _dbService = dbService;
         _narrationEngine = narrationEngine;
+        UpdateLanguageButton(AppLanguage.Current);
 
         AppLanguage.OnLanguageChanged += _ =>
             MainThread.BeginInvokeOnMainThread(async () =>
             {
+                UpdateLanguageButton(AppLanguage.Current);
                 UpdateLocalizedChrome();
                 await LoadPlacesAsync();
             });
@@ -31,8 +43,38 @@ public partial class HomePage : ContentPage
     {
         base.OnAppearing();
         MiniPlayer.Attach(_narrationEngine);
+        SyncLocalization(AppLanguage.Current);
+        UpdateLanguageButton(AppLanguage.Current);
         UpdateLocalizedChrome();
+        _dbService.ClearCache();
         await LoadPlacesAsync();
+    }
+
+    private async void OnLanguageButtonClicked(object sender, EventArgs e)
+    {
+        var selectedLabel = await DisplayActionSheet(
+            AppResources.LanguageLabel,
+            "Cancel",
+            null,
+            _languageOptions.Select(x => x.Label).ToArray());
+        if (string.IsNullOrWhiteSpace(selectedLabel) || selectedLabel == "Cancel")
+            return;
+        var option = _languageOptions.FirstOrDefault(x => x.Label == selectedLabel);
+        if (option is null) return;
+        var selectedCode = option.Code;
+        if (selectedCode == AppLanguage.Current) return;
+
+        Preferences.Set("app_language", selectedCode);
+        AppLanguage.SetLanguage(selectedCode);
+        SyncLocalization(selectedCode);
+        _dbService.ClearCache();
+        await LoadPlacesAsync();
+    }
+
+    private void UpdateLanguageButton(string? code)
+    {
+        var selected = _languageOptions.FirstOrDefault(x => x.Code == (code ?? "vi")) ?? _languageOptions[0];
+        LanguageButton.Text = selected.Label;
     }
 
     /// <summary>Nạp POI từ <see cref="DatabaseService"/> và gán <c>ItemsSource</c>.</summary>
@@ -48,6 +90,20 @@ public partial class HomePage : ContentPage
     private void UpdateLocalizedChrome()
     {
         LblTotalPoi.Text = FormatPlacesCount(_allPlaces.Count);
+    }
+
+    private void SyncLocalization(string code)
+    {
+        try
+        {
+            var locMgr = Handler?.MauiContext?.Services.GetService<ILocalizationResourceManager>();
+            if (locMgr != null)
+                locMgr.CurrentCulture = new CultureInfo(code);
+        }
+        catch
+        {
+            // ignore localization sync errors
+        }
     }
 
     /// <summary>Chuỗi ngắn cho badge (không emoji — hiển thị gọn cạnh tagline).</summary>
@@ -81,28 +137,82 @@ public partial class HomePage : ContentPage
     private async void OnPlaceSelected(object sender, SelectionChangedEventArgs e)
     {
         if (e.CurrentSelection.FirstOrDefault() is not TouristPlace place) return;
-        if (Handler?.MauiContext == null) return;
-        var detailPage = Handler.MauiContext.Services
-            .GetRequiredService<PlaceDetailPage>();
-        detailPage.LoadPlace(place);
-        await Navigation.PushAsync(detailPage);
-        if (sender is CollectionView cv) cv.SelectedItem = null;
+        try
+        {
+            if (Handler?.MauiContext == null) return;
+            var detailPage = Handler.MauiContext.Services
+                .GetRequiredService<PlaceDetailPage>();
+            detailPage.LoadPlace(place);
+            await Navigation.PushAsync(detailPage);
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Navigation error", $"Cannot open place detail: {ex.Message}", "OK");
+        }
+        finally
+        {
+            if (sender is CollectionView cv) cv.SelectedItem = null;
+        }
+    }
+
+    private async void OnBottomNavHome(object? sender, EventArgs e)
+    {
+        await MainScroll.ScrollToAsync(0, 0, true);
+    }
+
+    private void OnBottomNavSaved(object? sender, EventArgs e)
+    {
+        // Chưa có màn Đã lưu — giữ tab để đồng bộ UI / đa ngôn ngữ
+    }
+
+    private async void OpenQrScanner(object? sender, EventArgs e)
+    {
+        try
+        {
+            await Shell.Current.GoToAsync(nameof(QrScannerPage));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("QR error", $"Cannot open QR scanner: {ex.Message}", "OK");
+        }
+    }
+
+    private async void OpenQrScanHistory(object? sender, EventArgs e)
+    {
+        try
+        {
+            await Shell.Current.GoToAsync(nameof(QrScanHistoryPage));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Navigation error", $"Cannot open scan history: {ex.Message}", "OK");
+        }
     }
 
     /// <summary>Điều hướng tới <see cref="MapPage"/>.</summary>
     private async void OpenMap(object sender, EventArgs e)
     {
-        if (Handler?.MauiContext == null) return;
-        var mapPage = Handler.MauiContext.Services.GetRequiredService<MapPage>();
-        await Navigation.PushAsync(mapPage);
+        try
+        {
+            await Shell.Current.GoToAsync(nameof(MapPage));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Map error", $"Cannot open map page: {ex.Message}", "OK");
+        }
     }
 
     /// <summary>Điều hướng tới <see cref="AudioPage"/>.</summary>
     private async void OpenAudio(object sender, EventArgs e)
     {
-        if (Handler?.MauiContext == null) return;
-        var audioPage = Handler.MauiContext.Services.GetRequiredService<AudioPage>();
-        await Navigation.PushAsync(audioPage);
+        try
+        {
+            await Shell.Current.GoToAsync(nameof(AudioPage));
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Navigation error", $"Cannot open audio page: {ex.Message}", "OK");
+        }
     }
 
     /// <summary>Lấy vị trí hiện tại và hiển thị POI trong bán kính 1km (hoặc toàn bộ nếu rỗng).</summary>
@@ -124,4 +234,6 @@ public partial class HomePage : ContentPage
             System.Diagnostics.Debug.WriteLine($"[HomeNearby] {ex.Message}");
         }
     }
+
+    private sealed record LangOption(string Code, string Label);
 }

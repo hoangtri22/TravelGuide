@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TravelGuide.TouristLoginPage"
+             Title="Sign In"
+             BackgroundColor="#F3F6FB">
+    <ScrollView>
+        <VerticalStackLayout Padding="22,24,22,28" Spacing="16">
+            <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                <Border StrokeThickness="0" BackgroundColor="#0E91D8" StrokeShape="RoundRectangle 24" Padding="16">
+                    <Label Text="✈" FontSize="42" HorizontalOptions="Center" TextColor="#EAF6FF" FontAttributes="Bold"/>
+                </Border>
+                <Label Text="TravelGo" FontSize="36" FontAttributes="Bold" TextColor="#0077BE" HorizontalTextAlignment="Center"/>
+                <Label Text="Explore the world with us" FontSize="13" TextColor="#75839A" HorizontalTextAlignment="Center"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="4" Margin="0,10,0,0" HorizontalOptions="Center">
+                <Label Text="Welcome back! 👋" FontSize="24" FontAttributes="Bold" TextColor="#1E293B" LineBreakMode="WordWrap" HorizontalTextAlignment="Center"/>
+                <Label Text="Sign in to continue your journey" FontSize="13" TextColor="#6B7A90" LineBreakMode="WordWrap" HorizontalTextAlignment="Center"/>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="10">
+                <Label Text="Username" FontSize="16" FontAttributes="Bold" TextColor="#374151"/>
+                <Border Stroke="#CBD5E1" StrokeThickness="2" StrokeShape="RoundRectangle 14" BackgroundColor="White" Padding="14,10">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <Label Text="👤" FontSize="15" VerticalTextAlignment="Center"/>
+                        <Entry x:Name="UsernameEntry" Grid.Column="1" Placeholder="Enter your username" FontSize="16"/>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+
+            <VerticalStackLayout Spacing="10">
+                <Label Text="Password" FontSize="16" FontAttributes="Bold" TextColor="#374151"/>
+                <Border Stroke="#CBD5E1" StrokeThickness="2" StrokeShape="RoundRectangle 14" BackgroundColor="White" Padding="14,10">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                        <Label Text="🔐" FontSize="15" VerticalTextAlignment="Center"/>
+                        <Entry x:Name="PasswordEntry" Grid.Column="1" Placeholder="Enter your password" IsPassword="True" FontSize="16"/>
+                        <Label Grid.Column="2" Text="👁️" FontSize="16" VerticalTextAlignment="Center"/>
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" Margin="0,2,0,4">
+                <CheckBox x:Name="RememberCheckBox" VerticalOptions="Center"/>
+                <Label Grid.Column="1" Text="Remember me" VerticalTextAlignment="Center" FontSize="14" TextColor="#6B7A90"/>
+                <Label Grid.Column="2" Text="Forgot password?" VerticalTextAlignment="Center" FontSize="14" FontAttributes="Bold" TextColor="#0EA5E9"/>
+            </Grid>
+
+            <Button Text="🚀  Sign In"
+                    Clicked="OnLoginClicked"
+                    HeightRequest="56"
+                    CornerRadius="16"
+                    FontAttributes="Bold"
+                    FontSize="17"
+                    TextColor="White">
+                <Button.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#12A4E6" Offset="0"/>
+                        <GradientStop Color="#0B74B2" Offset="1"/>
+                    </LinearGradientBrush>
+                </Button.Background>
+            </Button>
+
+            <HorizontalStackLayout HorizontalOptions="Center" Spacing="4">
+                <Label Text="Don't have an account?" FontSize="14" TextColor="#64748B"/>
+                <Label Text="Sign up now" FontSize="14" FontAttributes="Bold" TextColor="#0EA5E9">
+                    <Label.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnGoRegisterClicked" />
+                    </Label.GestureRecognizers>
+                </Label>
+            </HorizontalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
+             x:Class="TravelGuide.QrScanHistoryPage"
+             BackgroundColor="#F3F6FB"
+             Title="{loc:Translate ScanHistoryTitle}">
+
+    <Grid RowDefinitions="Auto,*" Padding="16" RowSpacing="12">
+        <Label x:Name="HintLabel"
+               Text="{loc:Translate ScanHistoryLoginRequired}"
+               IsVisible="False"
+               TextColor="#64748B"
+               FontSize="13"/>
+
+        <CollectionView x:Name="HistoryList"
+                        Grid.Row="1"
+                        SelectionMode="Single"
+                        SelectionChanged="OnItemSelected">
+            <CollectionView.EmptyView>
+                <VerticalStackLayout VerticalOptions="Center" Spacing="8" Padding="0,40">
+                    <Label Text="{loc:Translate ScanHistoryEmpty}"
+                           HorizontalTextAlignment="Center"
+                           TextColor="#64748B"
+                           FontSize="14"/>
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="14,12" Margin="0,0,0,10" StrokeThickness="0"
+                            BackgroundColor="White" StrokeShape="RoundRectangle 14">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="{Binding TitleText}" FontSize="17" FontAttributes="Bold" TextColor="#0B1E34"/>
+                            <Label Text="{Binding SubtitleText}" FontSize="12" TextColor="#64748B"/>
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</ContentPage>

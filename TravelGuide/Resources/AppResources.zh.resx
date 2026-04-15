@@ -61,6 +61,22 @@
 	<data name="BtnNearby" xml:space="preserve"><value>🔍 附近</value></data>
 	<data name="PopularPlaces" xml:space="preserve"><value>热门景点</value></data>
 	<data name="ViewDetail" xml:space="preserve"><value>查看详情 ></value></data>
+	<data name="HomeGreeting" xml:space="preserve"><value>你好，旅行者！👋</value></data>
+	<data name="HomeGreetingSub" xml:space="preserve"><value>📍 河内，越南 • 今天有很多附近景点</value></data>
+	<data name="HomeFeaturedTitle" xml:space="preserve"><value>🔥 精选景点</value></data>
+	<data name="HomeHotBadge" xml:space="preserve"><value>🔥 热门</value></data>
+	<data name="HomeMapSectionTitle" xml:space="preserve"><value>🗺️ 旅游地图</value></data>
+	<data name="HomeExpand" xml:space="preserve"><value>展开 →</value></data>
+	<data name="HomeNearbyTitle" xml:space="preserve"><value>📍 附近地点</value></data>
+	<data name="HomeFullScreen" xml:space="preserve"><value>全屏</value></data>
+	<data name="NavTabAudio" xml:space="preserve"><value>音频</value></data>
+	<data name="NavTabSaved" xml:space="preserve"><value>已保存</value></data>
+	<data name="NavTabProfile" xml:space="preserve"><value>我的</value></data>
+	<data name="NavTabScanHistory" xml:space="preserve"><value>扫码记录</value></data>
+	<data name="ScanHistoryTitle" xml:space="preserve"><value>扫码记录</value></data>
+	<data name="ScanHistoryEmpty" xml:space="preserve"><value>尚未通过二维码打开景点。扫码后会显示在这里。</value></data>
+	<data name="ScanHistoryLoginRequired" xml:space="preserve"><value>请登录游客账号以查看扫码记录。</value></data>
+	<data name="ScanHistoryPlaceMissing" xml:space="preserve"><value>该景点已不在公开列表中。</value></data>
 
 	<!-- MapPage -->
 	<data name="MapTitle" xml:space="preserve"><value>地图</value></data>

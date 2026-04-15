@@ -100,6 +100,54 @@
 	<data name="ViewDetail">
 		<value>자세히 보기 ></value>
 	</data>
+	<data name="HomeGreeting">
+		<value>안녕하세요, 여행자님! 👋</value>
+	</data>
+	<data name="HomeGreetingSub">
+		<value>📍 하노이, 베트남 • 오늘은 가까운 장소가 많아요</value>
+	</data>
+	<data name="HomeFeaturedTitle">
+		<value>🔥 추천 명소</value>
+	</data>
+	<data name="HomeHotBadge">
+		<value>🔥 인기</value>
+	</data>
+	<data name="HomeMapSectionTitle">
+		<value>🗺️ 여행 지도</value>
+	</data>
+	<data name="HomeExpand">
+		<value>확장 →</value>
+	</data>
+	<data name="HomeNearbyTitle">
+		<value>📍 내 주변 장소</value>
+	</data>
+	<data name="HomeFullScreen">
+		<value>전체 화면</value>
+	</data>
+	<data name="NavTabAudio">
+		<value>오디오</value>
+	</data>
+	<data name="NavTabSaved">
+		<value>저장됨</value>
+	</data>
+	<data name="NavTabProfile">
+		<value>프로필</value>
+	</data>
+	<data name="NavTabScanHistory">
+		<value>스캔 기록</value>
+	</data>
+	<data name="ScanHistoryTitle">
+		<value>스캔 기록</value>
+	</data>
+	<data name="ScanHistoryEmpty">
+		<value>QR로 연 장소가 아직 없습니다.</value>
+	</data>
+	<data name="ScanHistoryLoginRequired">
+		<value>스캔 기록을 보려면 로그인하세요.</value>
+	</data>
+	<data name="ScanHistoryPlaceMissing">
+		<value>이 장소는 공개 목록에 없습니다.</value>
+	</data>
 
 	<!-- MapPage -->
 	<data name="MapTitle">

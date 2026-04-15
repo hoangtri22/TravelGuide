@@ -1,113 +1,187 @@
 <!doctype html>
 <html lang="vi">
 <head>
-  <!-- CMS TravelGuide: POI + ưu tiên geofence + map link + audio URL; dịch; tài khoản; export -->
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TravelGuide Admin</title>
+  <title>Travel Guide — Cổng quản trị</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Màn hình đăng nhập (ẩn sau khi có token) -->
+  <!-- Đăng nhập — bố cục theo Admin portal design / Login.tsx -->
   <section id="loginSection" class="login-shell">
     <div class="login-card">
-      <h1>Vĩnh Khánh Admin</h1>
-      <p class="hint">Đăng nhập hoặc đăng ký chủ quán (cần admin duyệt trước khi đăng nhập).</p>
+      <div class="login-brand">
+        <div class="login-brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        </div>
+        <div class="login-brand-text">
+          <h1>Travel Guide</h1>
+          <p>Cổng quản trị</p>
+        </div>
+      </div>
+      <p class="hint" style="text-align:center;margin-bottom:16px;">Đăng nhập hoặc đăng ký chủ quán (admin duyệt trước khi đăng nhập).</p>
       <div class="auth-mode-tabs" role="tablist">
         <button type="button" class="auth-tab active" id="authTabLogin" data-auth-panel="loginPanel" role="tab" aria-selected="true">Đăng nhập</button>
         <button type="button" class="auth-tab" id="authTabRegister" data-auth-panel="registerPanel" role="tab" aria-selected="false">Đăng ký chủ quán</button>
       </div>
       <div id="loginPanel" class="auth-panel" role="tabpanel">
         <form id="loginForm">
-          <label>Tài khoản</label>
+          <label for="username">Tài khoản</label>
           <input id="username" required autocomplete="username" value="admin">
-          <label>Mật khẩu</label>
+          <label for="password">Mật khẩu</label>
           <input id="password" type="password" required autocomplete="current-password" value="admin123">
-          <button type="submit">Đăng nhập</button>
+          <button type="submit" class="btn-login" style="margin-top:16px;">Đăng nhập</button>
         </form>
       </div>
       <div id="registerPanel" class="auth-panel hidden" role="tabpanel">
         <form id="registerForm">
-          <label>Tên đăng nhập</label>
+          <label for="regUsername">Tên đăng nhập</label>
           <input id="regUsername" required minlength="3" autocomplete="username" placeholder="ít nhất 3 ký tự">
-          <label>Mật khẩu</label>
+          <label for="regPassword">Mật khẩu</label>
           <input id="regPassword" type="password" required minlength="6" autocomplete="new-password" placeholder="ít nhất 6 ký tự">
-          <label>Nhập lại mật khẩu</label>
+          <label for="regPassword2">Nhập lại mật khẩu</label>
           <input id="regPassword2" type="password" required autocomplete="new-password">
-          <label>Tên quán / hiển thị</label>
+          <label for="regDisplayName">Tên quán / hiển thị</label>
           <input id="regDisplayName" required minlength="2" placeholder="Tên quán trên hệ thống">
-          <button type="submit">Tạo tài khoản chủ quán</button>
+          <button type="submit" class="btn-login" style="margin-top:16px;">Tạo tài khoản chủ quán</button>
         </form>
       </div>
       <p class="hint login-hint">Admin: <strong>admin</strong> / <strong>admin123</strong><br>
         Chủ quán demo: <strong>chuquan1</strong>, <strong>chuquan2</strong> → <strong>chuquan123</strong><br>
-        6 quán phố (<code>owner_oc_*</code>…): mật khẩu <strong>VkQuan@123</strong> (đồng bộ mỗi lần chạy server)</p>
+        6 quán phố (<code>owner_oc_*</code>…): mật khẩu <strong>VkQuan@123</strong></p>
     </div>
   </section>
 
-  <!-- Shell chính: sidebar + main -->
+  <!-- Shell: sidebar AppSidebar + main -->
   <section id="appSection" class="hidden app-shell">
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-badge">VK</div>
-        <div>
-          <h2>Vĩnh Khánh</h2>
-          <p id="brandSubtitle">Admin Portal</p>
-        </div>
+      <div class="sidebar-header">
+        <h2>Travel Guide</h2>
+        <p id="brandSubtitle">Cổng quản trị</p>
       </div>
       <nav class="nav">
-        <button class="tab active" data-tab="poiTab">Quản lý POI</button>
-        <button class="tab owner-only hidden" data-tab="audioTab">Nguồn thuyết minh</button>
-        <button class="tab" data-tab="translationTab">Bản dịch</button>
-        <button class="tab admin-only" data-tab="accountTab">Tài khoản</button>
+        <button type="button" class="tab active" data-tab="poiTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
+          <span class="tab-label">Quản lý địa điểm</span>
+        </button>
+        <button type="button" class="tab" data-tab="translationTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+          <span class="tab-label">Đa ngôn ngữ</span>
+        </button>
+        <button type="button" class="tab owner-only hidden" data-tab="audioTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg></span>
+          <span class="tab-label">Nguồn audio</span>
+        </button>
+        <button type="button" class="tab admin-only" data-tab="accountTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="tab-label">Tài khoản web</span>
+        </button>
+        <button type="button" class="tab admin-only" data-tab="touristTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11h-4"/><path d="M20 9v4"/></svg></span>
+          <span class="tab-label">Dữ liệu du khách</span>
+        </button>
       </nav>
       <div class="sidebar-footer">
-        <div id="authInfo"></div>
-        <button id="logoutBtn">Đăng xuất</button>
+        <p id="authDisplayName" class="sidebar-user-name"></p>
+        <p id="authRoleLabel" class="sidebar-user-role"></p>
+        <button type="button" id="logoutBtn">
+          <span class="logout-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg></span>
+          Đăng xuất
+        </button>
       </div>
     </aside>
 
     <main class="main-content">
       <header class="page-header">
-        <h1 id="pageTitle">Dashboard</h1>
-        <p id="pageSubtitle">Tổng quan hệ thống phố ẩm thực Vĩnh Khánh</p>
+        <h1 id="pageTitle">Quản lý địa điểm</h1>
+        <p id="pageSubtitle">Quản lý tất cả các địa điểm tham quan</p>
       </header>
 
-      <section class="stats">
-        <article class="stat-card"><h3>Tổng POI</h3><p id="statPoi">0</p></article>
-        <article class="stat-card"><h3>Bản dịch</h3><p id="statTranslation">0</p></article>
-        <article class="stat-card"><h3>File Audio</h3><p id="statAudio">0</p></article>
+      <section id="statsStrip" class="stats" aria-label="Thống kê nhanh">
+        <article class="stat-card">
+          <div class="stat-card-inner">
+            <div>
+              <p class="stat-label">Tổng POI</p>
+              <p class="stat-value" id="statPoi">0</p>
+            </div>
+            <div class="stat-icon stat-icon-blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+          </div>
+        </article>
+        <article class="stat-card">
+          <div class="stat-card-inner">
+            <div>
+              <p class="stat-label">Bản dịch</p>
+              <p class="stat-value" id="statTranslation">0</p>
+            </div>
+            <div class="stat-icon stat-icon-purple" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+          </div>
+        </article>
+        <article class="stat-card">
+          <div class="stat-card-inner">
+            <div>
+              <p class="stat-label">File audio</p>
+              <p class="stat-value" id="statAudio">0</p>
+            </div>
+            <div class="stat-icon stat-icon-indigo" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
+            </div>
+          </div>
+        </article>
       </section>
 
-      <section id="poiTab" class="card tab-content">
-        <h2 id="poiTabHeading">Quản lý POI</h2>
-        <p class="hint owner-only hidden" id="poiOwnerHint">Chỉ hiển thị POI thuộc quán của bạn (mọi trạng thái: chờ duyệt, đã đăng, từ chối).</p>
-        <div class="actions-row">
-          <button id="newPoiBtn" class="secondary owner-only hidden">Tạo POI mới</button>
-          <button id="exportBtn" class="secondary admin-only">Xuất extra_places.json</button>
+      <section id="poiTab" class="tab-content tab-pane">
+        <div class="page-toolbar">
+          <p class="hint owner-only hidden" id="poiOwnerHint">Chỉ hiển thị POI thuộc quán của bạn (mọi trạng thái: chờ duyệt, đã đăng, từ chối).</p>
+          <div class="toolbar-actions">
+            <a id="newPoiBtn" href="poi-create.html" class="btn-primary">＋ Tạo địa điểm</a>
+            <button type="button" id="exportBtn" class="btn-outline admin-only">Xuất extra_places.json</button>
+          </div>
         </div>
-        <form id="poiForm" class="grid-form">
-          <input type="hidden" id="poiId">
-          <div><label>Tên (VI)</label><input id="nameVi" required></div>
-          <div><label>ImagePath</label><input id="imagePath" placeholder="ocoanh.jpg"></div>
-          <div class="full"><label>Mô tả (VI)</label><textarea id="descVi" required></textarea></div>
-          <div><label>Latitude</label><input id="lat" type="number" step="any" required></div>
-          <div><label>Longitude</label><input id="lon" type="number" step="any" required></div>
-          <div><label>Radius (m)</label><input id="radius" type="number" step="any" value="50" required></div>
-          <!-- Ưu tiên geofence: số lớn hơn được chọn trước khi vùng chồng nhau -->
-          <div><label>Priority</label><input id="priority" type="number" step="1" value="0" title="Cao hơn = ưu tiên khi nhiều POI trong bán kính"></div>
-          <div class="full"><label>Map link</label><input id="mapLink" placeholder="https://maps.google.com/... hoặc Mapbox"></div>
-          <div class="full"><label>Audio URL</label><input id="audioUrl" placeholder="https://.../audio.mp3 (app phát file trước, lỗi thì TTS)"></div>
-          <div class="full"><button type="submit">Lưu POI</button></div>
-        </form>
+
+        <div class="card card-elevated">
+          <h2 class="card-title" id="poiTabHeading">Danh sách địa điểm</h2>
+          <p class="hint card-desc">Tạo POI mới trên <a href="poi-create.html">trang riêng</a>. Bấm <strong>Sửa</strong> trong bảng để mở form chỉnh sửa.</p>
+          <p class="hint" id="poiMonthlyFeeHint">Phí duy trì mỗi POI trên hệ thống: <strong>100.000đ/tháng</strong> (thu ngoài app / hợp đồng chủ quán).</p>
+        </div>
+
+        <div class="card card-elevated table-card">
+          <h2 class="card-title">Danh sách địa điểm</h2>
+        <div class="table-scroll">
         <table id="poiTable">
-          <thead><tr><th>ID</th><th>Tên VI</th><th>Ưu tiên</th><th>Trạng thái</th><th>Audio</th><th>Vị trí</th><th>Hành động</th></tr></thead>
+          <thead><tr><th>ID</th><th>Tên VI</th><th>Tag</th><th>Giá</th><th>Ưu tiên</th><th>Trạng thái</th><th>QR</th><th>Audio</th><th>Vị trí</th><th>Hành động</th></tr></thead>
           <tbody></tbody>
         </table>
+        </div>
+        </div>
       </section>
 
-      <section id="audioTab" class="card tab-content hidden">
-        <h2>Nguồn thuyết minh &amp; liên kết bản đồ</h2>
+      <section id="translationTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Đa ngôn ngữ</h2>
+        <p class="hint card-desc">Bản dịch tên và mô tả cho từng POI.</p>
+        <label for="translationPoiSelect">Chọn POI</label>
+        <select id="translationPoiSelect"></select>
+        <form id="translationForm" class="grid-form">
+          <div><label for="nameEn">Tên EN</label><input id="nameEn"></div>
+          <div><label for="nameJa">Tên JA</label><input id="nameJa"></div>
+          <div><label for="nameKo">Tên KO</label><input id="nameKo"></div>
+          <div><label for="nameZh">Tên ZH</label><input id="nameZh"></div>
+          <div><label for="descEn">Mô tả EN</label><textarea id="descEn"></textarea></div>
+          <div><label for="descJa">Mô tả JA</label><textarea id="descJa"></textarea></div>
+          <div><label for="descKo">Mô tả KO</label><textarea id="descKo"></textarea></div>
+          <div><label for="descZh">Mô tả ZH</label><textarea id="descZh"></textarea></div>
+          <div class="full"><button type="submit" class="btn-primary">Lưu bản dịch</button></div>
+        </form>
+      </section>
+
+      <section id="audioTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Nguồn audio &amp; bản đồ</h2>
         <p class="hint">Gán URL file audio (MP3…) và link mở bản đồ cho từng POI của quán. Lưu từng dòng hoặc chỉnh đầy đủ tại tab Quản lý POI.</p>
         <div id="audioTableWrap">
           <table id="audioTable">
@@ -117,40 +191,79 @@
         </div>
       </section>
 
-      <section id="translationTab" class="card tab-content hidden">
-        <h2>Quản lý bản dịch</h2>
-        <label>Chọn POI</label>
-        <select id="translationPoiSelect"></select>
-        <form id="translationForm" class="grid-form">
-          <div><label>Tên EN</label><input id="nameEn"></div>
-          <div><label>Tên JA</label><input id="nameJa"></div>
-          <div><label>Tên KO</label><input id="nameKo"></div>
-          <div><label>Tên ZH</label><input id="nameZh"></div>
-          <div><label>Mô tả EN</label><textarea id="descEn"></textarea></div>
-          <div><label>Mô tả JA</label><textarea id="descJa"></textarea></div>
-          <div><label>Mô tả KO</label><textarea id="descKo"></textarea></div>
-          <div><label>Mô tả ZH</label><textarea id="descZh"></textarea></div>
-          <div class="full"><button type="submit">Lưu bản dịch</button></div>
-        </form>
-      </section>
-
-      <section id="accountTab" class="card tab-content hidden">
-        <h2>Quản lý tài khoản</h2>
+      <section id="accountTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Tài khoản web</h2>
         <p class="hint">Chủ quán tự đăng ký xuất hiện với trạng thái <strong>Chờ duyệt</strong> — dùng <strong>Duyệt</strong> để cho phép đăng nhập hoặc <strong>Từ chối</strong> để xóa đăng ký.</p>
         <form id="accountForm" class="grid-form">
-          <div><label>Username</label><input id="accUsername" required></div>
-          <div><label>Display Name</label><input id="accDisplayName" required></div>
-          <div><label>Role</label><select id="accRole"><option value="owner">owner</option><option value="admin">admin</option></select></div>
-          <div><label>Password</label><input id="accPassword" type="password" required></div>
-          <div class="full"><button type="submit">Tạo tài khoản</button></div>
+          <div><label for="accUsername">Username</label><input id="accUsername" required></div>
+          <div><label for="accDisplayName">Display Name</label><input id="accDisplayName" required></div>
+          <div><label for="accRole">Role</label><select id="accRole"><option value="owner">owner</option><option value="admin">admin</option></select></div>
+          <div><label for="accPassword">Password</label><input id="accPassword" type="password" required></div>
+          <div class="full"><button type="submit" class="btn-primary">Tạo tài khoản</button></div>
         </form>
         <table id="accountTable">
           <thead><tr><th>ID</th><th>Username</th><th>Tên</th><th>Role</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
+
+      <section id="touristTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Dữ liệu du khách</h2>
+        <p class="hint">Tổng hợp dữ liệu từ TouristUser, RefreshToken, Favorite, VisitHistory, PaymentTransaction.</p>
+        <div class="actions-row">
+          <button type="button" id="refreshTouristBtn" class="secondary">Làm mới dữ liệu</button>
+        </div>
+
+        <h3>Tài khoản du khách</h3>
+        <table id="touristUserTable">
+          <thead><tr><th>ID</th><th>Username</th><th>DisplayName</th><th>Tier</th><th>Created</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>Refresh token (top 100)</h3>
+        <table id="touristTokenTable">
+          <thead><tr><th>ID</th><th>User</th><th>Device</th><th>Expires</th><th>Revoked</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>Favorite (top 200)</h3>
+        <table id="touristFavoriteTable">
+          <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Created</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>Visit history (top 300)</h3>
+        <table id="touristHistoryTable">
+          <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Event</th><th>Seconds</th><th>%</th><th>Occurred</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>Payment transaction (top 200)</h3>
+        <table id="touristPaymentTable">
+          <thead><tr><th>ID</th><th>User</th><th>Provider</th><th>Ref</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <h3>Doanh thu quét QR POI</h3>
+        <p class="hint" id="touristPoiScanRevenueSummary">Tổng: — · Số lượt quét: —</p>
+        <div class="table-scroll">
+          <table id="touristPoiScanRevenueTable">
+            <thead><tr><th>POI</th><th>Tên</th><th>Doanh thu (VND)</th><th>Số lượt</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <h3>Lịch sử quét QR POI (top 500)</h3>
+        <p class="hint">Ghi nhận khi du khách mở chi tiết địa điểm từ QR: loại sự kiện, thiết bị, doanh thu mô phỏng (nút xác nhận thanh toán).</p>
+        <div class="table-scroll">
+          <table id="touristPoiScanLogTable">
+            <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Tên POI</th><th>Loại</th><th>VND</th><th>Device ID</th><th>Thiết bị</th><th>Platform</th><th>Thời gian</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
     </main>
   </section>
-  <script src="app.js"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -36,8 +36,11 @@ public record ExportPoi(
     double Radius,
     string ImagePath,
     string AudioUrl,
+    string QrImagePath,
     int Priority,
-    string MapLink);
+    string MapLink,
+    decimal Price,
+    string Tag);
 
 /// <summary>POI đầy đủ: đa ngôn ngữ, vị trí, trạng thái duyệt, chủ sở hữu, ưu tiên geofence, link bản đồ ngoài.</summary>
 public record PoiDto(
@@ -57,8 +60,34 @@ public record PoiDto(
     double Radius,
     string ImagePath = "",
     string AudioUrl = "",
+    string? QrImagePath = null,
     string Status = "",
     string RejectReason = "",
     int OwnerUserId = 0,
     int Priority = 0,
-    string MapLink = "");
+    string MapLink = "",
+    decimal Price = 1000,
+    string Tag = "dia diem du lich");
+
+public record TouristUserDto(int Id, string Username, string DisplayName, string AccountTier, DateTime CreatedAtUtc);
+public record TouristRefreshTokenDto(long Id, int TouristUserId, string Username, string DeviceId, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, DateTime CreatedAtUtc);
+public record TouristFavoriteDto(long Id, int TouristUserId, string Username, int PoiId, string PoiNameVi, DateTime CreatedAtUtc);
+public record TouristVisitHistoryDto(long Id, int TouristUserId, string Username, int PoiId, string PoiNameVi, string EventType, int PlaybackSeconds, decimal WatchedPercent, DateTime OccurredAtUtc);
+public record PaymentTransactionDto(long Id, int TouristUserId, string Username, string Provider, string ProviderRef, string PlanCode, string Currency, decimal Amount, string Status, DateTime CreatedAtUtc);
+
+/// <summary>Một dòng lịch sử quét QR mở POI (app → API ghi DB).</summary>
+public record PoiQrScanLogDto(
+    long Id,
+    int TouristUserId,
+    string Username,
+    int PoiId,
+    string PoiNameVi,
+    string EventType,
+    decimal AmountVnd,
+    string? DeviceId,
+    string? DeviceModel,
+    string? AppPlatform,
+    DateTime CreatedAtUtc);
+
+/// <summary>Tổng doanh thu (AmountVnd) theo POI từ log quét.</summary>
+public record PoiQrScanRevenueDto(int PoiId, string PoiNameVi, decimal TotalVnd, int ScanCount);

@@ -1,3 +1,9 @@
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
+using TravelGuide.AdminWeb.Services;
+
 // =============================================================================
 // TravelGuide.AdminWeb — Minimal API (Program.cs)
 // Đăng ký DI, static files, khởi tạo SQLite; map endpoint: auth, POI (CRUD/duyệt),
@@ -8,19 +14,88 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
+builder.Services.Configure<PoiQrOptions>(builder.Configuration.GetSection(PoiQrOptions.SectionName));
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.PropertyNameCaseInsensitive = true;
 });
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "TravelGuide AdminWeb API",
+        Version = "v1",
+        Description = "API for AdminWeb and admin portal features."
+    });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter token in format: Bearer {token}"
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
 
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "TravelGuide AdminWeb API v1");
+    options.RoutePrefix = "swagger";
+});
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-await using (var scope = app.Services.CreateAsyncScope())
+try
 {
-    var db = scope.ServiceProvider.GetRequiredService<TravelGuideDb>();
-    await db.InitializeAsync();
+    await using (var scope = app.Services.CreateAsyncScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<TravelGuideDb>();
+        await db.InitializeAsync();
+    }
+}
+catch (Exception ex)
+{
+    Console.ForegroundColor = ConsoleColor.Red;
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("=== TravelGuide.AdminWeb: khoi tao CSDL that bai ===");
+    Console.Error.WriteLine(ex);
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("Goi y: cai SQL Server Express + LocalDB, hoac dat bien moi truong TRAVELGUIDE_SQLSERVER (chuoi ket noi day du).");
+    Console.Error.WriteLine("Neu vua sua code: dong het instance Admin Web / Visual Studio debug roi chay lai (tranh khoa file DLL).");
+    Console.ResetColor();
+    throw;
+}
+
+static async Task GeneratePoiQrAsync(
+    int poiId,
+    PoiDto sourcePoi,
+    TravelGuideDb db,
+    IHttpClientFactory httpClientFactory,
+    IWebHostEnvironment env,
+    PoiQrOptions options,
+    CancellationToken cancellationToken)
+{
+    var http = httpClientFactory.CreateClient();
+    http.Timeout = TimeSpan.FromSeconds(25);
+    await PoiQrCodeGenerator.TryGenerateAndStoreAsync(poiId, sourcePoi, db, http, env, options, cancellationToken);
 }
 
 app.MapPost("/api/auth/login", async (LoginRequest request, TravelGuideDb db, AuthStore authStore) =>
@@ -53,13 +128,16 @@ app.MapPost("/api/auth/login", async (LoginRequest request, TravelGuideDb db, Au
     }
 
     var token = authStore.CreateToken(user);
-    return Results.Ok(new
-    {
-        token,
-        username = user.Username,
-        role = user.Role,
-        displayName = user.DisplayName
-    });
+    var roleNorm = (user.Role ?? "").Trim().ToLowerInvariant();
+    return Results.Json(
+        new
+        {
+            token,
+            username = user.Username,
+            role = roleNorm,
+            displayName = user.DisplayName
+        },
+        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 });
 
 app.MapPost("/api/auth/register", async (RegisterRequest req, TravelGuideDb db) =>
@@ -94,6 +172,16 @@ app.MapGet("/api/pois", async (HttpContext context, TravelGuideDb db, AuthStore 
     return Results.Ok(pois);
 });
 
+app.MapGet("/api/pois/{id:int}", async (HttpContext context, int id, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    var poi = await db.GetPoiAsync(id);
+    if (poi is null) return Results.NotFound();
+    if (principal.Role != "admin" && poi.OwnerUserId != principal.UserId) return Results.Forbid();
+    return Results.Ok(poi);
+});
+
 app.MapGet("/api/public/pois", async (TravelGuideDb db, IHttpClientFactory httpClientFactory, string? lang) =>
 {
     await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), targetLang: lang);
@@ -101,14 +189,32 @@ app.MapGet("/api/public/pois", async (TravelGuideDb db, IHttpClientFactory httpC
     return Results.Ok(pois);
 });
 
-app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory) =>
+app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
 
     var id = await db.CreatePoiAsync(poi, principal);
+    if (string.IsNullOrWhiteSpace(poi.QrImagePath))
+    {
+        await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
+    }
+
     await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), id);
     return Results.Ok(new { id });
+});
+
+app.MapPost("/api/pois/{id:int}/qrcode", async (HttpContext context, int id, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+
+    var poi = await db.GetPoiAsync(id);
+    if (poi is null) return Results.NotFound();
+
+    await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
+    var updatedPoi = await db.GetPoiAsync(id);
+    return Results.Ok(new { id, qrImagePath = updatedPoi?.QrImagePath ?? "" });
 });
 
 app.MapPut("/api/pois/{id:int}", async (HttpContext context, int id, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory) =>
@@ -272,6 +378,24 @@ app.MapGet("/api/export/extra_places.json", async (HttpContext context, TravelGu
     if (principal.Role != "admin") return Results.Forbid();
     var places = await db.GetExportPlacesAsync();
     return Results.Json(places);
+});
+
+app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var data = await db.GetTouristOverviewAsync();
+    return Results.Ok(data);
+});
+
+app.MapGet("/api/tourists/poi-scan-dashboard", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var data = await db.GetTouristPoiScanDashboardAsync();
+    return Results.Ok(data);
 });
 
 app.Run();

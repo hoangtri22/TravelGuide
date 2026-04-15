@@ -13,7 +13,8 @@ public sealed class AuthStore
     public string CreateToken(UserAccount user)
     {
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
-        _tokens[token] = new AuthPrincipal(user.Id, user.Username, user.Role);
+        var role = (user.Role ?? "").Trim().ToLowerInvariant();
+        _tokens[token] = new AuthPrincipal(user.Id, user.Username, role);
         return token;
     }
 

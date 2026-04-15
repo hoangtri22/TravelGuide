@@ -1,4 +1,4 @@
-﻿using SQLite;
+using SQLite;
 using TravelGuide;
 
 namespace TravelGuide.Models;
@@ -37,6 +37,18 @@ public class TouristPlace
 
     /// <summary>Link Google Maps / Mapbox / web mở bằng trình duyệt (tuỳ chọn).</summary>
     public string? MapLink { get; set; }
+
+    /// <summary>Đường dẫn/tên file ảnh QR của quán/POI.</summary>
+    public string? QrImagePath { get; set; }
+
+    /// <summary>Giá tham khảo (VND); 0 nếu chưa có.</summary>
+    public decimal Price { get; set; }
+
+    /// <summary>Nhóm POI: quan an, quan nuoc, dia diem du lich, di tich lich su.</summary>
+    public string Tag { get; set; } = "dia diem du lich";
+
+    /// <summary>Đánh dấu người dùng đã đến POI này.</summary>
+    public bool IsVisited { get; set; }
 
     [Ignore]
     public string ImageSource => string.IsNullOrEmpty(ImagePath)

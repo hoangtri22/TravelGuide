@@ -5,6 +5,9 @@
 let token = "";
 let currentRole = "";
 let pois = [];
+let touristOverview = null;
+let qrBackfillRunning = false;
+let qrBackfillAttempted = false;
 
 const qs = (s) => document.querySelector(s);
 const byId = (id) => document.getElementById(id);
@@ -25,7 +28,16 @@ const api = async (url, options = {}) => {
   return ct.includes("application/json") ? res.json() : res.text();
 };
 
-/** Ẩn/hiện tab nội dung + trạng thái nút sidebar */
+/** Tiêu đề main — khớp nhãn trong Admin portal design / AppSidebar */
+const TAB_PAGE_TITLES = {
+  poiTab: "Quản lý địa điểm",
+  translationTab: "Đa ngôn ngữ",
+  audioTab: "Nguồn audio",
+  accountTab: "Tài khoản web",
+  touristTab: "Dữ liệu du khách"
+};
+
+/** Ẩn/hiện tab nội dung + trạng thái nút sidebar + subtitle + dải thống kê (chỉ tab POI) */
 function switchTab(tabId) {
   document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
   document.querySelectorAll(".tab").forEach(el => el.classList.remove("active"));
@@ -33,29 +45,56 @@ function switchTab(tabId) {
   if (panel) panel.classList.remove("hidden");
   const tabBtn = document.querySelector(`[data-tab='${tabId}']`);
   if (tabBtn) tabBtn.classList.add("active");
+  const pt = byId("pageTitle");
+  if (pt && TAB_PAGE_TITLES[tabId]) pt.textContent = TAB_PAGE_TITLES[tabId];
+  const sub = byId("pageSubtitle");
+  if (sub) {
+    if (tabId === "poiTab") {
+      sub.textContent = normalizedRole() === "admin"
+        ? "Quản lý tất cả các địa điểm tham quan"
+        : "Quản lý địa điểm của bạn";
+    } else if (tabId === "translationTab") {
+      sub.textContent = "Chỉnh sửa bản dịch EN, JA, KO, ZH cho từng địa điểm.";
+    } else if (tabId === "audioTab") {
+      sub.textContent = "Gán URL audio và liên kết bản đồ cho POI của quán.";
+    } else if (tabId === "accountTab") {
+      sub.textContent = "Duyệt đăng ký chủ quán, khóa / xóa tài khoản web.";
+    } else if (tabId === "touristTab") {
+      sub.textContent = "Tài khoản và hoạt động du khách từ ứng dụng.";
+    }
+  }
+  const strip = byId("statsStrip");
+  if (strip) strip.classList.toggle("hidden", tabId !== "poiTab");
+}
+
+/** Chuẩn hóa role từ API (DB có thể khác hoa/thường). */
+function normalizedRole() {
+  return String(currentRole || "").trim().toLowerCase();
 }
 
 /** Sau đăng nhập: admin vs chủ quán — nút/tab, tiêu đề, gợi ý POI. */
 function applyRoleChrome() {
+  const r = normalizedRole();
   document.querySelectorAll(".admin-only").forEach(el => {
-    el.classList.toggle("hidden", currentRole !== "admin");
+    el.classList.toggle("hidden", r !== "admin");
   });
   document.querySelectorAll(".owner-only").forEach(el => {
-    el.classList.toggle("hidden", currentRole !== "owner");
+    el.classList.toggle("hidden", r !== "owner");
   });
   const brandSub = byId("brandSubtitle");
   if (brandSub) {
-    brandSub.textContent = currentRole === "admin" ? "Admin Portal" : "Cổng chủ quán";
-  }
-  const pageSub = byId("pageSubtitle");
-  if (pageSub) {
-    pageSub.textContent = currentRole === "admin"
-      ? "Tổng quan hệ thống phố ẩm thực Vĩnh Khánh"
-      : "Quản lý POI và nguồn thuyết minh thuộc quán của bạn";
+    brandSub.textContent = "Cổng quản trị";
   }
   const poiHead = byId("poiTabHeading");
   if (poiHead) {
-    poiHead.textContent = currentRole === "admin" ? "Quản lý POI" : "Quản lý POI của quán";
+    poiHead.textContent = r === "admin" ? "Tất cả địa điểm" : "Địa điểm của quán";
+  }
+  const newPoiLink = byId("newPoiBtn");
+  if (newPoiLink) {
+    const canCreate = r === "admin" || r === "owner";
+    newPoiLink.classList.toggle("hidden", !canCreate);
+    if (canCreate) newPoiLink.setAttribute("href", "poi-create.html");
+    else newPoiLink.removeAttribute("href");
   }
   switchTab("poiTab");
 }
@@ -119,9 +158,38 @@ function setAuthPanel(mode) {
   if (hint) hint.classList.toggle("hidden", !isLogin);
 }
 
+const fmtDate = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
+};
+
 /** GET /api/pois — render bảng + select bản dịch */
 async function loadPois() {
   pois = await api("/api/pois");
+  if (!qrBackfillAttempted) {
+    qrBackfillAttempted = true;
+    const missingQrIds = pois
+      .filter(p => !String(p.qrImagePath || "").trim())
+      .map(p => Number(p.id))
+      .filter(id => Number.isFinite(id) && id > 0);
+    if (missingQrIds.length > 0 && !qrBackfillRunning) {
+      qrBackfillRunning = true;
+      let hasAnyUpdated = false;
+      for (const id of missingQrIds) {
+        try {
+          const res = await api(`/api/pois/${id}/qrcode`, { method: "POST" });
+          if (String(res?.qrImagePath || "").trim()) hasAnyUpdated = true;
+        } catch {
+          // Bỏ qua từng POI lỗi để vẫn xử lý các POI còn lại.
+        }
+      }
+      qrBackfillRunning = false;
+      if (hasAnyUpdated) {
+        pois = await api("/api/pois");
+      }
+    }
+  }
   byId("statPoi").textContent = String(pois.length);
   byId("statAudio").textContent = String(pois.filter(p => (p.audioUrl || "").trim() !== "").length);
   byId("statTranslation").textContent = String(pois.filter(p =>
@@ -138,20 +206,31 @@ async function loadPois() {
       ? `\nLý do: ${p.rejectReason}`
       : "";
     const approveReject =
-      currentRole === "admin" && status !== "published"
+      normalizedRole() === "admin" && status !== "published"
         ? `<button type="button" class="secondary" data-approve="${p.id}">Duyệt</button>
            <button type="button" class="secondary danger" data-reject="${p.id}">Từ chối</button>`
         : "";
+    const qrRaw = (p.qrImagePath || "").trim();
+    let qrCell = "—";
+    if (qrRaw) {
+      const showImg = /^https?:\/\//i.test(qrRaw) || qrRaw.startsWith("/");
+      qrCell = showImg
+        ? `<img class="poi-qr-thumb" src="${qrRaw.replace(/"/g, "&quot;")}" alt="" loading="lazy" />`
+        : `<span class="poi-qr-path">${qrRaw.replace(/</g, "&lt;")}</span>`;
+    }
     tr.innerHTML = `
       <td>${p.id}</td>
       <td>${p.nameVi}</td>
+      <td>${p.tag || "dia diem du lich"}</td>
+      <td>${Number(p.price || 0).toLocaleString("vi-VN")}</td>
       <td>${p.priority ?? 0}</td>
       <td title="${(statusLabel + rejectHint).replaceAll('"', "'")}">${statusLabel}</td>
+      <td class="poi-qr-cell">${qrCell}</td>
       <td>${p.audioUrl || ""}</td>
       <td>${p.latitude}, ${p.longitude}</td>
       <td class="poi-actions"><div class="action-btns">
         <button type="button" class="secondary" data-edit="${p.id}">Sửa</button>
-        <button type="button" data-del="${p.id}" ${currentRole !== "admin" ? "disabled" : ""}>Xóa</button>
+        <button type="button" class="danger" data-del="${p.id}" ${normalizedRole() !== "admin" ? "disabled" : ""}>Xóa</button>
         ${approveReject}
       </div></td>`;
     tbody.appendChild(tr);
@@ -161,31 +240,8 @@ async function loadPois() {
   select.innerHTML = pois.map(p => `<option value="${p.id}">${p.id} - ${p.nameVi}</option>`).join("");
 }
 
-/** Đổ form POI khi bấm Sửa + cuộn lên form (form nằm phía trên bảng) */
-function fillPoiForm(p) {
-  byId("poiId").value = p.id;
-  byId("nameVi").value = p.nameVi;
-  byId("descVi").value = p.descVi;
-  byId("lat").value = p.latitude;
-  byId("lon").value = p.longitude;
-  byId("radius").value = p.radius;
-  byId("priority").value = p.priority ?? 0;
-  byId("mapLink").value = p.mapLink || "";
-  byId("imagePath").value = p.imagePath || "";
-  byId("audioUrl").value = p.audioUrl || "";
-  requestAnimationFrame(() => {
-    byId("poiForm").scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-}
-
-/** Form POI mới (ẩn id) */
-function clearPoiForm() {
-  byId("poiForm").reset();
-  byId("poiId").value = "";
-}
-
 async function loadAccounts() {
-  if (currentRole !== "admin") return;
+  if (normalizedRole() !== "admin") return;
   const rows = await api("/api/accounts");
   const tbody = byId("accountTable").querySelector("tbody");
   tbody.innerHTML = rows.map(a => {
@@ -206,7 +262,7 @@ async function loadAccounts() {
       : `<button type="button" class="secondary" data-lock-id="${a.id}" data-lock-to="1" ${locked ? "disabled" : ""}>Khóa</button>
          <button type="button" class="secondary" data-lock-id="${a.id}" data-lock-to="0" ${!locked ? "disabled" : ""}>Mở khóa</button>`;
     const approveReject = pendingOwner
-      ? `<button type="button" data-approve-reg="${a.id}">Duyệt</button>
+      ? `<button type="button" class="btn-primary" data-approve-reg="${a.id}">Duyệt</button>
          <button type="button" class="secondary danger" data-reject-reg="${a.id}">Từ chối</button>`
       : "";
     const canDelete = !isAdmin && !pendingOwner;
@@ -221,6 +277,94 @@ async function loadAccounts() {
       </div></td>
     </tr>`;
   }).join("");
+}
+
+function escCell(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+async function loadTouristOverview() {
+  if (normalizedRole() !== "admin") return;
+  const [oRes, sRes] = await Promise.allSettled([
+    api("/api/tourists/overview"),
+    api("/api/tourists/poi-scan-dashboard")
+  ]);
+  if (oRes.status === "rejected") throw oRes.reason;
+  touristOverview = oRes.value;
+  const scanDash = sRes.status === "fulfilled"
+    ? sRes.value
+    : { logs: [], revenueByPoi: [], grandTotalVnd: 0, totalScans: 0 };
+
+  const userBody = byId("touristUserTable")?.querySelector("tbody");
+  if (userBody) {
+    userBody.innerHTML = (touristOverview.users || []).map(x => `
+      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.displayName}</td><td>${x.accountTier}</td><td>${fmtDate(x.createdAtUtc)}</td></tr>
+    `).join("");
+  }
+
+  const tokenBody = byId("touristTokenTable")?.querySelector("tbody");
+  if (tokenBody) {
+    tokenBody.innerHTML = (touristOverview.refreshTokens || []).map(x => `
+      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.deviceId || ""}</td><td>${fmtDate(x.expiresAtUtc)}</td><td>${fmtDate(x.revokedAtUtc)}</td></tr>
+    `).join("");
+  }
+
+  const favBody = byId("touristFavoriteTable")?.querySelector("tbody");
+  if (favBody) {
+    favBody.innerHTML = (touristOverview.favorites || []).map(x => `
+      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.poiId} - ${x.poiNameVi}</td><td>${fmtDate(x.createdAtUtc)}</td></tr>
+    `).join("");
+  }
+
+  const hisBody = byId("touristHistoryTable")?.querySelector("tbody");
+  if (hisBody) {
+    hisBody.innerHTML = (touristOverview.visitHistory || []).map(x => `
+      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.poiId} - ${x.poiNameVi}</td><td>${x.eventType}</td><td>${x.playbackSeconds}</td><td>${x.watchedPercent}</td><td>${fmtDate(x.occurredAtUtc)}</td></tr>
+    `).join("");
+  }
+
+  const payBody = byId("touristPaymentTable")?.querySelector("tbody");
+  if (payBody) {
+    payBody.innerHTML = (touristOverview.payments || []).map(x => `
+      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.provider}</td><td>${x.providerRef}</td><td>${x.planCode}</td><td>${Number(x.amount || 0).toLocaleString("vi-VN")} ${x.currency}</td><td>${x.status}</td><td>${fmtDate(x.createdAtUtc)}</td></tr>
+    `).join("");
+  }
+
+  const revSummary = byId("touristPoiScanRevenueSummary");
+  if (revSummary) {
+    const gt = Number(scanDash.grandTotalVnd || 0);
+    const tc = Number(scanDash.totalScans || 0);
+    revSummary.textContent = `Tổng doanh thu (VND, từ quét QR): ${gt.toLocaleString("vi-VN")} · Số lượt quét: ${tc.toLocaleString("vi-VN")}`;
+  }
+  const revBody = byId("touristPoiScanRevenueTable")?.querySelector("tbody");
+  if (revBody) {
+    const rows = scanDash.revenueByPoi || [];
+    revBody.innerHTML = rows.length
+      ? rows.map(x => `
+        <tr><td>${x.poiId}</td><td>${escCell(x.poiNameVi)}</td><td>${Number(x.totalVnd || 0).toLocaleString("vi-VN")}</td><td>${x.scanCount}</td></tr>
+      `).join("")
+      : `<tr><td colspan="4" class="hint">Chưa có dữ liệu quét QR.</td></tr>`;
+  }
+  const scanBody = byId("touristPoiScanLogTable")?.querySelector("tbody");
+  if (scanBody) {
+    const logs = scanDash.logs || [];
+    scanBody.innerHTML = logs.length
+      ? logs.map(x => `
+        <tr>
+          <td>${x.id}</td>
+          <td>${escCell(x.username)}</td>
+          <td>${x.poiId}</td>
+          <td>${escCell(x.poiNameVi)}</td>
+          <td>${escCell(x.eventType)}</td>
+          <td>${Number(x.amountVnd || 0).toLocaleString("vi-VN")}</td>
+          <td title="${escCell(x.deviceId)}">${escCell(x.deviceId)}</td>
+          <td title="${escCell(x.deviceModel)}">${escCell(x.deviceModel)}</td>
+          <td>${escCell(x.appPlatform)}</td>
+          <td>${fmtDate(x.createdAtUtc)}</td>
+        </tr>
+      `).join("")
+      : `<tr><td colspan="10" class="hint">Chưa có lịch sử quét.</td></tr>`;
+  }
 }
 
 async function loadTranslation(id) {
@@ -304,25 +448,44 @@ byId("loginForm").addEventListener("submit", async (e) => {
     }
     const result = await res.json();
     token = result.token;
-    currentRole = result.role;
-    byId("authInfo").textContent = `${result.displayName} (${result.role})`;
+    const rawRole = result.role ?? result.Role ?? result.userRole ?? "";
+    currentRole = String(rawRole).trim().toLowerCase();
+    try {
+      sessionStorage.setItem("tg_admin_token", token);
+      sessionStorage.setItem("tg_admin_role", currentRole);
+      sessionStorage.setItem("tg_admin_displayName", result.displayName || "");
+    } catch { /* ignore */ }
+    const nameEl = byId("authDisplayName");
+    const roleEl = byId("authRoleLabel");
+    if (nameEl) nameEl.textContent = result.displayName || "";
+    if (roleEl) {
+      roleEl.textContent = currentRole === "admin" ? "Quản trị viên" : "Chủ quán";
+    }
     byId("loginSection").classList.add("hidden");
     byId("appSection").classList.remove("hidden");
     applyRoleChrome();
     await loadPois();
     await loadAccounts();
+    await loadTouristOverview();
     if (pois.length > 0) await loadTranslation(pois[0].id);
   } catch {
     alert("Đăng nhập thất bại.");
   }
 });
 
-byId("logoutBtn").addEventListener("click", () => window.location.reload());
+byId("logoutBtn").addEventListener("click", () => {
+  try {
+    sessionStorage.removeItem("tg_admin_token");
+    sessionStorage.removeItem("tg_admin_role");
+    sessionStorage.removeItem("tg_admin_displayName");
+  } catch { /* ignore */ }
+  window.location.reload();
+});
 
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     switchTab(btn.dataset.tab);
-    if (btn.dataset.tab === "audioTab" && currentRole === "owner") renderAudioSources();
+    if (btn.dataset.tab === "audioTab" && normalizedRole() === "owner") renderAudioSources();
   });
 });
 
@@ -354,50 +517,6 @@ byId("audioTableWrap")?.addEventListener("click", async (e) => {
   }
 });
 
-byId("poiForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const editingId = Number(byId("poiId").value || 0);
-  if (currentRole === "admin" && editingId <= 0) {
-    alert("Admin không tạo mới POI trên web. Vui lòng chọn một POI hiện có để sửa.");
-    return;
-  }
-  const existing = editingId > 0 ? pois.find(x => x.id === editingId) : null;
-  const payload = {
-    id: editingId,
-    nameVi: byId("nameVi").value,
-    nameEn: existing?.nameEn || "",
-    nameJa: existing?.nameJa || "",
-    nameKo: existing?.nameKo || "",
-    nameZh: existing?.nameZh || "",
-    descVi: byId("descVi").value,
-    descEn: existing?.descEn || "",
-    descJa: existing?.descJa || "",
-    descKo: existing?.descKo || "",
-    descZh: existing?.descZh || "",
-    latitude: Number(byId("lat").value),
-    longitude: Number(byId("lon").value),
-    radius: Number(byId("radius").value),
-    priority: Number(byId("priority").value || 0),
-    mapLink: byId("mapLink").value || "",
-    imagePath: byId("imagePath").value,
-    audioUrl: byId("audioUrl").value
-  };
-  const id = payload.id;
-  try {
-    if (id > 0) {
-      await api(`/api/pois/${id}`, { method: "PUT", body: JSON.stringify(payload) });
-    } else {
-      await api("/api/pois", { method: "POST", body: JSON.stringify(payload) });
-    }
-    clearPoiForm();
-    await loadPois();
-  } catch (err) {
-    alert(`Lưu thất bại: ${err?.message || err}`);
-  }
-});
-
-byId("newPoiBtn")?.addEventListener("click", clearPoiForm);
-
 byId("poiTable").addEventListener("click", async (e) => {
   const raw = e.target;
   const t = raw instanceof Element ? raw : raw.parentElement;
@@ -411,8 +530,8 @@ byId("poiTable").addEventListener("click", async (e) => {
   const approveId = approveEl?.getAttribute("data-approve");
   const rejectId = rejectEl?.getAttribute("data-reject");
   if (editId) {
-    const p = pois.find(x => x.id === Number(editId));
-    if (p) fillPoiForm(p);
+    window.location.href = `poi-create.html?id=${encodeURIComponent(editId)}`;
+    return;
   }
   if (delId && confirm("Xóa POI này?")) {
     try {
@@ -553,3 +672,46 @@ byId("exportBtn").addEventListener("click", async () => {
   a.click();
   URL.revokeObjectURL(url);
 });
+
+byId("refreshTouristBtn")?.addEventListener("click", async () => {
+  try {
+    await loadTouristOverview();
+    alert("Đã làm mới dữ liệu du khách.");
+  } catch (err) {
+    alert(err?.message || String(err));
+  }
+});
+
+/** Khôi phục phiên khi F5 / quay lại từ trang tạo POI (token trong sessionStorage). */
+(function tryAutoLoginFromStorage() {
+  try {
+    const t = sessionStorage.getItem("tg_admin_token");
+    const r = sessionStorage.getItem("tg_admin_role");
+    if (!t || !r) return;
+    const login = byId("loginSection");
+    const app = byId("appSection");
+    if (!login || !app) return;
+    if (!app.classList.contains("hidden")) return;
+    token = t;
+    currentRole = String(r).trim().toLowerCase();
+    const nameEl = byId("authDisplayName");
+    const roleEl = byId("authRoleLabel");
+    if (nameEl) nameEl.textContent = sessionStorage.getItem("tg_admin_displayName") || "";
+    if (roleEl) roleEl.textContent = currentRole === "admin" ? "Quản trị viên" : "Chủ quán";
+    login.classList.add("hidden");
+    app.classList.remove("hidden");
+    applyRoleChrome();
+    loadPois()
+      .then(() => loadAccounts())
+      .then(() => loadTouristOverview())
+      .then(async () => {
+        if (pois.length > 0) await loadTranslation(pois[0].id);
+      })
+      .catch(() => {
+        sessionStorage.removeItem("tg_admin_token");
+        sessionStorage.removeItem("tg_admin_role");
+        sessionStorage.removeItem("tg_admin_displayName");
+        window.location.reload();
+      });
+  } catch { /* ignore */ }
+})();

@@ -5,130 +5,133 @@
              xmlns:local="clr-namespace:TravelGuide"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.HomePage"
-             BackgroundColor="#EEF2F6"
+             BackgroundColor="#F3F6FB"
              Title="{loc:Translate AppTitle}">
 
-    <ContentPage.Resources>
-        <Style x:Key="CategoryBtnStyle" TargetType="Button">
-            <Setter Property="BackgroundColor" Value="White"/>
-            <Setter Property="TextColor" Value="#2563EB"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontAttributes" Value="Bold"/>
-            <Setter Property="HeightRequest" Value="46"/>
-            <Setter Property="BorderColor" Value="#E2E8F0"/>
-            <Setter Property="BorderWidth" Value="1"/>
-            <Setter Property="Shadow">
-                <Shadow Brush="#0F172A" Offset="0,2" Radius="6" Opacity="0.05"/>
-            </Setter>
-        </Style>
-    </ContentPage.Resources>
-
-    <Grid RowDefinitions="*, Auto">
-
-        <ScrollView Grid.Row="0">
-            <VerticalStackLayout Padding="16" Spacing="16">
-
-                <Border StrokeThickness="0" StrokeShape="RoundRectangle 22" Padding="20,18">
+    <Grid RowDefinitions="*,Auto,Auto">
+        <ScrollView x:Name="MainScroll" Grid.Row="0">
+            <VerticalStackLayout Spacing="0">
+                <Border StrokeThickness="0" StrokeShape="RoundRectangle 0,0,30,30">
                     <Border.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                            <GradientStop Color="#FFFFFF" Offset="0"/>
-                            <GradientStop Color="#F4F7FF" Offset="1"/>
+                            <GradientStop Color="#12A4E6" Offset="0"/>
+                            <GradientStop Color="#0B74B2" Offset="1"/>
                         </LinearGradientBrush>
                     </Border.Background>
-                    <Border.Shadow>
-                        <Shadow Brush="#0F172A" Offset="0,8" Radius="20" Opacity="0.06"/>
-                    </Border.Shadow>
-                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="10" ColumnSpacing="12">
-                        <Label Grid.Row="0" Grid.ColumnSpan="2"
-                               Text="{loc:Translate HomeHeroTitle}"
-                               FontSize="22" FontAttributes="Bold" TextColor="#0B1220"/>
-                        <Label Grid.Row="1" Grid.Column="0"
-                               Text="{loc:Translate AppTagline}"
-                               FontSize="14" TextColor="#64748B" LineBreakMode="WordWrap"
-                               VerticalOptions="Center"/>
-                        <Border Grid.Row="1" Grid.Column="1"
-                                BackgroundColor="#EEF2FF" Padding="14,10"
-                                StrokeThickness="0" StrokeShape="RoundRectangle 18"
-                                VerticalOptions="Center">
-                            <Label x:Name="LblTotalPoi"
-                                   FontSize="12" FontAttributes="Bold" TextColor="#4338CA"
-                                   HorizontalTextAlignment="Center"/>
+                    <VerticalStackLayout Padding="20,18,20,28" Spacing="14">
+                        <Button x:Name="LanguageButton"
+                                WidthRequest="140"
+                                HeightRequest="38"
+                                HorizontalOptions="End"
+                                CornerRadius="16"
+                                BackgroundColor="#1C85BE"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                Clicked="OnLanguageButtonClicked"/>
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="TravelGuide" FontSize="34" FontAttributes="Bold" TextColor="White"/>
+                            <Label Text="{loc:Translate AppTagline}" FontSize="13" TextColor="#DBEEFF"/>
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="{loc:Translate HomeGreeting}" FontSize="30" FontAttributes="Bold" TextColor="White"/>
+                            <Label Text="{loc:Translate HomeGreetingSub}" FontSize="13" TextColor="#DBEEFF"/>
+                        </VerticalStackLayout>
+                        <Border StrokeThickness="0" BackgroundColor="#FFFFFF" StrokeShape="RoundRectangle 16" Padding="8,2">
+                            <SearchBar Placeholder="{loc:Translate SearchPlaceholder}" TextChanged="OnSearchBarTextChanged"/>
                         </Border>
+                    </VerticalStackLayout>
+                </Border>
+
+                <VerticalStackLayout Padding="16,14,16,16" Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="{loc:Translate HomeFeaturedTitle}" FontSize="24" FontAttributes="Bold" TextColor="#0B1E34"/>
+                        <Label Grid.Column="1" x:Name="LblTotalPoi" VerticalOptions="End" TextColor="#0B74B2" FontAttributes="Bold"/>
                     </Grid>
-                </Border>
 
-                <Border StrokeShape="RoundRectangle 16"
-                        Padding="4" BackgroundColor="White"
-                        Stroke="#E2E8F0" StrokeThickness="1">
-                    <Border.Shadow>
-                        <Shadow Brush="#0F172A" Offset="0,2" Radius="8" Opacity="0.04"/>
-                    </Border.Shadow>
-                    <SearchBar Placeholder="{loc:Translate SearchPlaceholder}"
-                               TextChanged="OnSearchBarTextChanged"/>
-                </Border>
+                    <CollectionView x:Name="PlacesCollection"
+                                    HeightRequest="290"
+                                    SelectionMode="Single"
+                                    SelectionChanged="OnPlaceSelected">
+                        <CollectionView.ItemsLayout>
+                            <LinearItemsLayout Orientation="Horizontal" ItemSpacing="12"/>
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Border WidthRequest="220" StrokeThickness="0" BackgroundColor="White" StrokeShape="RoundRectangle 18">
+                                    <Grid RowDefinitions="140,Auto">
+                                        <Grid Grid.Row="0">
+                                            <Image Source="{Binding ImageSource}" Aspect="AspectFill"/>
+                                            <Border BackgroundColor="#FFA21A" StrokeThickness="0" StrokeShape="RoundRectangle 12" Padding="8,4" Margin="10,10,0,0" HorizontalOptions="Start" VerticalOptions="Start">
+                                                <Label Text="{loc:Translate HomeHotBadge}" FontSize="11" FontAttributes="Bold" TextColor="White"/>
+                                            </Border>
+                                        </Grid>
+                                        <VerticalStackLayout Grid.Row="1" Padding="12,10,12,14" Spacing="4">
+                                            <Label Text="{Binding Name}" FontSize="20" FontAttributes="Bold" TextColor="#0B1E34" LineBreakMode="TailTruncation"/>
+                                            <Label Text="{Binding Summary}" FontSize="12" TextColor="#64748B" MaxLines="2"/>
+                                            <Label Text="{loc:Translate ViewDetail}" FontSize="12" TextColor="#0B74B2"/>
+                                        </VerticalStackLayout>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
 
-                <!-- FIX: Grid 3 cột đều nhau thay FlexLayout — tránh bị cắt chữ khi đổi ngôn ngữ -->
-                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
-                    <Button Grid.Column="0"
-                            Text="{loc:Translate BtnMap}"
-                            Style="{StaticResource CategoryBtnStyle}"
-                            Clicked="OpenMap"/>
-                    <Button Grid.Column="1"
-                            Text="{loc:Translate BtnAudio}"
-                            Style="{StaticResource CategoryBtnStyle}"
-                            Clicked="OpenAudio"/>
-                    <Button Grid.Column="2"
-                            Text="{loc:Translate BtnNearby}"
-                            Style="{StaticResource CategoryBtnStyle}"
-                            Clicked="OpenNearby"/>
-                </Grid>
-
-                <Label Text="{loc:Translate PopularPlaces}"
-                       FontSize="20" FontAttributes="Bold"
-                       Margin="2,6,0,0" TextColor="#0F172A"/>
-
-                <CollectionView x:Name="PlacesCollection"
-                                SelectionMode="Single"
-                                SelectionChanged="OnPlaceSelected">
-                    <CollectionView.ItemsLayout>
-                        <LinearItemsLayout Orientation="Vertical" ItemSpacing="15"/>
-                    </CollectionView.ItemsLayout>
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate>
-                            <Border StrokeShape="RoundRectangle 15"
-                                    StrokeThickness="0"
-                                    BackgroundColor="White"
-                                    Margin="0,5">
-                                <Border.Shadow>
-                                    <Shadow Brush="Black" Offset="0,5"
-                                            Radius="10" Opacity="0.1"/>
-                                </Border.Shadow>
-                                <Grid RowDefinitions="180, Auto">
-                                    <Image Source="{Binding ImageSource}"
-                                           Aspect="AspectFill" Grid.Row="0"/>
-                                    <VerticalStackLayout Grid.Row="1"
-                                                         Padding="15" Spacing="5">
-                                        <Label Text="{Binding Name}"
-                                               FontSize="18" FontAttributes="Bold"
-                                               TextColor="#0F172A"/>
-                                        <Label Text="{Binding Summary}"
-                                               FontSize="13" TextColor="Gray"
-                                               MaxLines="2"/>
-                                        <Label Text="{loc:Translate ViewDetail}"
-                                               FontSize="12" TextColor="#2E86DE"
-                                               Margin="0,5,0,0"/>
-                                    </VerticalStackLayout>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-
+                </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
 
         <local:MiniPlayerView x:Name="MiniPlayer" Grid.Row="1"/>
 
+        <!-- Thanh điều hướng dưới — nhãn dùng ResX để đổi theo ngôn ngữ -->
+        <Border Grid.Row="2" StrokeThickness="0" BackgroundColor="White"
+                StrokeShape="RoundRectangle 20,20,0,0">
+            <Grid Padding="6,10,6,14" ColumnDefinitions="*,*,*,*,*" ColumnSpacing="0">
+                <Grid Grid.Column="0">
+                    <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Label Text="🏠" FontSize="20" HorizontalTextAlignment="Center"/>
+                        <Label Text="{loc:Translate HomeHeroTitle}" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center"/>
+                    </VerticalStackLayout>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBottomNavHome"/>
+                    </Grid.GestureRecognizers>
+                </Grid>
+                <Grid Grid.Column="1">
+                    <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Label Text="🗺️" FontSize="20" HorizontalTextAlignment="Center"/>
+                        <Label Text="{loc:Translate MapTitle}" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center"/>
+                    </VerticalStackLayout>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenMap"/>
+                    </Grid.GestureRecognizers>
+                </Grid>
+                <Grid Grid.Column="2">
+                    <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Label Text="🎙" FontSize="20" HorizontalTextAlignment="Center"/>
+                        <Label Text="{loc:Translate NavTabAudio}" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center"/>
+                    </VerticalStackLayout>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenAudio"/>
+                    </Grid.GestureRecognizers>
+                </Grid>
+                <Grid Grid.Column="3">
+                    <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Label Text="📷" FontSize="20" HorizontalTextAlignment="Center"/>
+                        <Label Text="Quét QR" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center"/>
+                    </VerticalStackLayout>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenQrScanner"/>
+                    </Grid.GestureRecognizers>
+                </Grid>
+                <Grid Grid.Column="4">
+                    <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                        <Label Text="📋" FontSize="20" HorizontalTextAlignment="Center"/>
+                        <Label Text="{loc:Translate NavTabScanHistory}" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center"/>
+                    </VerticalStackLayout>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OpenQrScanHistory"/>
+                    </Grid.GestureRecognizers>
+                </Grid>
+            </Grid>
+        </Border>
     </Grid>
 </ContentPage>

@@ -1,8 +1,9 @@
-﻿using TravelGuide.Models;
+using TravelGuide.Models;
 using System.Text.Json;
 using Microsoft.Maui.Devices.Sensors;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
+using SQLite;
 
 namespace TravelGuide;
 
@@ -14,7 +15,11 @@ public class DatabaseService
 {
         private readonly HttpClient _httpClient;
         private readonly SemaphoreSlim _syncLock = new(1, 1);
+        private readonly string _sqlitePath;
+        private const string PublicApiBaseLoopback = "http://127.0.0.1:5096";
+        private const string PublicApiBaseAndroid = "http://10.0.2.2:5096";
         private List<TouristPlace>? _cachedPlaces;
+        private SQLiteAsyncConnection? _localDb;
         private DateTime _lastSyncUtc = DateTime.MinValue;
         private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(30);
 
@@ -27,6 +32,7 @@ public class DatabaseService
         public DatabaseService(HttpClient httpClient)
         {
             _httpClient = httpClient;
+            _sqlitePath = Path.Combine(FileSystem.AppDataDirectory, "travelguide-local.db3");
             AppLanguage.OnLanguageChanged += _ => ClearCache();
         }
 
@@ -90,7 +96,20 @@ public class DatabaseService
                 if (index >= 0)
                     _cachedPlaces[index] = place;
             }
-            await Task.CompletedTask;
+            var db = await GetLocalDbAsync();
+            await db.InsertOrReplaceAsync(place);
+        }
+
+        /// <summary>Đánh dấu đã đến 1 POI và lưu xuống SQLite local.</summary>
+        public async Task<bool> MarkPlaceVisitedAsync(int placeId)
+        {
+            var places = await GetPlacesAsync();
+            var place = places.FirstOrDefault(p => p.Id == placeId);
+            if (place == null || place.IsVisited) return false;
+
+            place.IsVisited = true;
+            await UpdatePlaceAsync(place);
+            return true;
         }
 
         /// <summary>True nếu mọi POI có tên+mô tả đủ cho <paramref name="langCode"/> (en/ja/ko/zh).</summary>
@@ -117,13 +136,32 @@ public class DatabaseService
             _lastSyncUtc = DateTime.MinValue;
         }
 
-        /// <summary>URL gốc API admin (Preferences <c>api_base_url</c> hoặc mặc định theo nền tảng).</summary>
+        /// <summary>
+        /// URL gốc TravelGuide.API (HTTP) — <c>Preferences api_base_url</c> hoặc mặc định.
+        /// Android emulator: <c>10.0.2.2</c> = máy host; thiết bị thật: IP LAN máy chạy API (vd <c>http://192.168.1.10:5096</c>).
+        /// Chỉ POI <c>published</c> mới có trong <c>/api/public/pois</c>.
+        /// </summary>
         public string GetCurrentApiBaseUrl()
         {
             var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android
-                ? "http://10.0.2.2:5280"
-                : "http://localhost:5280";
-            return Preferences.Get("api_base_url", defaultUrl);
+                ? PublicApiBaseAndroid
+                : PublicApiBaseLoopback;
+
+            var configured = Preferences.Get("api_base_url", defaultUrl)?.Trim();
+            if (string.IsNullOrWhiteSpace(configured))
+            {
+                Preferences.Set("api_base_url", defaultUrl);
+                return defaultUrl;
+            }
+
+            if (ShouldForcePublicApiBase(configured))
+            {
+                Preferences.Set("api_base_url", defaultUrl);
+                System.Diagnostics.Debug.WriteLine($"[API] Reset api_base_url '{configured}' -> '{defaultUrl}'");
+                return defaultUrl;
+            }
+
+            return configured;
         }
 
         /// <summary>Đồng bộ cache: API trước, nếu rỗng và chưa có cache thì đọc JSON nhúng.</summary>
@@ -135,22 +173,31 @@ public class DatabaseService
                 if (!force && _cachedPlaces != null && DateTime.UtcNow - _lastSyncUtc < CacheDuration)
                     return;
 
-                var fromApi = await TryGetFromApiAsync();
-                if (fromApi.Count > 0)
+                var (httpOk, fromApi) = await TryGetFromApiAsync();
+                if (httpOk)
                 {
                     await EnsureClientTranslationsForCurrentLanguageAsync(fromApi);
+                    await ReplaceLocalDbAsync(fromApi);
                     _cachedPlaces = fromApi;
                     _lastSyncUtc = DateTime.UtcNow;
                     return;
                 }
 
-                if (_cachedPlaces == null || _cachedPlaces.Count == 0)
+                var fromLocalDb = await LoadFromLocalDbAsync();
+                if (fromLocalDb.Count > 0)
                 {
-                    var local = await LoadLocalFallbackAsync();
-                    await EnsureClientTranslationsForCurrentLanguageAsync(local);
-                    _cachedPlaces = local;
+                    await EnsureClientTranslationsForCurrentLanguageAsync(fromLocalDb);
+                    await ReplaceLocalDbAsync(fromLocalDb);
+                    _cachedPlaces = fromLocalDb;
                     _lastSyncUtc = DateTime.UtcNow;
+                    return;
                 }
+
+                var localFallback = await LoadLocalFallbackAsync();
+                await EnsureClientTranslationsForCurrentLanguageAsync(localFallback);
+                await ReplaceLocalDbAsync(localFallback);
+                _cachedPlaces = localFallback;
+                _lastSyncUtc = DateTime.UtcNow;
             }
             finally
             {
@@ -158,23 +205,104 @@ public class DatabaseService
             }
         }
 
-        /// <summary>GET <c>/api/public/pois?lang=</c> và map sang <see cref="TouristPlace"/>.</summary>
-        private async Task<List<TouristPlace>> TryGetFromApiAsync()
+        /// <summary>Khởi tạo SQLite local và tạo bảng POI nếu chưa có.</summary>
+        private async Task<SQLiteAsyncConnection> GetLocalDbAsync()
+        {
+            if (_localDb != null) return _localDb;
+
+            _localDb = new SQLiteAsyncConnection(_sqlitePath);
+            await _localDb.CreateTableAsync<TouristPlace>();
+            return _localDb;
+        }
+
+        /// <summary>Đọc toàn bộ POI từ SQLite local.</summary>
+        private async Task<List<TouristPlace>> LoadFromLocalDbAsync()
+        {
+            try
+            {
+                var db = await GetLocalDbAsync();
+                return await db.Table<TouristPlace>()
+                    .OrderByDescending(p => p.Priority)
+                    .ToListAsync();
+            }
+            catch
+            {
+                return new List<TouristPlace>();
+            }
+        }
+
+        /// <summary>Ghi đè danh sách POI local theo snapshot mới nhất từ API/fallback.</summary>
+        private async Task ReplaceLocalDbAsync(List<TouristPlace> places)
+        {
+            try
+            {
+                var db = await GetLocalDbAsync();
+                await db.RunInTransactionAsync(connection =>
+                {
+                    var visitedById = connection.Table<TouristPlace>()
+                        .Where(p => p.IsVisited)
+                        .Select(p => p.Id)
+                        .ToHashSet();
+
+                    foreach (var place in places)
+                    {
+                        if (visitedById.Contains(place.Id))
+                            place.IsVisited = true;
+                    }
+
+                    connection.DeleteAll<TouristPlace>();
+                    connection.InsertAll(places);
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SQLite] Save POI failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// GET <c>/api/public/pois?lang=</c>. Trả về <c>(true, list)</c> khi HTTP thành công (kể cả danh sách rỗng);
+        /// <c>(false, rỗng)</c> khi không kết nối được server — khi đó mới dùng SQLite / JSON nhúng.
+        /// </summary>
+        private async Task<(bool HttpOk, List<TouristPlace> Places)> TryGetFromApiAsync()
         {
             try
             {
                 var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
                 var lang = string.IsNullOrWhiteSpace(AppLanguage.Current) ? "vi" : AppLanguage.Current;
                 var url = $"{baseUrl}/api/public/pois?lang={Uri.EscapeDataString(lang)}";
-                var apiPois = await _httpClient.GetFromJsonAsync<List<ApiPoi>>(url, ApiJsonOptions);
-                if (apiPois == null || apiPois.Count == 0) return new();
-                return apiPois.Select(MapFromApi).ToList();
+                System.Diagnostics.Debug.WriteLine($"[API] Fetch POI from {url}");
+                using var resp = await _httpClient.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[API] GET {url} → HTTP {(int)resp.StatusCode}");
+                    return (false, new List<TouristPlace>());
+                }
+
+                var apiPois = await resp.Content.ReadFromJsonAsync<List<ApiPoi>>(ApiJsonOptions);
+                if (apiPois == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[API] JSON null từ {url}");
+                    return (false, new List<TouristPlace>());
+                }
+
+                var list = apiPois.Select(MapFromApi).ToList();
+                return (true, list);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[API] Load POI failed: {ex.Message}");
-                return new List<TouristPlace>();
+                return (false, new List<TouristPlace>());
             }
+        }
+
+        private static bool ShouldForcePublicApiBase(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                return true;
+
+            // POI public đã chuyển qua TravelGuide.API; tránh trỏ nhầm sang AdminWeb.
+            return uri.Port is 5280 or 7145;
         }
 
         /// <summary>
@@ -315,7 +443,10 @@ public class DatabaseService
                 ImagePath = p.ImagePath ?? "",
                 AudioUrl = string.IsNullOrWhiteSpace(p.AudioUrl) ? null : p.AudioUrl.Trim(),
                 Priority = p.Priority,
-                MapLink = string.IsNullOrWhiteSpace(p.MapLink) ? null : p.MapLink.Trim()
+                MapLink = string.IsNullOrWhiteSpace(p.MapLink) ? null : p.MapLink.Trim(),
+                QrImagePath = string.IsNullOrWhiteSpace(p.QrImagePath) ? null : p.QrImagePath.Trim(),
+                Price = p.Price < 0 ? 0 : p.Price,
+                Tag = string.IsNullOrWhiteSpace(p.Tag) ? "dia diem du lich" : p.Tag.Trim()
             };
         }
 
@@ -339,6 +470,9 @@ public class DatabaseService
                     p.DescKo ??= "";
                     p.NameZh ??= "";
                     p.DescZh ??= "";
+                    p.QrImagePath = string.IsNullOrWhiteSpace(p.QrImagePath) ? "" : p.QrImagePath.Trim();
+                    p.Tag = string.IsNullOrWhiteSpace(p.Tag) ? "dia diem du lich" : p.Tag.Trim();
+                    if (p.Price < 0) p.Price = 0;
                 }
                 return places;
             }
@@ -370,4 +504,7 @@ internal sealed class ApiPoi
     public string? AudioUrl { get; set; }
     public int Priority { get; set; }
     public string? MapLink { get; set; }
+    public string? QrImagePath { get; set; }
+    public decimal Price { get; set; }
+    public string? Tag { get; set; }
 }

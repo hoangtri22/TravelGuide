@@ -1,10 +1,11 @@
-﻿using Microsoft.Maui.Controls.Hosting;
+using Microsoft.Maui.Controls.Hosting;
 using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
 using LocalizationResourceManager.Maui;
 using System.Globalization;
 using Plugin.Maui.Audio;
 using TravelGuide;
+using ZXing.Net.Maui.Controls;
 
 namespace TravelGuide;
 
@@ -25,6 +26,7 @@ public static class MauiProgram
         builder
             .UseMauiApp<App>()
             .UseMauiMaps()
+            .UseBarcodeReader()
             .UseLocalizationResourceManager(settings =>
             {
                 // ✅ Kết nối với AppResources.resx
@@ -46,8 +48,13 @@ public static class MauiProgram
         // 🔧 SERVICES (Singleton)
         // ========================
         builder.Services.AddSingleton<DatabaseService>();
-        builder.Services.AddSingleton<HttpClient>();
+        builder.Services.AddSingleton(_ =>
+        {
+            var c = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+            return c;
+        });
         builder.Services.AddSingleton<TranslationService>();
+        builder.Services.AddSingleton<TouristAuthService>();
 
         // Engine dùng chung state
         builder.Services.AddSingleton<NarrationEngine>();
@@ -64,6 +71,10 @@ public static class MauiProgram
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<AudioPage>();
+        builder.Services.AddTransient<TouristLoginPage>();
+        builder.Services.AddTransient<TouristRegisterPage>();
+        builder.Services.AddTransient<QrScannerPage>();
+        builder.Services.AddTransient<QrScanHistoryPage>();
 
         var app = builder.Build();
 

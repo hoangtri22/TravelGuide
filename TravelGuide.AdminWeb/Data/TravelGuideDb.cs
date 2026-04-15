@@ -7,12 +7,13 @@ using TravelGuide.AdminWeb.Services;
 namespace TravelGuide.AdminWeb.Data;
 
 /// <summary>
-/// Truy cập SQLite <c>travelguide-admin.db</c>: bảng Poi, UserAccount; seed admin/POI; dịch tự động MyMemory.
+/// Truy cập SQL Server: bảng Poi, UserAccount; seed admin/POI; dịch tự động MyMemory.
 /// </summary>
 public sealed class TravelGuideDb
 {
     private readonly string _connectionString;
     private readonly SemaphoreSlim _translationLock = new(1, 1);
+    private static readonly JsonSerializerOptions CaseInsensitiveJson = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>Bỏ khoảng trắng đầu/cuối và ký tự zero-width hay gặp khi copy từ Word/Excel.</summary>
     public static string NormalizeLoginUsername(string? username)
@@ -28,11 +29,12 @@ public sealed class TravelGuideDb
         return sb.ToString();
     }
 
-    /// <summary>Chuỗi kết nối tới file DB trong thư mục chạy ứng dụng.</summary>
+    /// <summary>Chuỗi kết nối SQL Server (localdb mặc định nếu không cấu hình biến môi trường).</summary>
     public TravelGuideDb()
     {
-        var dbPath = Path.Combine(AppContext.BaseDirectory, "travelguide-admin.db");
-        _connectionString = $"Data Source={dbPath}";
+        _connectionString =
+            Environment.GetEnvironmentVariable("TRAVELGUIDE_SQLSERVER")
+            ?? "Server=(localdb)\\MSSQLLocalDB;Database=TravelGuideDb;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
     }
 
     /// <summary>Tạo bảng/cột nếu thiếu, seed admin + POI mẫu khi DB trống.</summary>
@@ -42,39 +44,129 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
 
         var sql = """
-                  CREATE TABLE IF NOT EXISTS Poi(
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    NameVi TEXT NOT NULL,
-                    NameEn TEXT NOT NULL DEFAULT '',
-                    NameJa TEXT NOT NULL DEFAULT '',
-                    NameKo TEXT NOT NULL DEFAULT '',
-                    NameZh TEXT NOT NULL DEFAULT '',
-                    DescVi TEXT NOT NULL,
-                    DescEn TEXT NOT NULL DEFAULT '',
-                    DescJa TEXT NOT NULL DEFAULT '',
-                    DescKo TEXT NOT NULL DEFAULT '',
-                    DescZh TEXT NOT NULL DEFAULT '',
-                    Latitude REAL NOT NULL,
-                    Longitude REAL NOT NULL,
-                    Radius REAL NOT NULL DEFAULT 50,
-                    ImagePath TEXT NOT NULL DEFAULT '',
-                    AudioUrl TEXT NOT NULL DEFAULT '',
-                    Status TEXT NOT NULL DEFAULT 'published',
-                    RejectReason TEXT NOT NULL DEFAULT '',
-                    OwnerUserId INTEGER NOT NULL DEFAULT 0,
-                    Priority INTEGER NOT NULL DEFAULT 0,
-                    MapLink TEXT NOT NULL DEFAULT ''
-                  );
+                  IF OBJECT_ID(N'dbo.Poi', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.Poi(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      NameVi NVARCHAR(300) NOT NULL,
+                      NameEn NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameJa NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameKo NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameZh NVARCHAR(300) NOT NULL DEFAULT N'',
+                      DescVi NVARCHAR(MAX) NOT NULL,
+                      DescEn NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescJa NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescKo NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescZh NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      Latitude FLOAT NOT NULL,
+                      Longitude FLOAT NOT NULL,
+                      Radius FLOAT NOT NULL DEFAULT 50,
+                      ImagePath NVARCHAR(500) NOT NULL DEFAULT N'',
+                      AudioUrl NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      QrImagePath NVARCHAR(1000) NULL,
+                      Status NVARCHAR(30) NOT NULL DEFAULT N'published',
+                      RejectReason NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      OwnerUserId INT NOT NULL DEFAULT 0,
+                      Priority INT NOT NULL DEFAULT 0,
+                      MapLink NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      Price DECIMAL(18,2) NOT NULL DEFAULT 0,
+                      Tag NVARCHAR(100) NOT NULL DEFAULT N'dia diem du lich'
+                    );
+                  END;
 
-                  CREATE TABLE IF NOT EXISTS UserAccount(
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Username TEXT NOT NULL UNIQUE,
-                    PasswordHash TEXT NOT NULL,
-                    DisplayName TEXT NOT NULL,
-                    Role TEXT NOT NULL,
-                    IsLocked INTEGER NOT NULL DEFAULT 0,
-                    RegistrationApproved INTEGER NOT NULL DEFAULT 1
-                  );
+                  IF OBJECT_ID(N'dbo.UserAccount', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.UserAccount(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      Username NVARCHAR(120) NOT NULL UNIQUE,
+                      PasswordHash NVARCHAR(256) NOT NULL,
+                      DisplayName NVARCHAR(200) NOT NULL,
+                      Role NVARCHAR(30) NOT NULL,
+                      IsLocked BIT NOT NULL DEFAULT 0,
+                      RegistrationApproved BIT NOT NULL DEFAULT 1
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristUser', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristUser(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      Username NVARCHAR(100) NOT NULL UNIQUE,
+                      PasswordHash NVARCHAR(256) NOT NULL,
+                      DisplayName NVARCHAR(200) NOT NULL,
+                      AccountTier NVARCHAR(20) NOT NULL DEFAULT N'free',
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.RefreshToken', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.RefreshToken(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      TokenHash NVARCHAR(256) NOT NULL,
+                      DeviceId NVARCHAR(120) NULL,
+                      UserAgent NVARCHAR(500) NULL,
+                      IpAddress NVARCHAR(64) NULL,
+                      ExpiresAtUtc DATETIME2(0) NOT NULL,
+                      RevokedAtUtc DATETIME2(0) NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                    );
+                    CREATE UNIQUE INDEX UX_RefreshToken_TokenHash ON dbo.RefreshToken(TokenHash);
+                    CREATE INDEX IX_RefreshToken_TouristUserId ON dbo.RefreshToken(TouristUserId, ExpiresAtUtc DESC);
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristFavorite', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristFavorite(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      PoiId INT NOT NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id),
+                      UNIQUE (TouristUserId, PoiId)
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristVisitHistory', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristVisitHistory(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      PoiId INT NOT NULL,
+                      EventType NVARCHAR(30) NOT NULL DEFAULT N'view',
+                      PlaybackSeconds INT NOT NULL DEFAULT 0,
+                      WatchedPercent DECIMAL(5,2) NOT NULL DEFAULT 0,
+                      Source NVARCHAR(50) NULL,
+                      OccurredAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id)
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.PaymentTransaction', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.PaymentTransaction(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      Provider NVARCHAR(50) NOT NULL,
+                      ProviderRef NVARCHAR(150) NOT NULL,
+                      PlanCode NVARCHAR(50) NOT NULL DEFAULT N'premium_monthly',
+                      Currency NVARCHAR(10) NOT NULL DEFAULT N'VND',
+                      Amount DECIMAL(18,2) NOT NULL,
+                      Status NVARCHAR(30) NOT NULL,
+                      PaidAtUtc DATETIME2(0) NULL,
+                      ExpiresAtUtc DATETIME2(0) NULL,
+                      RawPayloadJson NVARCHAR(MAX) NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      UNIQUE (Provider, ProviderRef)
+                    );
+                  END;
                   """;
 
         await using var command = connection.CreateCommand();
@@ -82,7 +174,10 @@ public sealed class TravelGuideDb
         await command.ExecuteNonQueryAsync();
 
         await EnsurePoiColumnsAsync(connection);
+        await EnsureQrImagePathNullableAsync(connection);
         await EnsureUserAccountColumnsAsync(connection);
+        await EnsureTouristUserAccountTierColumnAsync(connection);
+        await EnsureTouristPoiQrScanLogTableAsync(connection);
 
         var hasAdmin = await GetUserByUsernameAsync("admin");
         if (hasAdmin is null)
@@ -111,8 +206,11 @@ public sealed class TravelGuideDb
         double Radius,
         string ImagePath,
         string AudioUrl,
+        string QrImagePath,
         int Priority,
-        string MapLink);
+        string MapLink,
+        decimal Price,
+        string Tag);
 
     /// <summary>Ánh xạ tên POI (VI) → username chủ quán phố; POI không có trong bảng → <c>OwnerUserId = 0</c> (điểm chung).</summary>
     private static readonly (string NameVi, string OwnerUsername)[] StreetVendorPoiOwners =
@@ -138,8 +236,7 @@ public sealed class TravelGuideDb
         try
         {
             await using var stream = File.OpenRead(path);
-            rows = await JsonSerializer.DeserializeAsync<List<ExtraPlaceJson>>(stream,
-                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            rows = await JsonSerializer.DeserializeAsync<List<ExtraPlaceJson>>(stream, CaseInsensitiveJson)
                    ?? [];
         }
         catch
@@ -191,8 +288,8 @@ public sealed class TravelGuideDb
             {
                 await using var ins = connection.CreateCommand();
                 ins.CommandText = """
-                                    INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink)
-                                    VALUES ($nameVi, '', '', '', '', $descVi, '', '', '', '', $lat, $lon, $radius, $imagePath, $audioUrl, 'published', '', $ownerUserId, $priority, $mapLink);
+                                    INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag)
+                                    VALUES ($nameVi, '', '', '', '', $descVi, '', '', '', '', $lat, $lon, $radius, $imagePath, $audioUrl, $qrImagePath, 'published', '', $ownerUserId, $priority, $mapLink, $price, $tag);
                                     """;
                 ins.Parameters.AddWithValue("$nameVi", row.NameVi);
                 ins.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
@@ -201,8 +298,11 @@ public sealed class TravelGuideDb
                 ins.Parameters.AddWithValue("$radius", row.Radius);
                 ins.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
                 ins.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                ins.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
                 ins.Parameters.AddWithValue("$priority", row.Priority);
                 ins.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                ins.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                ins.Parameters.AddWithValue("$tag", string.IsNullOrWhiteSpace(row.Tag) ? "dia diem du lich" : row.Tag.Trim());
                 ins.Parameters.AddWithValue("$ownerUserId", mappedOwnerId);
                 await ins.ExecuteNonQueryAsync();
             }
@@ -233,7 +333,7 @@ public sealed class TravelGuideDb
         }
 
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi"
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi"
             + (where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "")
             + " ORDER BY Id";
         if (ownerUserId.HasValue)
@@ -253,7 +353,7 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi WHERE OwnerUserId = $oid ORDER BY Id";
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi WHERE OwnerUserId = $oid ORDER BY Id";
         cmd.Parameters.AddWithValue("$oid", ownerUserId);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -268,7 +368,7 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi WHERE Id = $id";
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) return null;
@@ -293,11 +393,14 @@ public sealed class TravelGuideDb
             reader.GetDouble(13),
             reader.GetString(14),
             reader.GetString(15),
-            reader.GetString(16),
+            reader.IsDBNull(16) ? null : reader.GetString(16),
             reader.GetString(17),
-            reader.GetInt32(18),
+            reader.GetString(18),
             reader.GetInt32(19),
-            reader.GetString(20)
+            reader.GetInt32(20),
+            reader.GetString(21),
+            Convert.ToDecimal(reader.GetDouble(22)),
+            reader.GetString(23)
         );
 
     /// <summary>Thêm POI; admin → published, owner → pending và gán OwnerUserId.</summary>
@@ -307,8 +410,8 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink)
-                          VALUES ($nameVi, $nameEn, $nameJa, $nameKo, $nameZh, $descVi, $descEn, $descJa, $descKo, $descZh, $lat, $lon, $radius, $imagePath, $audioUrl, $status, $rejectReason, $ownerUserId, $priority, $mapLink);
+                          INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag)
+                          VALUES ($nameVi, $nameEn, $nameJa, $nameKo, $nameZh, $descVi, $descEn, $descJa, $descKo, $descZh, $lat, $lon, $radius, $imagePath, $audioUrl, $qrImagePath, $status, $rejectReason, $ownerUserId, $priority, $mapLink, $price, $tag);
                           SELECT last_insert_rowid();
                           """;
         BindPoi(cmd, poi);
@@ -340,14 +443,26 @@ public sealed class TravelGuideDb
                           UPDATE Poi SET
                             NameVi = $nameVi, NameEn = $nameEn, NameJa = $nameJa, NameKo = $nameKo, NameZh = $nameZh,
                             DescVi = $descVi, DescEn = $descEn, DescJa = $descJa, DescKo = $descKo, DescZh = $descZh,
-                            Latitude = $lat, Longitude = $lon, Radius = $radius, ImagePath = $imagePath, AudioUrl = $audioUrl,
-                            Priority = $priority, MapLink = $mapLink
+                            Latitude = $lat, Longitude = $lon, Radius = $radius, ImagePath = $imagePath, AudioUrl = $audioUrl, QrImagePath = $qrImagePath,
+                            Priority = $priority, MapLink = $mapLink, Price = $price, Tag = $tag
                           WHERE Id = $id;
                           """;
         BindPoi(cmd, poi);
         cmd.Parameters.AddWithValue("$id", id);
         var rows = await cmd.ExecuteNonQueryAsync();
         return rows > 0;
+    }
+
+    /// <summary>Cập nhật đường dẫn/URL ảnh QR (ví dụ sau khi tạo POI và gọi API sinh QR).</summary>
+    public async Task<bool> UpdatePoiQrImagePathAsync(int id, string? qrImagePath)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Poi SET QrImagePath = $qr WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$qr", (object?)qrImagePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
     /// <summary>Xóa POI theo Id (chỉ admin qua endpoint).</summary>
@@ -413,16 +528,16 @@ public sealed class TravelGuideDb
     }
 
     private static List<object> ToAudioList(List<PoiDto> pois) =>
-        pois.Select(x => (object)new { x.Id, x.NameVi, x.AudioUrl }).ToList();
+        [.. pois.Select(x => (object)new { x.Id, x.NameVi, x.AudioUrl })];
 
     /// <summary>POI đã publish dạng rút gọn để export JSON.</summary>
     public async Task<List<ExportPoi>> GetExportPlacesAsync()
     {
         var pois = await GetPoisAsync(includeUnpublished: false);
-        return pois.Select(x => new ExportPoi(
+        return [.. pois.Select(x => new ExportPoi(
             x.NameVi, x.DescVi, x.Latitude, x.Longitude, x.Radius, x.ImagePath ?? "",
-            x.AudioUrl ?? "", x.Priority, x.MapLink ?? ""
-        )).ToList();
+            x.AudioUrl ?? "", x.QrImagePath ?? "", x.Priority, x.MapLink ?? "", x.Price, x.Tag
+        ))];
     }
 
     /// <summary>Tất cả user (kèm hash — chỉ dùng nội bộ admin).</summary>
@@ -626,7 +741,7 @@ public sealed class TravelGuideDb
         {
             var pois = await GetPoisAsync();
             if (onlyPoiId.HasValue)
-                pois = pois.Where(p => p.Id == onlyPoiId.Value).ToList();
+                pois = [.. pois.Where(p => p.Id == onlyPoiId.Value)];
 
             foreach (var poi in pois)
             {
@@ -635,9 +750,9 @@ public sealed class TravelGuideDb
 
                 var next = poi with { };
                 var changed = false;
-                var langs = string.IsNullOrWhiteSpace(targetLang)
-                    ? new[] { "en", "ja", "ko", "zh" }
-                    : new[] { targetLang.ToLowerInvariant() };
+                IReadOnlyList<string> langs = string.IsNullOrWhiteSpace(targetLang)
+                    ? ["en", "ja", "ko", "zh"]
+                    : [targetLang.ToLowerInvariant()];
 
                 foreach (var lang in langs)
                 {
@@ -752,8 +867,11 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$radius", poi.Radius);
         cmd.Parameters.AddWithValue("$imagePath", poi.ImagePath ?? string.Empty);
         cmd.Parameters.AddWithValue("$audioUrl", poi.AudioUrl ?? string.Empty);
+        cmd.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(poi.QrImagePath) ? null : poi.QrImagePath.Trim());
         cmd.Parameters.AddWithValue("$priority", poi.Priority);
         cmd.Parameters.AddWithValue("$mapLink", poi.MapLink ?? string.Empty);
+        cmd.Parameters.AddWithValue("$price", poi.Price < 0 ? 0 : poi.Price);
+        cmd.Parameters.AddWithValue("$tag", string.IsNullOrWhiteSpace(poi.Tag) ? "dia diem du lich" : poi.Tag.Trim());
     }
 
     /// <summary>Chèn vài POI mẫu khi database chưa có dữ liệu.</summary>
@@ -761,9 +879,9 @@ public sealed class TravelGuideDb
     {
         var seed = new[]
         {
-            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", "published", "", 0, 10, ""),
-            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", "published", "", 0, 5, ""),
-            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", "published", "", 0, 5, "")
+            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "dia diem du lich"),
+            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "quan an"),
+            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "quan nuoc")
         };
 
         foreach (var poi in seed)
@@ -778,11 +896,15 @@ public sealed class TravelGuideDb
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "PRAGMA table_info(Poi);";
+            cmd.CommandText = """
+                              SELECT COLUMN_NAME
+                              FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Poi';
+                              """;
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                existing.Add(reader.GetString(1));
+                existing.Add(reader.GetString(0));
             }
         }
 
@@ -790,15 +912,34 @@ public sealed class TravelGuideDb
         {
             if (existing.Contains(name)) return;
             await using var alter = connection.CreateCommand();
-            alter.CommandText = $"ALTER TABLE Poi ADD COLUMN {name} {sqlTypeAndDefault};";
+            // T-SQL: không dùng ADD COLUMN (cú pháp SQLite); SQL Server dùng ADD <tên cột> <kiểu>...
+            alter.CommandText = $"ALTER TABLE dbo.Poi ADD [{name}] {sqlTypeAndDefault};";
             await alter.ExecuteNonQueryAsync();
         }
 
-        await AddColumnIfMissing("Status", "TEXT NOT NULL DEFAULT 'published'");
-        await AddColumnIfMissing("RejectReason", "TEXT NOT NULL DEFAULT ''");
-        await AddColumnIfMissing("OwnerUserId", "INTEGER NOT NULL DEFAULT 0");
-        await AddColumnIfMissing("Priority", "INTEGER NOT NULL DEFAULT 0");
-        await AddColumnIfMissing("MapLink", "TEXT NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("Status", "NVARCHAR(30) NOT NULL DEFAULT 'published'");
+        await AddColumnIfMissing("RejectReason", "NVARCHAR(1000) NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("OwnerUserId", "INT NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("Priority", "INT NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("MapLink", "NVARCHAR(1000) NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("QrImagePath", "NVARCHAR(1000) NULL");
+        await AddColumnIfMissing("Price", "DECIMAL(18,2) NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("Tag", "NVARCHAR(100) NOT NULL DEFAULT 'dia diem du lich'");
+    }
+
+    /// <summary>Cho phép <c>QrImagePath</c> NULL trên DB đã tạo trước khi cột hỗ trợ null.</summary>
+    private static async Task EnsureQrImagePathNullableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            IF EXISTS (
+                              SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'Poi' AND COLUMN_NAME = N'QrImagePath' AND IS_NULLABLE = N'NO')
+                            BEGIN
+                              ALTER TABLE dbo.Poi ALTER COLUMN QrImagePath NVARCHAR(1000) NULL;
+                            END
+                            """;
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static async Task EnsureUserAccountColumnsAsync(SqliteConnection connection)
@@ -806,11 +947,15 @@ public sealed class TravelGuideDb
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "PRAGMA table_info(UserAccount);";
+            cmd.CommandText = """
+                              SELECT COLUMN_NAME
+                              FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'UserAccount';
+                              """;
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                existing.Add(reader.GetString(1));
+                existing.Add(reader.GetString(0));
             }
         }
 
@@ -818,13 +963,38 @@ public sealed class TravelGuideDb
         {
             if (existing.Contains(name)) return;
             await using var alter = connection.CreateCommand();
-            alter.CommandText = $"ALTER TABLE UserAccount ADD COLUMN {name} {sqlTypeAndDefault};";
+            alter.CommandText = $"ALTER TABLE dbo.UserAccount ADD [{name}] {sqlTypeAndDefault};";
             await alter.ExecuteNonQueryAsync();
             existing.Add(name);
         }
 
-        await AddUserColumnIfMissing("IsLocked", "INTEGER NOT NULL DEFAULT 0");
-        await AddUserColumnIfMissing("RegistrationApproved", "INTEGER NOT NULL DEFAULT 1");
+        await AddUserColumnIfMissing("IsLocked", "BIT NOT NULL DEFAULT 0");
+        await AddUserColumnIfMissing("RegistrationApproved", "BIT NOT NULL DEFAULT 1");
+    }
+
+    /// <summary>Bản TouristUser do API tạo trước đó có thể thiếu <c>AccountTier</c> — bổ sung để web đọc được.</summary>
+    private static async Task EnsureTouristUserAccountTierColumnAsync(SqliteConnection connection)
+    {
+        await using var existsTable = connection.CreateCommand();
+        existsTable.CommandText = """
+                                  SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                                  WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'TouristUser';
+                                  """;
+        if (await existsTable.ExecuteScalarAsync() is null) return;
+
+        await using var existsCol = connection.CreateCommand();
+        existsCol.CommandText = """
+                                  SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                                  WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'TouristUser' AND COLUMN_NAME = N'AccountTier';
+                                  """;
+        if (await existsCol.ExecuteScalarAsync() is not null) return;
+
+        await using var alter = connection.CreateCommand();
+        alter.CommandText = """
+                            ALTER TABLE dbo.TouristUser
+                            ADD AccountTier NVARCHAR(20) NOT NULL CONSTRAINT DF_TouristUser_AccountTier DEFAULT N'free';
+                            """;
+        await alter.ExecuteNonQueryAsync();
     }
 
     /// <summary>Đọc Id/Status/OwnerUserId để kiểm tra quyền sửa POI.</summary>
@@ -840,4 +1010,277 @@ public sealed class TravelGuideDb
 
     /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật.</summary>
     private sealed record PoiRow(int Id, string Status, int OwnerUserId);
+
+    public async Task<object> GetTouristOverviewAsync()
+    {
+        // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
+        var users = await SafeTouristQuery(GetTouristUsersAsync);
+        var refreshTokens = await SafeTouristQuery(GetTouristRefreshTokensAsync);
+        var favorites = await SafeTouristQuery(GetTouristFavoritesAsync);
+        var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
+        var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
+        return new
+        {
+            users,
+            refreshTokens,
+            favorites,
+            visitHistory,
+            payments
+        };
+    }
+
+    /// <summary>Lịch sử quét QR POI + thống kê doanh thu (AmountVnd) cho admin.</summary>
+    public async Task<object> GetTouristPoiScanDashboardAsync()
+    {
+        var logs = await SafeTouristQuery(GetPoiQrScanLogsAsync);
+        var revenueByPoi = await SafeTouristQuery(GetPoiQrScanRevenueByPoiAsync);
+        decimal grandTotal = 0;
+        foreach (var r in revenueByPoi)
+            grandTotal += r.TotalVnd;
+        var totalScans = logs.Count;
+        return new
+        {
+            logs,
+            revenueByPoi,
+            grandTotalVnd = grandTotal,
+            totalScans
+        };
+    }
+
+    private static async Task EnsureTouristPoiQrScanLogTableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          IF OBJECT_ID(N'dbo.TouristPoiQrScanLog', N'U') IS NULL
+                          BEGIN
+                            CREATE TABLE dbo.TouristPoiQrScanLog(
+                              Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                              TouristUserId INT NOT NULL,
+                              Username NVARCHAR(100) NOT NULL,
+                              PoiId INT NOT NULL,
+                              PoiNameVi NVARCHAR(300) NOT NULL DEFAULT N'',
+                              EventType NVARCHAR(40) NOT NULL DEFAULT N'poi_qr_access',
+                              AmountVnd DECIMAL(18,2) NOT NULL DEFAULT 0,
+                              DeviceId NVARCHAR(120) NULL,
+                              DeviceModel NVARCHAR(200) NULL,
+                              AppPlatform NVARCHAR(40) NULL,
+                              CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                            );
+                            CREATE INDEX IX_TouristPoiQrScanLog_Created ON dbo.TouristPoiQrScanLog(CreatedAtUtc DESC);
+                            CREATE INDEX IX_TouristPoiQrScanLog_Poi ON dbo.TouristPoiQrScanLog(PoiId);
+                          END;
+                          """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<List<PoiQrScanLogDto>> GetPoiQrScanLogsAsync()
+    {
+        var result = new List<PoiQrScanLogDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 Id, TouristUserId, Username, PoiId, PoiNameVi, EventType, AmountVnd,
+                                 DeviceId, DeviceModel, AppPlatform, CreatedAtUtc
+                          FROM TouristPoiQrScanLog
+                          ORDER BY Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new PoiQrScanLogDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                Convert.ToDecimal(reader.GetDouble(6)),
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.GetDateTime(10)));
+        }
+
+        return result;
+    }
+
+    private async Task<List<PoiQrScanRevenueDto>> GetPoiQrScanRevenueByPoiAsync()
+    {
+        var result = new List<PoiQrScanRevenueDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT PoiId,
+                                 MAX(PoiNameVi) AS PoiNameVi,
+                                 SUM(AmountVnd) AS TotalVnd,
+                                 COUNT(*) AS ScanCount
+                          FROM TouristPoiQrScanLog
+                          GROUP BY PoiId
+                          ORDER BY TotalVnd DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new PoiQrScanRevenueDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                Convert.ToDecimal(reader.GetDouble(2)),
+                reader.GetInt32(3)));
+        }
+
+        return result;
+    }
+
+    private static async Task<List<T>> SafeTouristQuery<T>(Func<Task<List<T>>> query)
+    {
+        try
+        {
+            return await query();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TravelGuideDb] GetTouristOverviewAsync: {ex.Message}");
+            return [];
+        }
+    }
+
+    private async Task<List<TouristUserDto>> GetTouristUsersAsync()
+    {
+        var result = new List<TouristUserDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT Id, Username, DisplayName, AccountTier, CreatedAtUtc
+                          FROM TouristUser
+                          ORDER BY Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristUserDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()
+    {
+        var result = new List<TouristRefreshTokenDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 100 r.Id, r.TouristUserId, u.Username, ISNULL(r.DeviceId, ''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
+                          FROM RefreshToken r
+                          INNER JOIN TouristUser u ON u.Id = r.TouristUserId
+                          ORDER BY r.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristRefreshTokenDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                reader.GetDateTime(6)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristFavoriteDto>> GetTouristFavoritesAsync()
+    {
+        var result = new List<TouristFavoriteDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 200 f.Id, f.TouristUserId, u.Username, f.PoiId, p.NameVi, f.CreatedAtUtc
+                          FROM TouristFavorite f
+                          INNER JOIN TouristUser u ON u.Id = f.TouristUserId
+                          INNER JOIN Poi p ON p.Id = f.PoiId
+                          ORDER BY f.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristFavoriteDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetDateTime(5)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristVisitHistoryDto>> GetTouristVisitHistoryAsync()
+    {
+        var result = new List<TouristVisitHistoryDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 300 h.Id, h.TouristUserId, u.Username, h.PoiId, p.NameVi, h.EventType, h.PlaybackSeconds, h.WatchedPercent, h.OccurredAtUtc
+                          FROM TouristVisitHistory h
+                          INNER JOIN TouristUser u ON u.Id = h.TouristUserId
+                          INNER JOIN Poi p ON p.Id = h.PoiId
+                          ORDER BY h.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristVisitHistoryDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetInt32(6),
+                Convert.ToDecimal(reader.GetDouble(7)),
+                reader.GetDateTime(8)));
+        }
+        return result;
+    }
+
+    private async Task<List<PaymentTransactionDto>> GetPaymentTransactionsAsync()
+    {
+        var result = new List<PaymentTransactionDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 200 t.Id, t.TouristUserId, u.Username, t.Provider, t.ProviderRef, t.PlanCode, t.Currency, t.Amount, t.Status, t.CreatedAtUtc
+                          FROM PaymentTransaction t
+                          INNER JOIN TouristUser u ON u.Id = t.TouristUserId
+                          ORDER BY t.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new PaymentTransactionDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                Convert.ToDecimal(reader.GetDouble(7)),
+                reader.GetString(8),
+                reader.GetDateTime(9)));
+        }
+        return result;
+    }
 }
