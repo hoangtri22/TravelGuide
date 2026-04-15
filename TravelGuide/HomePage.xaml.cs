@@ -213,16 +213,14 @@ public partial class HomePage : ContentPage
     private async void OnUpgradePremiumClicked(object sender, EventArgs e)
     {
         var fee = TouristPricing.PremiumActivationVnd;
-        var confirm = await DisplayAlert(
+        var goScan = await DisplayAlert(
             "Nâng cấp Premium",
-            $"Phí nâng cấp (mô phỏng): {fee:N0} VND.\n\nXác nhận đã thanh toán để nâng cấp tài khoản?",
-            "Xác nhận",
-            "Huỷ");
-        if (!confirm) return;
+            $"Phí kích hoạt (mô phỏng): {fee:N0} VND.\n\nLuồng hiện tại kích hoạt Premium bằng cách quét mã QR claim.",
+            "Mở quét QR",
+            "Đóng");
+        if (!goScan) return;
 
-        var (ok, message) = await _touristAuthService.RegisterPremiumAsync(fee);
-        await DisplayAlert(ok ? "Thành công" : "Thất bại", message, "OK");
-        await RefreshPremiumUiAsync();
+        await Shell.Current.GoToAsync(nameof(QrScannerPage));
     }
 
     private void ApplyFilters()
