@@ -100,6 +100,40 @@ public class DatabaseService
             await db.InsertOrReplaceAsync(place);
         }
 
+        /// <summary>Thêm đánh giá cục bộ cho một POI theo username đã đăng nhập.</summary>
+        public async Task AddPlaceReviewAsync(int poiId, string username, int rating, string content)
+        {
+            if (poiId <= 0) return;
+            var user = (username ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(user)) return;
+            var text = (content ?? string.Empty).Trim();
+            if (text.Length == 0) return;
+
+            var review = new TouristPlaceReview
+            {
+                PoiId = poiId,
+                Username = user,
+                Rating = Math.Max(1, Math.Min(5, rating)),
+                Content = text,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            var db = await GetLocalDbAsync();
+            await db.InsertAsync(review);
+        }
+
+        /// <summary>Đọc đánh giá local của một POI (mới nhất trước).</summary>
+        public async Task<List<TouristPlaceReview>> GetPlaceReviewsAsync(int poiId, int take = 100)
+        {
+            if (poiId <= 0) return new List<TouristPlaceReview>();
+            var db = await GetLocalDbAsync();
+            return await db.Table<TouristPlaceReview>()
+                .Where(r => r.PoiId == poiId)
+                .OrderByDescending(r => r.CreatedAtUtc)
+                .Take(Math.Max(1, take))
+                .ToListAsync();
+        }
+
         /// <summary>Đánh dấu đã đến 1 POI và lưu xuống SQLite local.</summary>
         public async Task<bool> MarkPlaceVisitedAsync(int placeId)
         {
@@ -212,6 +246,7 @@ public class DatabaseService
 
             _localDb = new SQLiteAsyncConnection(_sqlitePath);
             await _localDb.CreateTableAsync<TouristPlace>();
+            await _localDb.CreateTableAsync<TouristPlaceReview>();
             return _localDb;
         }
 
