@@ -65,4 +65,5 @@ public partial class TouristLoginPage : ContentPage
             if (loginButton != null) loginButton.IsEnabled = true;
         }
     }
+
 }

@@ -86,7 +86,7 @@ public partial class PlaceDetailPage : ContentPage
     private async void OnSpeakClicked(object sender, EventArgs e)
     {
         if (_currentPlace != null)
-            await _narrationEngine.SpeakAsync(_currentPlace);
+            await _narrationEngine.SpeakExclusiveAsync(_currentPlace);
     }
 
     /// <summary>Mở <see cref="TouristPlace.MapLink"/> trong trình duyệt / app bản đồ.</summary>

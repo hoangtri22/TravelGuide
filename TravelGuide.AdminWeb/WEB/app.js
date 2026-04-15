@@ -815,6 +815,23 @@ byId("translationForm").addEventListener("submit", async (e) => {
   alert("Đã lưu bản dịch.");
 });
 
+byId("retranslateBtn")?.addEventListener("click", async () => {
+  const id = Number(byId("translationPoiSelect").value);
+  if (!Number.isFinite(id) || id <= 0) {
+    alert("Vui lòng chọn POI cần dịch lại.");
+    return;
+  }
+  if (!confirm("Dịch lại toàn bộ EN/JA/KO/ZH từ nội dung tiếng Việt hiện tại?")) return;
+  try {
+    await api(`/api/translations/${id}/regenerate`, { method: "POST" });
+    await loadTranslation(id);
+    await loadPois();
+    alert("Đã dịch lại xong.");
+  } catch (err) {
+    alert(`Dịch lại thất bại: ${err?.message || String(err)}`);
+  }
+});
+
 byId("accountForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   await api("/api/accounts", {

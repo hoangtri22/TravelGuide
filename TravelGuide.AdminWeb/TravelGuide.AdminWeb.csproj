@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <WebRoot>WEB</WebRoot>
+    <!-- Loại trừ thư mục build tạm tự tạo khỏi default glob Compile/Content. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**</DefaultItemExcludes>
     <!-- Tránh khóa TravelGuide.AdminWeb.exe khi process đang chạy (build lại vẫn tạo DLL). -->
     <UseAppHost>false</UseAppHost>
   </PropertyGroup>

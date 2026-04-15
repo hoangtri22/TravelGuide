@@ -498,6 +498,36 @@ public sealed class TravelGuideDb
             // Owner được sửa nội dung cả khi đã published (trước đây bị chặn → nút Sửa/Lưu như không hoạt động).
         }
 
+        // Khi nguồn tiếng Việt thay đổi, xóa bản dịch liên quan để luồng auto-translate dịch lại.
+        var normalizedIncomingNameVi = (poi.NameVi ?? "").Trim();
+        var normalizedExistingNameVi = (existing.NameVi ?? "").Trim();
+        var normalizedIncomingDescVi = (poi.DescVi ?? "").Trim();
+        var normalizedExistingDescVi = (existing.DescVi ?? "").Trim();
+
+        var sourceNameChanged = !string.Equals(
+            normalizedIncomingNameVi,
+            normalizedExistingNameVi,
+            StringComparison.Ordinal);
+        var sourceDescChanged = !string.Equals(
+            normalizedIncomingDescVi,
+            normalizedExistingDescVi,
+            StringComparison.Ordinal);
+
+        if (sourceNameChanged || sourceDescChanged)
+        {
+            poi = poi with
+            {
+                NameEn = sourceNameChanged ? "" : poi.NameEn,
+                NameJa = sourceNameChanged ? "" : poi.NameJa,
+                NameKo = sourceNameChanged ? "" : poi.NameKo,
+                NameZh = sourceNameChanged ? "" : poi.NameZh,
+                DescEn = sourceDescChanged ? "" : poi.DescEn,
+                DescJa = sourceDescChanged ? "" : poi.DescJa,
+                DescKo = sourceDescChanged ? "" : poi.DescKo,
+                DescZh = sourceDescChanged ? "" : poi.DescZh
+            };
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           UPDATE Poi SET
@@ -569,6 +599,48 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$descJa", request.DescJa);
         cmd.Parameters.AddWithValue("$descKo", request.DescKo);
         cmd.Parameters.AddWithValue("$descZh", request.DescZh);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    /// <summary>Xóa bản dịch hiện có để cho phép gọi auto-translate lại từ nguồn tiếng Việt.</summary>
+    public async Task<bool> ClearTranslationsAsync(int id, string? targetLang = null)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+
+        var lang = (targetLang ?? "").Trim().ToLowerInvariant();
+        if (lang.Length == 0)
+        {
+            cmd.CommandText = """
+                              UPDATE Poi SET
+                                NameEn = N'', NameJa = N'', NameKo = N'', NameZh = N'',
+                                DescEn = N'', DescJa = N'', DescKo = N'', DescZh = N''
+                              WHERE Id = $id;
+                              """;
+        }
+        else if (lang == "en")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameEn = N'', DescEn = N'' WHERE Id = $id;";
+        }
+        else if (lang == "ja")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameJa = N'', DescJa = N'' WHERE Id = $id;";
+        }
+        else if (lang == "ko")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameKo = N'', DescKo = N'' WHERE Id = $id;";
+        }
+        else if (lang == "zh")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameZh = N'', DescZh = N'' WHERE Id = $id;";
+        }
+        else
+        {
+            return false;
+        }
+
         cmd.Parameters.AddWithValue("$id", id);
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
@@ -1072,19 +1144,24 @@ public sealed class TravelGuideDb
         await alter.ExecuteNonQueryAsync();
     }
 
-    /// <summary>Đọc Id/Status/OwnerUserId để kiểm tra quyền sửa POI.</summary>
+    /// <summary>Đọc thông tin tối thiểu phục vụ kiểm tra quyền + phát hiện thay đổi nguồn VI.</summary>
     private static async Task<PoiRow?> GetPoiByIdInternalAsync(SqliteConnection connection, int id)
     {
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Status, OwnerUserId FROM Poi WHERE Id = $id";
+        cmd.CommandText = "SELECT Id, Status, OwnerUserId, NameVi, DescVi FROM Poi WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) return null;
-        return new PoiRow(reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2));
+        return new PoiRow(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.GetInt32(2),
+            reader.GetString(3),
+            reader.GetString(4));
     }
 
-    /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật.</summary>
-    private sealed record PoiRow(int Id, string Status, int OwnerUserId);
+    /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật và so sánh NameVi/DescVi.</summary>
+    private sealed record PoiRow(int Id, string Status, int OwnerUserId, string NameVi, string DescVi);
 
     public async Task<object> GetTouristOverviewAsync()
     {

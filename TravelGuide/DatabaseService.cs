@@ -237,13 +237,17 @@ public class DatabaseService
                     return;
 
                 var (httpOk, fromApi) = await TryGetFromApiAsync();
-                if (httpOk)
+                if (httpOk && fromApi.Count > 0)
                 {
                     await EnsureClientTranslationsForCurrentLanguageAsync(fromApi);
                     await ReplaceLocalDbAsync(fromApi);
                     _cachedPlaces = fromApi;
                     _lastSyncUtc = DateTime.UtcNow;
                     return;
+                }
+                if (httpOk && fromApi.Count == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine("[API] Public POI trả về rỗng, fallback local DB/seed");
                 }
 
                 var fromLocalDb = await LoadFromLocalDbAsync();

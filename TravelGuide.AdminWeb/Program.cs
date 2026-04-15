@@ -452,6 +452,24 @@ app.MapPut("/api/translations/{id:int}", async (HttpContext context, int id, Tra
     return updated ? Results.Ok() : Results.NotFound();
 });
 
+app.MapPost("/api/translations/{id:int}/regenerate", async (HttpContext context, int id, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, string? lang) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    var existing = await db.GetPoiAsync(id);
+    if (existing is null) return Results.NotFound();
+    if (principal.Role != "admin" && existing.OwnerUserId != principal.UserId)
+        return Results.Forbid();
+
+    var cleared = await db.ClearTranslationsAsync(id, lang);
+    if (!cleared)
+        return Results.BadRequest("Ngôn ngữ không hợp lệ. Chỉ hỗ trợ en/ja/ko/zh.");
+
+    await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), id, lang);
+    var poi = await db.GetPoiAsync(id);
+    return poi is null ? Results.NotFound() : Results.Ok(poi);
+});
+
 app.MapGet("/api/export/extra_places.json", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);

@@ -13,9 +13,6 @@ namespace TravelGuide;
 /// </summary>
 public partial class MapPage : ContentPage
 {
-    private const string AdminWebBaseLoopback = "http://127.0.0.1:5280";
-    private const string AdminWebBaseAndroid = "http://10.0.2.2:5280";
-
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
     private readonly GpsBackgroundService _gpsService;
@@ -139,7 +136,7 @@ public partial class MapPage : ContentPage
     /// <summary>Phát thủ công POI đang được coi là “gần nhất” trên banner.</summary>
     private async void OnSpeakNearbyClicked(object sender, EventArgs e)
     {
-        if (_nearestPlace != null) await _narrationEngine.SpeakAsync(_nearestPlace);
+        if (_nearestPlace != null) await _narrationEngine.SpeakExclusiveAsync(_nearestPlace);
     }
 
     /// <summary>Xử lý custom URL từ JavaScript: lỗi, TTS từ popup, nút định vị, map đã load.</summary>
@@ -171,7 +168,7 @@ public partial class MapPage : ContentPage
             }
 
             if (matched != null)
-                await _narrationEngine.SpeakAsync(matched);
+                await _narrationEngine.SpeakExclusiveAsync(matched);
         }
         else if (e.Url.Contains("locate"))
         {
@@ -376,9 +373,7 @@ public partial class MapPage : ContentPage
             JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()));
 
     private static string GetAdminWebBaseUrlForQr() =>
-        DeviceInfo.Platform == DevicePlatform.Android
-            ? AdminWebBaseAndroid
-            : AdminWebBaseLoopback;
+        EndpointResolver.ResolveAdminWebBaseUrls().Primary;
 
     /// <summary>HTML Mapbox GL JS: style vector, marker tùy màu, API <c>addPlace</c>/<c>updateLocation</c>/<c>highlight</c>.</summary>
     private string BuildMapboxHtml(Location center, string markersJs, string accessTokenJson, string adminWebBaseJson) => $@"

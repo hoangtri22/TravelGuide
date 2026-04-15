@@ -1,28 +1,19 @@
-﻿using Microsoft.Maui.Media;
-using Microsoft.Maui.Devices;
-using Plugin.Maui.Audio;
+﻿using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Media;
 using TravelGuide.Models;
 
 namespace TravelGuide;
 
 /// <summary>
-/// Hàng đợi thuyết minh: nếu <see cref="TouristPlace.AudioUrl"/> là http(s) hợp lệ thì tải và phát qua <see cref="IAudioManager"/>;
-/// lỗi hoặc không có URL thì dùng TTS.
+/// Hàng đợi thuyết minh: luôn dùng TTS theo <see cref="AppLanguage.Current"/> (tên/mô tả POI đã theo ngôn ngữ).
 /// </summary>
 public class NarrationEngine
 {
-    private const string AdminWebBaseLoopback = "http://127.0.0.1:5280";
-    private const string AdminWebBaseAndroid = "http://10.0.2.2:5280";
-    private const string AdminWebBaseLoopbackAlt = "http://127.0.0.1:5090";
-    private const string AdminWebBaseAndroidAlt = "http://10.0.2.2:5090";
-    private readonly HttpClient _http;
-    private readonly IAudioManager _audioManager;
-
+    private Task? _processTask;
     private bool _isSpeaking;
     private CancellationTokenSource? _cts;
     private IEnumerable<Locale>? _cachedLocales;
     private readonly Queue<TouristPlace> _queue = new();
-    private IAudioPlayer? _audioPlayer;
 
     public bool IsSpeaking => _isSpeaking;
 
@@ -31,45 +22,61 @@ public class NarrationEngine
     public event Action<TouristPlace>? OnStartedPlaying;
     public event Action? OnStoppedPlaying;
 
-    public NarrationEngine(HttpClient http, IAudioManager audioManager)
-    {
-        _http = http;
-        _audioManager = audioManager;
-    }
-
-    public async Task SpeakAsync(TouristPlace place)
+    public Task SpeakAsync(TouristPlace place)
     {
         _queue.Enqueue(place);
-        if (!_isSpeaking)
-            await ProcessQueueAsync();
-    }
-
-    public Task StopAsync()
-    {
-        _cts?.Cancel();
-        DisposeActiveAudio();
-        _queue.Clear();
-        _isSpeaking = false;
-        CurrentPlace = null;
-        OnStoppedPlaying?.Invoke();
+        if (_processTask is null || _processTask.IsCompleted)
+            _processTask = ProcessQueueAsync();
         return Task.CompletedTask;
     }
 
-    public void SkipNext() => _cts?.Cancel();
-
-    private void DisposeActiveAudio()
+    /// <summary>Dừng mọi bài đang phát, xóa hàng đợi, chỉ phát đúng một POI (màn chi tiết / map / audio).</summary>
+    public async Task SpeakExclusiveAsync(TouristPlace place)
     {
-        try
+        _cts?.Cancel();
+        _queue.Clear();
+        if (_processTask != null)
         {
-            _audioPlayer?.Stop();
-            _audioPlayer?.Dispose();
+            try
+            {
+                await _processTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                /* hủy / lỗi phiên trước */
+            }
+
+            _processTask = null;
         }
-        catch { /* ignore */ }
-        finally
-        {
-            _audioPlayer = null;
-        }
+
+        _queue.Enqueue(place);
+        _processTask = ProcessQueueAsync();
+        await _processTask.ConfigureAwait(false);
     }
+
+    public async Task StopAsync()
+    {
+        _cts?.Cancel();
+        _queue.Clear();
+        if (_processTask != null)
+        {
+            try
+            {
+                await _processTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                /* ignore */
+            }
+
+            _processTask = null;
+        }
+
+        CurrentPlace = null;
+        OnStoppedPlaying?.Invoke();
+    }
+
+    public void SkipNext() => _cts?.Cancel();
 
     private async Task ProcessQueueAsync()
     {
@@ -87,7 +94,6 @@ public class NarrationEngine
             }
             catch (Exception ex)
             {
-                // If locale discovery fails, still allow narration with default TTS settings.
                 System.Diagnostics.Debug.WriteLine($"[TTS] GetLocales failed: {ex.Message}");
                 _cachedLocales = Array.Empty<Locale>();
             }
@@ -101,13 +107,10 @@ public class NarrationEngine
 
                 try
                 {
-                    var usedAudio = await TryPlayRemoteAudioAsync(place, _cts.Token).ConfigureAwait(false);
-                    if (!usedAudio)
-                    {
-                        var text = BuildNarrationText(place);
-                        var opts = BuildSpeechOptions(_cachedLocales!);
-                        await TextToSpeech.Default.SpeakAsync(text, opts, _cts.Token).ConfigureAwait(false);
-                    }
+                    var text = BuildNarrationText(place);
+                    var opts = BuildSpeechOptions(_cachedLocales!);
+                    await RunSpeechOnMainThreadAsync(() =>
+                        TextToSpeech.Default.SpeakAsync(text, opts, _cts.Token)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -115,12 +118,7 @@ public class NarrationEngine
                 }
                 catch (Exception ex)
                 {
-                    // Keep the queue alive even when one place fails to narrate.
                     System.Diagnostics.Debug.WriteLine($"[Narration] {place.Name}: {ex.Message}");
-                }
-                finally
-                {
-                    DisposeActiveAudio();
                 }
 
                 if (_queue.Count > 0)
@@ -129,98 +127,14 @@ public class NarrationEngine
         }
         finally
         {
-            DisposeActiveAudio();
             _isSpeaking = false;
             CurrentPlace = null;
             OnStoppedPlaying?.Invoke();
         }
     }
 
-    private async Task<bool> TryPlayRemoteAudioAsync(TouristPlace place, CancellationToken ct)
-    {
-        var candidates = ResolveAudioSources(place.AudioUrl);
-        foreach (var url in candidates)
-        {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                continue;
-
-            MemoryStream? buffer = null;
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(6));
-            try
-            {
-                await using (var network = await _http.GetStreamAsync(uri, timeoutCts.Token).ConfigureAwait(false))
-                {
-                    buffer = new MemoryStream();
-                    await network.CopyToAsync(buffer, timeoutCts.Token).ConfigureAwait(false);
-                }
-
-                buffer!.Position = 0;
-                DisposeActiveAudio();
-                _audioPlayer = _audioManager.CreatePlayer(buffer);
-                _audioPlayer.Play();
-
-                while (_audioPlayer.IsPlaying)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    await Task.Delay(100, ct).ConfigureAwait(false);
-                }
-
-                return true;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Audio] {url} failed: {ex.Message} → thử nguồn khác/TTS");
-            }
-            finally
-            {
-                DisposeActiveAudio();
-                try
-                {
-                    buffer?.Dispose();
-                }
-                catch { /* ignore */ }
-            }
-        }
-
-        return false;
-    }
-
     private static string BuildNarrationText(TouristPlace place) =>
         string.IsNullOrWhiteSpace(place.Description) ? place.Name : place.Description;
-
-    private static IReadOnlyList<string> ResolveAudioSources(string? rawAudioUrl)
-    {
-        var raw = (rawAudioUrl ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(raw))
-            return Array.Empty<string>();
-        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return [raw];
-
-        var normalized = raw.TrimStart('.', '/');
-        if (normalized.StartsWith("WEB/", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[4..];
-        if (string.IsNullOrWhiteSpace(normalized))
-            return Array.Empty<string>();
-
-        var (primaryBase, altBase) = GetAdminWebBaseUrls();
-        return
-        [
-            $"{primaryBase.TrimEnd('/')}/{normalized}",
-            $"{altBase.TrimEnd('/')}/{normalized}"
-        ];
-    }
-
-    private static (string Primary, string Alt) GetAdminWebBaseUrls() =>
-        DeviceInfo.Platform == DevicePlatform.Android
-            ? (AdminWebBaseAndroid, AdminWebBaseAndroidAlt)
-            : (AdminWebBaseLoopback, AdminWebBaseLoopbackAlt);
 
     private static SpeechOptions BuildSpeechOptions(IEnumerable<Locale> available)
     {
@@ -243,5 +157,13 @@ public class NarrationEngine
                 string.Equals(l.Language, lang, StringComparison.OrdinalIgnoreCase));
 
         return new SpeechOptions { Volume = 1f, Pitch = 1f, Locale = matched };
+    }
+
+    /// <summary>Android: TTS thường cần main thread; nếu không có thể im lặng.</summary>
+    private static Task RunSpeechOnMainThreadAsync(Func<Task> speak)
+    {
+        if (MainThread.IsMainThread)
+            return speak();
+        return MainThread.InvokeOnMainThreadAsync(speak);
     }
 }

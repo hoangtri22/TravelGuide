@@ -37,11 +37,13 @@ public partial class HomePage : ContentPage
         _narrationEngine = narrationEngine;
         _touristAuthService = touristAuthService;
         UpdateLanguageButton(AppLanguage.Current);
+        UpdateCategoryChipTexts();
 
         AppLanguage.OnLanguageChanged += _ =>
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 UpdateLanguageButton(AppLanguage.Current);
+                UpdateCategoryChipTexts();
                 UpdateLocalizedChrome();
                 await LoadPlacesAsync();
             });
@@ -107,6 +109,8 @@ public partial class HomePage : ContentPage
     /// <summary>Cập nhật nhãn số địa điểm khi đổi ngôn ngữ (tiêu đề hero dùng ResX trong XAML).</summary>
     private void UpdateLocalizedChrome()
     {
+        UpdateCategoryChipTexts();
+        UpdateNearbySectionTexts();
         ApplyFilters();
     }
 
@@ -362,6 +366,75 @@ public partial class HomePage : ContentPage
     }
 
     private sealed record LangOption(string Code, string Label);
+
+    private void UpdateCategoryChipTexts()
+    {
+        switch (AppLanguage.Current)
+        {
+            case "en":
+                ChipAll.Text = "🔥 Featured";
+                ChipFood.Text = "🍜 Food";
+                ChipDrink.Text = "☕ Drinks";
+                ChipSight.Text = "🏛️ Heritage";
+                ChipOther.Text = "📍 Others";
+                break;
+            case "ja":
+                ChipAll.Text = "🔥 注目";
+                ChipFood.Text = "🍜 グルメ";
+                ChipDrink.Text = "☕ ドリンク";
+                ChipSight.Text = "🏛️ 史跡";
+                ChipOther.Text = "📍 その他";
+                break;
+            case "ko":
+                ChipAll.Text = "🔥 추천";
+                ChipFood.Text = "🍜 맛집";
+                ChipDrink.Text = "☕ 음료";
+                ChipSight.Text = "🏛️ 유적";
+                ChipOther.Text = "📍 기타";
+                break;
+            case "zh":
+                ChipAll.Text = "🔥 热门";
+                ChipFood.Text = "🍜 美食";
+                ChipDrink.Text = "☕ 饮品";
+                ChipSight.Text = "🏛️ 古迹";
+                ChipOther.Text = "📍 其他";
+                break;
+            default:
+                ChipAll.Text = "🔥 Nổi bật";
+                ChipFood.Text = "🍜 Ẩm thực";
+                ChipDrink.Text = "☕ Cà phê";
+                ChipSight.Text = "🏛️ Di tích";
+                ChipOther.Text = "📍 Khác";
+                break;
+        }
+    }
+
+    private void UpdateNearbySectionTexts()
+    {
+        switch (AppLanguage.Current)
+        {
+            case "en":
+                LblNearbyTitle.Text = "📍 Near you";
+                LblNearbyViewAll.Text = "View all";
+                break;
+            case "ja":
+                LblNearbyTitle.Text = "📍 近くのスポット";
+                LblNearbyViewAll.Text = "すべて表示";
+                break;
+            case "ko":
+                LblNearbyTitle.Text = "📍 내 주변";
+                LblNearbyViewAll.Text = "전체 보기";
+                break;
+            case "zh":
+                LblNearbyTitle.Text = "📍 附近地点";
+                LblNearbyViewAll.Text = "查看全部";
+                break;
+            default:
+                LblNearbyTitle.Text = "📍 Gần bạn";
+                LblNearbyViewAll.Text = "Xem tất cả";
+                break;
+        }
+    }
 
     private static string NormalizeTagKey(string rawTag)
     {

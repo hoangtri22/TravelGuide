@@ -135,7 +135,7 @@
                                         <Grid Grid.Row="0">
                                             <Image Source="{Binding ImageSource}" Aspect="AspectFill"/>
                                             <Border BackgroundColor="#E8391D" StrokeThickness="0" StrokeShape="RoundRectangle 12" Padding="8,4" Margin="10,10,0,0" HorizontalOptions="Start" VerticalOptions="Start">
-                                                <Label Text="Hot" FontSize="11" FontAttributes="Bold" TextColor="White"/>
+                                                <Label Text="{Binding HotLabel}" FontSize="11" FontAttributes="Bold" TextColor="White"/>
                                             </Border>
                                         </Grid>
                                         <VerticalStackLayout Grid.Row="1" Padding="12,10,12,14" Spacing="4">
@@ -150,8 +150,8 @@
                     </CollectionView>
 
                     <Grid ColumnDefinitions="*,Auto">
-                        <Label Text="📍 Gần bạn" FontSize="21" FontAttributes="Bold" TextColor="#0B1E34"/>
-                        <Label Grid.Column="1" Text="Xem tất cả" VerticalOptions="End" TextColor="#0B74B2" FontAttributes="Bold"/>
+                        <Label x:Name="LblNearbyTitle" Text="📍 Gần bạn" FontSize="21" FontAttributes="Bold" TextColor="#0B1E34"/>
+                        <Label x:Name="LblNearbyViewAll" Grid.Column="1" Text="Xem tất cả" VerticalOptions="End" TextColor="#0B74B2" FontAttributes="Bold"/>
                     </Grid>
 
                     <CollectionView x:Name="NearbyCollection"
@@ -166,7 +166,7 @@
                                         </Border>
                                         <VerticalStackLayout Grid.Column="1" Spacing="3">
                                             <Label Text="{Binding Name}" FontAttributes="Bold" TextColor="#1A2A3A" LineBreakMode="TailTruncation"/>
-                                            <Label Text="{Binding Tag}" FontSize="12" TextColor="#7C8A9A"/>
+                                            <Label Text="{Binding TagDisplay}" FontSize="12" TextColor="#7C8A9A"/>
                                             <Label Text="{Binding Summary}" FontSize="11" TextColor="#8A97A6" LineBreakMode="TailTruncation" MaxLines="1"/>
                                         </VerticalStackLayout>
                                         <Label Grid.Column="2" Text="›" FontSize="20" TextColor="#9AA8B5" VerticalOptions="Center"/>

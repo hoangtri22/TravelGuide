@@ -21,25 +21,52 @@ public sealed class TouristAuthService
 
     public string GetCurrentApiBaseUrl()
     {
-        var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android
-            ? AuthBaseAndroid
-            : AuthBaseLoopback;
+        var resolved = EndpointResolver.ResolveApiBaseUrl().TrimEnd('/');
+        if (!ShouldForceAdminBase(resolved))
+            return resolved;
 
-        var configured = Preferences.Get("tourist_api_base_url", defaultUrl)?.Trim();
-        if (string.IsNullOrWhiteSpace(configured))
+        var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android ? AuthBaseAndroid : AuthBaseLoopback;
+        Preferences.Set("tourist_api_base_url", defaultUrl);
+        Preferences.Set("api_base_url", defaultUrl);
+        System.Diagnostics.Debug.WriteLine($"[AuthAPI] Reset invalid API URL '{resolved}' -> '{defaultUrl}'");
+        return defaultUrl;
+    }
+
+    public bool TrySetApiBaseUrl(string rawUrl, out string normalizedUrl, out string error)
+    {
+        normalizedUrl = string.Empty;
+        error = string.Empty;
+
+        var input = (rawUrl ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(input))
         {
-            Preferences.Set("tourist_api_base_url", defaultUrl);
-            return defaultUrl;
+            error = "Vui lòng nhập API URL.";
+            return false;
         }
 
-        if (ShouldForceAdminBase(configured))
+        if (!Uri.TryCreate(input, UriKind.Absolute, out var uri))
         {
-            Preferences.Set("tourist_api_base_url", defaultUrl);
-            System.Diagnostics.Debug.WriteLine($"[AuthAPI] Reset tourist_api_base_url '{configured}' -> '{defaultUrl}'");
-            return defaultUrl;
+            error = "API URL không hợp lệ. Ví dụ: http://192.168.1.16:5096";
+            return false;
         }
 
-        return configured;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Chỉ hỗ trợ http/https.";
+            return false;
+        }
+
+        if (ShouldForceAdminBase(uri.ToString()))
+        {
+            error = "URL này đang là cổng AdminWeb, vui lòng dùng API port (ví dụ :5096).";
+            return false;
+        }
+
+        normalizedUrl = uri.ToString().TrimEnd('/');
+        Preferences.Set("tourist_api_base_url", normalizedUrl);
+        Preferences.Set("api_base_url", normalizedUrl);
+        return true;
     }
 
     public async Task<(bool Ok, string Message)> RegisterAsync(string username, string password, string displayName, string accountTier)

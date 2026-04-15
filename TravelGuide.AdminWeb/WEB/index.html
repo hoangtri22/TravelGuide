@@ -245,7 +245,10 @@
           <div><label for="descJa">Mô tả JA</label><textarea id="descJa"></textarea></div>
           <div><label for="descKo">Mô tả KO</label><textarea id="descKo"></textarea></div>
           <div><label for="descZh">Mô tả ZH</label><textarea id="descZh"></textarea></div>
-          <div class="full"><button type="submit" class="btn-primary">Lưu bản dịch</button></div>
+          <div class="full" style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="submit" class="btn-primary">Lưu bản dịch</button>
+            <button type="button" id="retranslateBtn" class="secondary">Dịch lại ngay</button>
+          </div>
         </form>
       </section>
 
@@ -333,6 +336,6 @@
       </section>
     </main>
   </section>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

@@ -1,9 +1,7 @@
-using Microsoft.Maui.Controls.Hosting;
 using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
 using LocalizationResourceManager.Maui;
 using System.Globalization;
-using Plugin.Maui.Audio;
 using TravelGuide;
 using ZXing.Net.Maui.Controls;
 
@@ -25,7 +23,6 @@ public static class MauiProgram
 
         builder
             .UseMauiApp<App>()
-            .UseMauiMaps()
             .UseBarcodeReader()
             .UseLocalizationResourceManager(settings =>
             {
@@ -37,8 +34,6 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
-
-        builder.AddAudio();
 
 #if DEBUG
         builder.Logging.AddDebug();
