@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using TravelGuide.AdminWeb.Services;
@@ -10,8 +11,11 @@ using TravelGuide.AdminWeb.Services;
 // public POI cho app, audio list, tài khoản, dịch thủ công, export JSON.
 // =============================================================================
 
-var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseWebRoot("WEB");
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    WebRootPath = "WEB"
+});
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
@@ -97,6 +101,38 @@ static async Task GeneratePoiQrAsync(
     var http = httpClientFactory.CreateClient();
     http.Timeout = TimeSpan.FromSeconds(25);
     await PoiQrCodeGenerator.TryGenerateAndStoreAsync(poiId, sourcePoi, db, http, env, options, cancellationToken);
+}
+
+static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnvironment env, CancellationToken cancellationToken)
+{
+    if (file.Length <= 0) return null;
+
+    var ext = Path.GetExtension(file.FileName ?? string.Empty).Trim().ToLowerInvariant();
+    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".m4a", ".aac", ".ogg"
+    };
+    if (!allowed.Contains(ext))
+        throw new InvalidOperationException("Định dạng audio không hỗ trợ. Chỉ cho phép: .mp3, .wav, .m4a, .aac, .ogg");
+
+    var root = string.IsNullOrWhiteSpace(env.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : env.WebRootPath;
+    var audioDir = Path.Combine(root, "audio");
+    Directory.CreateDirectory(audioDir);
+
+    var safeName = Path.GetFileNameWithoutExtension(file.FileName ?? string.Empty);
+    safeName = string.Join("-", safeName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+    if (safeName.Length == 0) safeName = "audio";
+    if (safeName.Length > 60) safeName = safeName[..60];
+
+    var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+    var finalName = $"{safeName}-{stamp}{ext}";
+    var fullPath = Path.Combine(audioDir, finalName);
+
+    await using var fs = File.Create(fullPath);
+    await file.CopyToAsync(fs, cancellationToken);
+    return $"audio/{finalName}";
 }
 
 app.MapPost("/api/auth/login", async (LoginRequest request, TravelGuideDb db, AuthStore authStore) =>
@@ -218,6 +254,29 @@ app.MapPost("/api/pois/{id:int}/qrcode", async (HttpContext context, int id, Tra
     return Results.Ok(new { id, qrImagePath = updatedPoi?.QrImagePath ?? "" });
 });
 
+app.MapPost("/api/upload/audio", async (HttpContext context, AuthStore authStore, IWebHostEnvironment env) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (!context.Request.HasFormContentType) return Results.BadRequest("Thiếu dữ liệu multipart/form-data.");
+
+    var form = await context.Request.ReadFormAsync(context.RequestAborted);
+    var file = form.Files["file"];
+    if (file is null) return Results.BadRequest("Không tìm thấy file audio.");
+
+    try
+    {
+        var relativePath = await SaveUploadedAudioAsync(file, env, context.RequestAborted);
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return Results.BadRequest("File audio rỗng.");
+        return Results.Ok(new { audioUrl = relativePath });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+});
+
 app.MapPut("/api/pois/{id:int}", async (HttpContext context, int id, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
@@ -262,7 +321,7 @@ app.MapGet("/api/audio", async (HttpContext context, TravelGuideDb db, AuthStore
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
-    var audio = principal.Role == "admin"
+    var audio = principal.Role == "admin"   
         ? await db.GetAudioAsync()
         : await db.GetAudioAsyncForOwner(principal.UserId);
     return Results.Ok(audio);
@@ -275,10 +334,31 @@ app.MapGet("/api/accounts", async (HttpContext context, TravelGuideDb db, AuthSt
     if (principal.Role != "admin") return Results.Forbid();
 
     var accounts = await db.GetUsersAsync();
+    static string ResolvePasswordHint(string username, string passwordHash)
+    {
+        var u = (username ?? "").Trim().ToLowerInvariant();
+        static bool HashMatches(string rawPassword, string hashFromDb) =>
+            string.Equals(PasswordTools.Hash(rawPassword), hashFromDb, StringComparison.Ordinal);
+
+        // Ưu tiên đọc theo hash hiện có trong DB để web phản ánh đúng mật khẩu đang dùng.
+        if (HashMatches("admin123", passwordHash)) return "admin123";
+        if (HashMatches("chuquan123", passwordHash)) return "chuquan123";
+        if (HashMatches("VkQuan@123", passwordHash)) return "VkQuan@123";
+
+        // Dự phòng theo username cho DB cũ/chưa đồng bộ hash.
+        if (u == "admin") return "admin123";
+        if (u is "chuquan1" or "chuquan2") return "chuquan123";
+        if (u.StartsWith("owner_oc_") || u is "owner_sui_cao_tan_tong_loi" or "owner_lau_bo_khu_nha_chay")
+            return "VkQuan@123";
+        return "";
+    }
+
     return Results.Ok(accounts.Select(x => new
     {
         x.Id,
         x.Username,
+        passwordHash = x.PasswordHash,
+        passwordHint = ResolvePasswordHint(x.Username, x.PasswordHash),
         x.DisplayName,
         x.Role,
         isLocked = x.IsLocked,
@@ -390,6 +470,18 @@ app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb d
     return Results.Ok(data);
 });
 
+app.MapPut("/api/tourists/{id:int}/tier", async (HttpContext context, int id, UpdateTouristTierRequest request, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+
+    var ok = await db.UpdateTouristUserTierAsync(id, request.AccountTier);
+    return ok
+        ? Results.Ok(new { message = "Đã cập nhật tier du khách." })
+        : Results.NotFound("Không tìm thấy tài khoản du khách.");
+});
+
 app.MapGet("/api/tourists/poi-scan-dashboard", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
@@ -397,6 +489,51 @@ app.MapGet("/api/tourists/poi-scan-dashboard", async (HttpContext context, Trave
     if (principal.Role != "admin") return Results.Forbid();
     var data = await db.GetTouristPoiScanDashboardAsync();
     return Results.Ok(data);
+});
+
+app.MapGet("/api/comments", async (HttpContext context, TravelGuideDb db, AuthStore authStore, string? status, string? search, int page = 1, int pageSize = 20) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var data = await db.GetCommentsAsync(status, search, page, pageSize);
+    return Results.Ok(data);
+});
+
+app.MapPut("/api/comments/{id:long}/status", async (HttpContext context, long id, UpdateCommentStatusRequest request, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var ok = await db.UpdateCommentStatusAsync(id, request.Status, request.Reason);
+    return ok ? Results.Ok(new { message = "Đã cập nhật trạng thái bình luận." }) : Results.NotFound("Không tìm thấy bình luận.");
+});
+
+app.MapPut("/api/comments/{id:long}/reply", async (HttpContext context, long id, ReplyCommentRequest request, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var ok = await db.ReplyCommentAsync(id, request.Reply);
+    return ok ? Results.Ok(new { message = "Đã lưu phản hồi admin." }) : Results.NotFound("Không tìm thấy bình luận.");
+});
+
+app.MapPost("/api/comments", async (HttpContext context, CreateCommentRequest request, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var id = await db.CreateCommentAsync(request);
+    return id > 0 ? Results.Ok(new { id, message = "Đã tạo bình luận." }) : Results.BadRequest("Dữ liệu bình luận không hợp lệ.");
+});
+
+app.MapDelete("/api/comments/{id:long}", async (HttpContext context, long id, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var ok = await db.DeleteCommentAsync(id);
+    return ok ? Results.Ok(new { message = "Đã xóa bình luận." }) : Results.NotFound("Không tìm thấy bình luận.");
 });
 
 app.Run();

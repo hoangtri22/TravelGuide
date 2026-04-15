@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using TravelGuide.Models;
 
 namespace TravelGuide;
 
@@ -306,6 +307,112 @@ public sealed class TouristAuthService
         [JsonPropertyName("lastScannedAtUtc")] public DateTime LastScannedAtUtc { get; set; }
     }
 
+    public async Task<(bool Ok, string Message)> SubmitPlaceReviewAsync(int poiId, string? poiNameVi, int rating, string content)
+    {
+        var token = await SecureStorage.Default.GetAsync(TokenKey);
+        if (string.IsNullOrWhiteSpace(token))
+            return (false, "Vui lòng đăng nhập.");
+
+        try
+        {
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = JsonContent.Create(new
+                {
+                    poiId,
+                    poiNameVi,
+                    rating,
+                    content
+                })
+            };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            using var response = await _httpClient.SendAsync(req);
+            var text = (await response.Content.ReadAsStringAsync()).Trim();
+            if (!response.IsSuccessStatusCode)
+                return (false, string.IsNullOrWhiteSpace(text) ? "Gửi đánh giá thất bại." : text);
+            return (true, "Đã gửi đánh giá.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, IReadOnlyList<TouristPlaceReview> Items, string Message)> GetPlaceReviewsAsync(int poiId, int take = 100)
+    {
+        var token = await SecureStorage.Default.GetAsync(TokenKey);
+
+        try
+        {
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={Math.Clamp(take, 1, 500)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(token))
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            using var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode)
+            {
+                var text = (await response.Content.ReadAsStringAsync()).Trim();
+                return (false, Array.Empty<TouristPlaceReview>(), string.IsNullOrWhiteSpace(text) ? "Không tải được bình luận." : text);
+            }
+
+            var rows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
+            if (rows is null) return (true, Array.Empty<TouristPlaceReview>(), "");
+            var items = rows.Select(x => new TouristPlaceReview
+            {
+                Id = x.Id > int.MaxValue ? int.MaxValue : (int)Math.Max(0, x.Id),
+                PoiId = x.PoiId,
+                Username = x.Username ?? "",
+                Rating = Math.Clamp(x.Rating, 1, 5),
+                Content = x.Content ?? "",
+                CreatedAtUtc = x.CreatedAtUtc
+            }).ToList();
+            return (true, items, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, Array.Empty<TouristPlaceReview>(), ex.Message);
+        }
+    }
+
+    public async Task<(bool Ok, IReadOnlyList<PlaceReviewWithAdminReply> Items, string Message)> GetPlaceReviewsWithAdminReplyAsync(int poiId, int take = 100)
+    {
+        var token = await SecureStorage.Default.GetAsync(TokenKey);
+
+        try
+        {
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={Math.Clamp(take, 1, 500)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(token))
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            using var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode)
+            {
+                var text = (await response.Content.ReadAsStringAsync()).Trim();
+                return (false, Array.Empty<PlaceReviewWithAdminReply>(), string.IsNullOrWhiteSpace(text) ? "Không tải được bình luận." : text);
+            }
+
+            var rows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
+            if (rows is null) return (true, Array.Empty<PlaceReviewWithAdminReply>(), "");
+            var items = rows.Select(x => new PlaceReviewWithAdminReply
+            {
+                Id = x.Id,
+                PoiId = x.PoiId,
+                Username = x.Username ?? "",
+                Rating = Math.Clamp(x.Rating, 1, 5),
+                Content = x.Content ?? "",
+                AdminReply = x.AdminReply ?? "",
+                Status = x.Status ?? "",
+                CreatedAtUtc = x.CreatedAtUtc
+            }).ToList();
+            return (true, items, "");
+        }
+        catch (Exception ex)
+        {
+            return (false, Array.Empty<PlaceReviewWithAdminReply>(), ex.Message);
+        }
+    }
+
     private static bool ShouldForceAdminBase(string url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
@@ -338,5 +445,29 @@ public sealed class TouristAuthService
 
         [JsonPropertyName("priceVnd")]
         public decimal PriceVnd { get; set; }
+    }
+
+    private sealed class ApiTouristComment
+    {
+        [JsonPropertyName("id")] public long Id { get; set; }
+        [JsonPropertyName("poiId")] public int PoiId { get; set; }
+        [JsonPropertyName("username")] public string? Username { get; set; }
+        [JsonPropertyName("rating")] public int Rating { get; set; }
+        [JsonPropertyName("content")] public string? Content { get; set; }
+        [JsonPropertyName("adminReply")] public string? AdminReply { get; set; }
+        [JsonPropertyName("status")] public string? Status { get; set; }
+        [JsonPropertyName("createdAtUtc")] public DateTime CreatedAtUtc { get; set; }
+    }
+
+    public sealed class PlaceReviewWithAdminReply
+    {
+        public long Id { get; set; }
+        public int PoiId { get; set; }
+        public string Username { get; set; } = "";
+        public int Rating { get; set; }
+        public string Content { get; set; } = "";
+        public string AdminReply { get; set; } = "";
+        public string Status { get; set; } = "";
+        public DateTime CreatedAtUtc { get; set; }
     }
 }

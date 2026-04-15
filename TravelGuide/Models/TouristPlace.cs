@@ -44,8 +44,8 @@ public class TouristPlace
     /// <summary>Giá tham khảo (VND); 0 nếu chưa có.</summary>
     public decimal Price { get; set; }
 
-    /// <summary>Nhóm POI: quan an, quan nuoc, dia diem du lich, di tich lich su.</summary>
-    public string Tag { get; set; } = "dia diem du lich";
+    /// <summary>Nhóm POI: Quán Ăn, Quán Nước, Địa Điểm Du Lịch, Di Tích Lịch Sử.</summary>
+    public string Tag { get; set; } = "Địa Điểm Du Lịch";
 
     /// <summary>Đánh dấu người dùng đã đến POI này.</summary>
     public bool IsVisited { get; set; }

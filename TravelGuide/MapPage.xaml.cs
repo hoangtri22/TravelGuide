@@ -13,6 +13,9 @@ namespace TravelGuide;
 /// </summary>
 public partial class MapPage : ContentPage
 {
+    private const string AdminWebBaseLoopback = "http://127.0.0.1:5280";
+    private const string AdminWebBaseAndroid = "http://10.0.2.2:5280";
+
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
     private readonly GpsBackgroundService _gpsService;
@@ -177,6 +180,19 @@ public partial class MapPage : ContentPage
         else if (e.Url.Contains("loaded"))
         {
             LoadingOverlay.IsVisible = false;
+            UpdateGpsStatus(T("Đã tải bản đồ", "Map ready", "地図を読み込みました", "지도 로드 완료", "地图已加载"), "#4CAF50");
+        }
+        else if (e.Url.Contains("scan"))
+        {
+            var poiId = ParseScanPoiId(e.Url);
+            if (poiId <= 0) return;
+            await Shell.Current.GoToAsync($"{nameof(QrScannerPage)}?payload={Uri.EscapeDataString(poiId.ToString())}");
+        }
+        else if (e.Url.Contains("open"))
+        {
+            var poiId = ParseOpenPoiId(e.Url);
+            if (poiId <= 0) return;
+            await OpenPlaceDetailFromMapAsync(poiId);
         }
     }
 
@@ -238,6 +254,16 @@ public partial class MapPage : ContentPage
     /// <summary>Tải HTML map: hiển thị tất cả POI đã đồng bộ (trước đây chỉ trong 1km nên dễ không thấy điểm).</summary>
     async void LoadMap()
     {
+        var mapboxToken = MapboxConfig.GetAccessToken();
+        if (string.IsNullOrWhiteSpace(mapboxToken))
+        {
+            LoadingOverlay.IsVisible = false;
+            UpdateGpsStatus(
+                T("Thiếu Mapbox token", "Missing Mapbox token", "Mapboxトークンがありません", "Mapbox 토큰이 없습니다", "缺少 Mapbox Token"),
+                "#EF5350");
+            return;
+        }
+
         Location userLocation;
         try
         {
@@ -266,7 +292,7 @@ public partial class MapPage : ContentPage
 
         if (mapView != null)
         {
-            mapView.Source = new HtmlWebViewSource { Html = BuildMapHtml(userLocation, sb.ToString()) };
+            mapView.Source = new HtmlWebViewSource { Html = BuildMapHtml(userLocation, sb.ToString(), mapboxToken) };
         }
     }
 
@@ -279,7 +305,9 @@ public partial class MapPage : ContentPage
         string jName = JsonSerializer.Serialize(p.Name ?? "");
         string jDesc = JsonSerializer.Serialize(p.Description ?? "");
         string jColor = JsonSerializer.Serialize(color);
-        sb.AppendLine($"addPlace({jId},{jLng},{jLat},{jName},{jDesc},{jColor});");
+        string jQr = JsonSerializer.Serialize((p.QrImagePath ?? "").Trim());
+        string jTag = JsonSerializer.Serialize((p.Tag ?? "").Trim());
+        sb.AppendLine($"addPlace({jId},{jLng},{jLat},{jName},{jDesc},{jColor},{jQr},{jTag});");
     }
 
     private static (int PoiId, string RawText) ParseSpeakUrl(string url)
@@ -301,12 +329,59 @@ public partial class MapPage : ContentPage
         return (0, "");
     }
 
+    private static int ParseScanPoiId(string url)
+    {
+        const string prefix = "app://scan?id=";
+        if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        var raw = Uri.UnescapeDataString(url[prefix.Length..]);
+        return int.TryParse(raw, out var id) ? id : 0;
+    }
+
+    private static int ParseOpenPoiId(string url)
+    {
+        const string prefix = "app://open?id=";
+        if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        var raw = Uri.UnescapeDataString(url[prefix.Length..]);
+        return int.TryParse(raw, out var id) ? id : 0;
+    }
+
+    private async Task OpenPlaceDetailFromMapAsync(int poiId)
+    {
+        var places = await _dbService.GetPlacesAsync();
+        var place = places.FirstOrDefault(p => p.Id == poiId);
+        if (place is null) return;
+
+        var services =
+            Handler?.MauiContext?.Services
+            ?? Shell.Current?.CurrentPage?.Handler?.MauiContext?.Services
+            ?? Application.Current?.Windows.FirstOrDefault()?.Page?.Handler?.MauiContext?.Services;
+        if (services is null) return;
+
+        var detailPage = services.GetRequiredService<PlaceDetailPage>();
+        detailPage.LoadPlace(place);
+        var navigation = Shell.Current?.Navigation ?? Navigation;
+        await navigation.PushAsync(detailPage);
+    }
+
     /// <summary>Sinh HTML Mapbox GL (token rỗng thì Mapbox báo lỗi cấu hình — không dùng OSM/Leaflet).</summary>
-    private string BuildMapHtml(Location center, string markersJs) =>
-        BuildMapboxHtml(center, markersJs, JsonSerializer.Serialize(MapboxConfig.GetAccessToken()));
+    private string BuildMapHtml(Location center, string markersJs, string accessToken) =>
+        BuildMapboxHtml(
+            center,
+            markersJs,
+            JsonSerializer.Serialize(accessToken),
+            JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()));
+
+    private static string GetAdminWebBaseUrlForQr() =>
+        DeviceInfo.Platform == DevicePlatform.Android
+            ? AdminWebBaseAndroid
+            : AdminWebBaseLoopback;
 
     /// <summary>HTML Mapbox GL JS: style vector, marker tùy màu, API <c>addPlace</c>/<c>updateLocation</c>/<c>highlight</c>.</summary>
-    private string BuildMapboxHtml(Location center, string markersJs, string accessTokenJson) => $@"
+    private string BuildMapboxHtml(Location center, string markersJs, string accessTokenJson, string adminWebBaseJson) => $@"
 <!DOCTYPE html><html><head>
   <meta charset='utf-8'><meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'>
   <link href='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css' rel='stylesheet' />
@@ -318,23 +393,85 @@ public partial class MapPage : ContentPage
   <script>
     window.onerror=function(msg,src,line,col,err){{window.location.href='app://error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
     mapboxgl.accessToken = {accessTokenJson};
+    if(!mapboxgl.accessToken){{
+      window.location.href='app://error?msg='+encodeURIComponent('Missing Mapbox access token');
+    }}
+    const adminWebBase = {adminWebBaseJson};
+    let mapLoaded = false;
+    function notifyLoadedOnce(){{
+      if (mapLoaded) return;
+      mapLoaded = true;
+      clearTimeout(mapLoadTimeout);
+      setTimeout(() => window.location.href='app://loaded', 50);
+    }}
+    const mapLoadTimeout = setTimeout(() => {{
+      // Chỉ báo timeout khi map thực sự chưa usable.
+      if (!mapLoaded && !(map && map.loaded && map.loaded())) {{
+        window.location.href='app://error?msg='+encodeURIComponent('Map load timeout');
+      }}
+    }}, 30000);
     const map = new mapboxgl.Map({{
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [{F(center.Longitude)},{F(center.Latitude)}],
       zoom: 15
     }});
-    map.on('load', () => {{ setTimeout(() => window.location.href='app://loaded', 100); }});
+    map.on('load', notifyLoadedOnce);
+    map.on('idle', notifyLoadedOnce);
+    map.on('render', () => {{
+      if (!mapLoaded && map.isStyleLoaded && map.isStyleLoaded()) notifyLoadedOnce();
+    }});
+    map.on('error', (evt) => {{
+      const err = evt && evt.error ? (evt.error.message || String(evt.error)) : 'Mapbox runtime error';
+      window.location.href='app://error?msg='+encodeURIComponent(err);
+    }});
     var userMarker = null, markerMap = {{}}, markerByCoord = {{}};
     function speakById(id){{ window.location.href='app://speak?id='+encodeURIComponent(String(id)); }}
-    function addPlace(id,lng,lat,name,desc,color){{
+    function scanById(id){{ window.location.href='app://scan?id='+encodeURIComponent(String(id)); }}
+    function openById(id){{ window.location.href='app://open?id='+encodeURIComponent(String(id)); }}
+    function fallbackQrById(id){{
+      return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(String(id));
+    }}
+    function resolveQrSource(id, rawPath){{
+      const p = String(rawPath || '').trim();
+      if (!p) return fallbackQrById(id);
+      if (/^https?:\/\//i.test(p)) return p;
+      const normalized = p
+        .replace(/^\.?\//, '')
+        .replace(/^WEB\//i, '');
+      if (!normalized) return fallbackQrById(id);
+      return String(adminWebBase || '').replace(/\/$/, '') + '/' + normalized.replace(/^\//, '');
+    }}
+    function noteByTag(tag){{
+      const t = String(tag || '').trim().toLowerCase();
+      if (t === 'quán ăn' || t === 'quan an') return '{T("Ẩm thực địa phương", "Local food spot", "ローカルグルメ", "로컬 맛집", "本地美食")}';
+      if (t === 'quán nước' || t === 'quan nuoc') return '{T("Quán nước nổi bật", "Popular drinks spot", "人気のドリンク店", "인기 음료 매장", "热门饮品店")}';
+      if (t === 'di tích lịch sử' || t === 'di tich lich su') return '{T("Điểm di tích", "Historical landmark", "史跡スポット", "역사 유적지", "历史遗迹")}';
+      return '{T("Điểm tham quan", "Point of interest", "観光スポット", "관광 포인트", "景点")}';
+    }}
+    function iconByTag(tag){{
+      const t = String(tag || '').trim().toLowerCase();
+      if (t === 'quán ăn' || t === 'quan an') return '🍜';
+      if (t === 'quán nước' || t === 'quan nuoc') return '🥤';
+      if (t === 'di tích lịch sử' || t === 'di tich lich su') return '🏛️';
+      return '📍';
+    }}
+    function addPlace(id,lng,lat,name,desc,color,qrImagePath,tag){{
       const markerId = String(id);
       const coordKey = lng+'_'+lat;
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;transform:translateY(-6px);';
+      const note = document.createElement('div');
+      note.style.cssText = 'max-width:170px;padding:3px 8px;border-radius:999px;background:#fff7ed;border:1px solid #fdba74;color:#c2410c;font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 3px rgba(0,0,0,.12);';
+      note.textContent = iconByTag(tag) + ' ' + String(name || '');
       const el = document.createElement('div');
-      el.style.cssText = 'width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);background:'+color+';cursor:pointer;';
-      const popup = new mapboxgl.Popup({{ offset: 20 }}).setHTML('<b>'+name+'</b><p style=""font-size:12px;margin:4px 0 0"">'+desc+'</p>');
-      const m = new mapboxgl.Marker({{ element: el }}).setLngLat([lng,lat]).setPopup(popup).addTo(map);
-      el.addEventListener('click', () => speakById(id));
+      el.style.cssText = 'width:16px;height:16px;flex:0 0 16px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);background:'+color+';';
+      wrap.appendChild(note);
+      wrap.appendChild(el);
+      const safeName = String(name || '');
+      const safeDesc = String(desc || '');
+      const m = new mapboxgl.Marker({{ element: wrap, anchor: 'bottom' }}).setLngLat([lng,lat]).addTo(map);
+      wrap.addEventListener('click', () => openById(id));
       markerMap[markerId] = {{ marker: m, el: el, defaultColor: color, isVisited: color === '#4CAF50' }};
       markerByCoord[coordKey] = markerId;
     }}

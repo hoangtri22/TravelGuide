@@ -14,6 +14,7 @@ namespace TravelGuide;
 public class DatabaseService
 {
         private readonly HttpClient _httpClient;
+        private readonly TouristAuthService _touristAuthService;
         private readonly SemaphoreSlim _syncLock = new(1, 1);
         private readonly string _sqlitePath;
         private const string PublicApiBaseLoopback = "http://127.0.0.1:5096";
@@ -29,9 +30,10 @@ public class DatabaseService
         };
 
         /// <summary>Tiêm <see cref="HttpClient"/> và đăng ký xóa cache khi đổi ngôn ngữ.</summary>
-        public DatabaseService(HttpClient httpClient)
+        public DatabaseService(HttpClient httpClient, TouristAuthService touristAuthService)
         {
             _httpClient = httpClient;
+            _touristAuthService = touristAuthService;
             _sqlitePath = Path.Combine(FileSystem.AppDataDirectory, "travelguide-local.db3");
             AppLanguage.OnLanguageChanged += _ => ClearCache();
         }
@@ -100,7 +102,7 @@ public class DatabaseService
             await db.InsertOrReplaceAsync(place);
         }
 
-        /// <summary>Thêm đánh giá cục bộ cho một POI theo username đã đăng nhập.</summary>
+        /// <summary>Thêm đánh giá: ghi local + gửi API để đồng bộ lên web admin.</summary>
         public async Task AddPlaceReviewAsync(int poiId, string username, int rating, string content)
         {
             if (poiId <= 0) return;
@@ -120,12 +122,39 @@ public class DatabaseService
 
             var db = await GetLocalDbAsync();
             await db.InsertAsync(review);
+
+            try
+            {
+                var places = await GetPlacesAsync();
+                var poi = places.FirstOrDefault(x => x.Id == poiId);
+                var poiName = poi?.NameVi ?? "";
+                await _touristAuthService.SubmitPlaceReviewAsync(
+                    poiId,
+                    poiName,
+                    Math.Max(1, Math.Min(5, rating)),
+                    text);
+            }
+            catch
+            {
+                // Không chặn UX nếu mạng/API lỗi; review vẫn có trong local.
+            }
         }
 
-        /// <summary>Đọc đánh giá local của một POI (mới nhất trước).</summary>
+        /// <summary>Đọc đánh giá từ API (ưu tiên) và fallback local khi offline.</summary>
         public async Task<List<TouristPlaceReview>> GetPlaceReviewsAsync(int poiId, int take = 100)
         {
             if (poiId <= 0) return new List<TouristPlaceReview>();
+            try
+            {
+                var remote = await _touristAuthService.GetPlaceReviewsAsync(poiId, take);
+                if (remote.Ok && remote.Items.Count > 0)
+                    return remote.Items.OrderByDescending(r => r.CreatedAtUtc).ToList();
+            }
+            catch
+            {
+                // fallback local
+            }
+
             var db = await GetLocalDbAsync();
             return await db.Table<TouristPlaceReview>()
                 .Where(r => r.PoiId == poiId)
@@ -481,7 +510,7 @@ public class DatabaseService
                 MapLink = string.IsNullOrWhiteSpace(p.MapLink) ? null : p.MapLink.Trim(),
                 QrImagePath = string.IsNullOrWhiteSpace(p.QrImagePath) ? null : p.QrImagePath.Trim(),
                 Price = p.Price < 0 ? 0 : p.Price,
-                Tag = string.IsNullOrWhiteSpace(p.Tag) ? "dia diem du lich" : p.Tag.Trim()
+                Tag = NormalizeTag(p.Tag)
             };
         }
 
@@ -506,7 +535,7 @@ public class DatabaseService
                     p.NameZh ??= "";
                     p.DescZh ??= "";
                     p.QrImagePath = string.IsNullOrWhiteSpace(p.QrImagePath) ? "" : p.QrImagePath.Trim();
-                    p.Tag = string.IsNullOrWhiteSpace(p.Tag) ? "dia diem du lich" : p.Tag.Trim();
+                    p.Tag = NormalizeTag(p.Tag);
                     if (p.Price < 0) p.Price = 0;
                 }
                 return places;
@@ -515,6 +544,21 @@ public class DatabaseService
             {
                 return new List<TouristPlace>();
             }
+        }
+
+        private static string NormalizeTag(string? rawTag)
+        {
+            var t = (rawTag ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(t)) return "Địa Điểm Du Lịch";
+            var key = t.ToLowerInvariant();
+            return key switch
+            {
+                "quan an" or "quán ăn" => "Quán Ăn",
+                "quan nuoc" or "quán nước" => "Quán Nước",
+                "di tich lich su" or "di tích lịch sử" => "Di Tích Lịch Sử",
+                "dia diem du lich" or "địa điểm du lịch" => "Địa Điểm Du Lịch",
+                _ => t
+            };
         }
 }
 

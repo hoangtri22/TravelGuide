@@ -67,9 +67,10 @@ public record PoiDto(
     int Priority = 0,
     string MapLink = "",
     decimal Price = 1000,
-    string Tag = "dia diem du lich");
+    string Tag = "Địa Điểm Du Lịch");
 
 public record TouristUserDto(int Id, string Username, string DisplayName, string AccountTier, DateTime CreatedAtUtc);
+public record UpdateTouristTierRequest(string? AccountTier);
 public record TouristRefreshTokenDto(long Id, int TouristUserId, string Username, string DeviceId, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, DateTime CreatedAtUtc);
 public record TouristFavoriteDto(long Id, int TouristUserId, string Username, int PoiId, string PoiNameVi, DateTime CreatedAtUtc);
 public record TouristVisitHistoryDto(long Id, int TouristUserId, string Username, int PoiId, string PoiNameVi, string EventType, int PlaybackSeconds, decimal WatchedPercent, DateTime OccurredAtUtc);
@@ -91,3 +92,49 @@ public record PoiQrScanLogDto(
 
 /// <summary>Tổng doanh thu (AmountVnd) theo POI từ log quét.</summary>
 public record PoiQrScanRevenueDto(int PoiId, string PoiNameVi, decimal TotalVnd, int ScanCount);
+
+/// <summary>Yêu cầu lọc/phân trang bình luận cho màn quản trị.</summary>
+public record CommentQueryRequest(string? Status, string? Search, int Page = 1, int PageSize = 20);
+
+/// <summary>Dòng bình luận du khách để admin duyệt.</summary>
+public record TouristCommentDto(
+    long Id,
+    int? TouristUserId,
+    string Username,
+    int PoiId,
+    string PoiNameVi,
+    int Rating,
+    string Content,
+    string Status,
+    string AdminReply,
+    string RejectReason,
+    DateTime CreatedAtUtc,
+    DateTime? AdminReplyAtUtc,
+    DateTime UpdatedAtUtc);
+
+/// <summary>Tổng quan nhanh trạng thái bình luận.</summary>
+public record CommentStatsDto(int Total, int Pending, int Approved, int Rejected, int Hidden);
+
+/// <summary>Response danh sách bình luận có phân trang.</summary>
+public record CommentListResponseDto(
+    IReadOnlyList<TouristCommentDto> Items,
+    CommentStatsDto Stats,
+    int Page,
+    int PageSize,
+    int TotalItems);
+
+/// <summary>Cập nhật trạng thái bình luận (pending/approved/rejected/hidden).</summary>
+public record UpdateCommentStatusRequest(string? Status, string? Reason);
+
+/// <summary>Admin trả lời một bình luận.</summary>
+public record ReplyCommentRequest(string? Reply);
+
+/// <summary>Tạo bình luận mới (hỗ trợ seed/test backend).</summary>
+public record CreateCommentRequest(
+    int? TouristUserId,
+    string? Username,
+    int PoiId,
+    string? PoiNameVi,
+    int Rating,
+    string? Content,
+    string? Status);

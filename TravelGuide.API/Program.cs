@@ -193,6 +193,29 @@ app.MapGet("/api/tourist/pois/my-scan-history", async (HttpContext context, Auth
     return Results.Ok(rows);
 });
 
+app.MapPost("/api/tourist/comments", async (HttpContext context, TouristCommentCreateRequest request, AuthStore authStore, TouristDb db) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (request.PoiId <= 0) return Results.BadRequest("PoiId không hợp lệ.");
+    var content = (request.Content ?? "").Trim();
+    if (content.Length < 4) return Results.BadRequest("Nội dung bình luận quá ngắn.");
+    var id = await db.InsertTouristCommentAsync(
+        principal.UserId,
+        principal.Username,
+        request.PoiId,
+        request.PoiNameVi,
+        request.Rating,
+        content);
+    return id > 0 ? Results.Ok(new { id, message = "Đã gửi bình luận." }) : Results.BadRequest("Không thể gửi bình luận.");
+});
+
+app.MapGet("/api/tourist/comments/{poiId:int}", async (int poiId, TouristDb db, int take = 100) =>
+{
+    var rows = await db.GetTouristCommentsByPoiAsync(poiId, take);
+    return Results.Ok(rows);
+});
+
 app.MapGet("/api/public/pois", async (PoiPublicReader poiReader, CancellationToken ct) =>
 {
     try
@@ -244,7 +267,7 @@ static async Task<List<PublicPoiDto>> LoadPublicPoisAsync()
         x.Priority,
         x.MapLink ?? "",
         x.Price < 0 ? 0 : x.Price,
-        string.IsNullOrWhiteSpace(x.Tag) ? "dia diem du lich" : x.Tag.Trim(),
+        string.IsNullOrWhiteSpace(x.Tag) ? "Địa Điểm Du Lịch" : x.Tag.Trim(),
         x.QrImagePath ?? ""
     )).ToList();
 }

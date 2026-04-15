@@ -8,9 +8,24 @@ let pois = [];
 let touristOverview = null;
 let qrBackfillRunning = false;
 let qrBackfillAttempted = false;
+let commentSearchTimer = null;
+const commentState = {
+  status: "all",
+  search: "",
+  page: 1,
+  pageSize: 8,
+  totalItems: 0
+};
 
 const qs = (s) => document.querySelector(s);
 const byId = (id) => document.getElementById(id);
+
+function syncSidebarAvatar(displayName) {
+  const avatar = document.querySelector(".sidebar-avatar");
+  if (!avatar) return;
+  const t = String(displayName || "").trim();
+  avatar.textContent = t ? t[0].toUpperCase() : "A";
+}
 
 /** fetch JSON có gắn Authorization khi đã đăng nhập */
 const api = async (url, options = {}) => {
@@ -28,9 +43,25 @@ const api = async (url, options = {}) => {
   return ct.includes("application/json") ? res.json() : res.text();
 };
 
+/** fetch multipart (upload file), vẫn gắn Authorization */
+const apiMultipart = async (url, formData, options = {}) => {
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, { ...options, method: options.method || "POST", headers, body: formData });
+  if (!res.ok) {
+    const text = (await res.text()).trim();
+    if (res.status === 403) throw new Error(text || "Bạn không có quyền thực hiện thao tác này.");
+    if (res.status === 401) throw new Error(text || "Phiên đăng nhập không hợp lệ.");
+    throw new Error(text || `Lỗi ${res.status}`);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
+};
+
 /** Tiêu đề main — khớp nhãn trong Admin portal design / AppSidebar */
 const TAB_PAGE_TITLES = {
   poiTab: "Quản lý địa điểm",
+  commentTab: "Quản lí bình luận",
   translationTab: "Đa ngôn ngữ",
   audioTab: "Nguồn audio",
   accountTab: "Tài khoản web",
@@ -53,10 +84,12 @@ function switchTab(tabId) {
       sub.textContent = normalizedRole() === "admin"
         ? "Quản lý tất cả các địa điểm tham quan"
         : "Quản lý địa điểm của bạn";
+    } else if (tabId === "commentTab") {
+      sub.textContent = "Theo dõi và xử lý bình luận từ du khách.";
     } else if (tabId === "translationTab") {
       sub.textContent = "Chỉnh sửa bản dịch EN, JA, KO, ZH cho từng địa điểm.";
     } else if (tabId === "audioTab") {
-      sub.textContent = "Gán URL audio và liên kết bản đồ cho POI của quán.";
+      sub.textContent = "Gán hoặc upload audio và liên kết bản đồ cho POI đang hiển thị.";
     } else if (tabId === "accountTab") {
       sub.textContent = "Duyệt đăng ký chủ quán, khóa / xóa tài khoản web.";
     } else if (tabId === "touristTab") {
@@ -127,12 +160,29 @@ function renderAudioSources() {
     inMap.placeholder = "https://maps...";
     tdMap.appendChild(inMap);
     const tdAct = document.createElement("td");
+    tdAct.className = "audio-actions-cell";
+    const actionsWrap = document.createElement("div");
+    actionsWrap.className = "audio-actions";
+    const inFile = document.createElement("input");
+    inFile.type = "file";
+    inFile.className = "audio-file-input";
+    inFile.dataset.poiId = String(p.id);
+    inFile.accept = ".mp3,.wav,.m4a,.aac,.ogg,audio/*";
+    actionsWrap.appendChild(inFile);
+
+    const upload = document.createElement("button");
+    upload.type = "button";
+    upload.className = "secondary audio-upload-btn";
+    upload.dataset.poiId = String(p.id);
+    upload.textContent = "Upload";
+
     const save = document.createElement("button");
     save.type = "button";
     save.className = "secondary audio-save-btn";
     save.dataset.poiId = String(p.id);
     save.textContent = "Lưu";
-    tdAct.appendChild(save);
+    actionsWrap.append(upload, save);
+    tdAct.appendChild(actionsWrap);
     tr.append(tdId, tdName, tdAudio, tdMap, tdAct);
     tbody.appendChild(tr);
   }
@@ -221,7 +271,7 @@ async function loadPois() {
     tr.innerHTML = `
       <td>${p.id}</td>
       <td>${p.nameVi}</td>
-      <td>${p.tag || "dia diem du lich"}</td>
+      <td>${p.tag || "Địa Điểm Du Lịch"}</td>
       <td>${Number(p.price || 0).toLocaleString("vi-VN")}</td>
       <td>${p.priority ?? 0}</td>
       <td title="${(statusLabel + rejectHint).replaceAll('"', "'")}">${statusLabel}</td>
@@ -266,9 +316,17 @@ async function loadAccounts() {
          <button type="button" class="secondary danger" data-reject-reg="${a.id}">Từ chối</button>`
       : "";
     const canDelete = !isAdmin && !pendingOwner;
+    const passwordHint = String(a.passwordHint || "").trim();
+    const passwordHintCell = passwordHint
+      ? `<code>${escCell(passwordHint)}</code>`
+      : `<span class="hint">Không thể xem</span>`;
     return `
     <tr>
-      <td>${a.id}</td><td>${a.username}</td><td>${a.displayName}</td><td>${a.role}</td>
+      <td>${a.id}</td>
+      <td>${a.username}</td>
+      <td>${passwordHintCell}</td>
+      <td>${a.displayName}</td>
+      <td>${a.role}</td>
       <td>${statusCell}</td>
       <td class="account-actions"><div class="action-btns">
         ${approveReject}
@@ -281,6 +339,121 @@ async function loadAccounts() {
 
 function escCell(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+function commentStatusLabel(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return "Đã duyệt";
+  if (s === "rejected") return "Từ chối";
+  if (s === "hidden") return "Đã ẩn";
+  return "Chờ duyệt";
+}
+
+function commentStatusClass(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "approved") return "approved";
+  if (s === "rejected") return "rejected";
+  if (s === "hidden") return "rejected";
+  return "pending";
+}
+
+function renderStars(rating) {
+  const n = Number.isFinite(Number(rating)) ? Math.max(1, Math.min(5, Number(rating))) : 5;
+  return "★".repeat(n) + `<span class="cm-star-off">${"★".repeat(5 - n)}</span>`;
+}
+
+function renderCommentPager(totalItems, page, pageSize) {
+  const pager = byId("commentPager");
+  if (!pager) return;
+  const totalPages = Math.max(1, Math.ceil(Number(totalItems || 0) / Math.max(1, Number(pageSize || 1))));
+  const p = Math.max(1, Math.min(totalPages, Number(page || 1)));
+  const pages = [];
+  const start = Math.max(1, p - 2);
+  const end = Math.min(totalPages, p + 2);
+  for (let i = start; i <= end; i++) pages.push(i);
+  pager.innerHTML = pages.map(x =>
+    `<button type="button" class="cm-page-btn ${x === p ? "active" : ""}" data-page="${x}">${x}</button>`
+  ).join("");
+}
+
+function renderComments(data) {
+  const stats = data?.stats || {};
+  byId("commentStatTotal").textContent = String(stats.total || 0);
+  byId("commentStatPending").textContent = String(stats.pending || 0);
+  byId("commentStatApproved").textContent = String(stats.approved || 0);
+  byId("commentStatRejected").textContent = String(stats.rejected || 0);
+  const pendingBadge = byId("commentPendingBadge");
+  if (pendingBadge) pendingBadge.textContent = String(stats.pending || 0);
+
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const list = byId("commentList");
+  if (!list) return;
+  if (items.length === 0) {
+    list.innerHTML = `<article class="cm-card"><p class="cm-text" style="margin-left:0">Chưa có bình luận phù hợp.</p></article>`;
+  } else {
+    list.innerHTML = items.map(c => {
+      const status = String(c.status || "pending").toLowerCase();
+      const pillClass = commentStatusClass(status);
+      const label = commentStatusLabel(status);
+      const initials = String(c.username || "?").trim().slice(0, 2).toUpperCase();
+      const statusActions = status === "approved"
+        ? `<button type="button" class="cm-btn hide" data-comment-action="hidden" data-comment-id="${c.id}">Ẩn</button>`
+        : `<button type="button" class="cm-btn approve" data-comment-action="approved" data-comment-id="${c.id}">Duyệt</button>
+           <button type="button" class="cm-btn reject" data-comment-action="rejected" data-comment-id="${c.id}">Từ chối</button>`;
+      const rejectNote = status === "rejected" && String(c.rejectReason || "").trim()
+        ? `<p class="hint" style="margin:6px 0 0 46px;color:#b91c1c">Lý do: ${escCell(c.rejectReason)}</p>`
+        : "";
+      const replyNote = String(c.adminReply || "").trim()
+        ? `<p class="hint" style="margin:6px 0 0 46px;color:#1d4ed8">Phản hồi admin: ${escCell(c.adminReply)}</p>`
+        : "";
+      return `
+      <article class="cm-card" data-comment-id="${c.id}">
+        <div class="cm-card-top">
+          <div class="cm-avatar">${escCell(initials)}</div>
+          <div class="cm-card-meta">
+            <div class="cm-user-row">
+              <span class="cm-user">${escCell(c.username)}</span>
+              <span class="cm-place">${escCell(c.poiNameVi || `POI #${c.poiId}`)}</span>
+            </div>
+            <div class="cm-rating-row">
+              <span class="cm-stars">${renderStars(c.rating)}</span>
+              <span class="cm-time">${fmtDate(c.createdAtUtc)}</span>
+            </div>
+          </div>
+          <span class="cm-pill ${pillClass}">${label}</span>
+        </div>
+        <p class="cm-text">${escCell(c.content)}</p>
+        ${replyNote}
+        ${rejectNote}
+        <div class="cm-actions">
+          ${statusActions}
+          <button type="button" class="cm-btn reply" data-comment-reply="${c.id}">Trả lời</button>
+          <button type="button" class="cm-btn" data-comment-delete="${c.id}">Xóa</button>
+        </div>
+      </article>`;
+    }).join("");
+  }
+
+  const totalItems = Number(data?.totalItems || 0);
+  commentState.totalItems = totalItems;
+  const page = Number(data?.page || 1);
+  const size = Number(data?.pageSize || commentState.pageSize || 8);
+  const from = totalItems === 0 ? 0 : (page - 1) * size + 1;
+  const to = Math.min(totalItems, page * size);
+  const info = byId("commentPageInfo");
+  if (info) info.textContent = `Hiển thị ${from}-${to} / ${totalItems} bình luận`;
+  renderCommentPager(totalItems, page, size);
+}
+
+async function loadComments() {
+  if (normalizedRole() !== "admin") return;
+  const params = new URLSearchParams();
+  if (commentState.status && commentState.status !== "all") params.set("status", commentState.status);
+  if (commentState.search) params.set("search", commentState.search);
+  params.set("page", String(commentState.page));
+  params.set("pageSize", String(commentState.pageSize));
+  const data = await api(`/api/comments?${params.toString()}`);
+  renderComments(data);
 }
 
 async function loadTouristOverview() {
@@ -298,7 +471,21 @@ async function loadTouristOverview() {
   const userBody = byId("touristUserTable")?.querySelector("tbody");
   if (userBody) {
     userBody.innerHTML = (touristOverview.users || []).map(x => `
-      <tr><td>${x.id}</td><td>${x.username}</td><td>${x.displayName}</td><td>${x.accountTier}</td><td>${fmtDate(x.createdAtUtc)}</td></tr>
+      <tr>
+        <td>${x.id}</td>
+        <td>${x.username}</td>
+        <td>${x.displayName}</td>
+        <td>
+          <select class="tourist-tier-select" data-tier-user-id="${x.id}">
+            <option value="free" ${String(x.accountTier).toLowerCase() === "free" ? "selected" : ""}>free</option>
+            <option value="premium" ${String(x.accountTier).toLowerCase() === "premium" ? "selected" : ""}>premium</option>
+          </select>
+        </td>
+        <td>${fmtDate(x.createdAtUtc)}</td>
+        <td>
+          <button type="button" class="secondary" data-save-tier-id="${x.id}">Lưu tier</button>
+        </td>
+      </tr>
     `).join("");
   }
 
@@ -458,6 +645,7 @@ byId("loginForm").addEventListener("submit", async (e) => {
     const nameEl = byId("authDisplayName");
     const roleEl = byId("authRoleLabel");
     if (nameEl) nameEl.textContent = result.displayName || "";
+    syncSidebarAvatar(result.displayName || "");
     if (roleEl) {
       roleEl.textContent = currentRole === "admin" ? "Quản trị viên" : "Chủ quán";
     }
@@ -466,6 +654,7 @@ byId("loginForm").addEventListener("submit", async (e) => {
     applyRoleChrome();
     await loadPois();
     await loadAccounts();
+    await loadComments();
     await loadTouristOverview();
     if (pois.length > 0) await loadTranslation(pois[0].id);
   } catch {
@@ -485,11 +674,50 @@ byId("logoutBtn").addEventListener("click", () => {
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     switchTab(btn.dataset.tab);
-    if (btn.dataset.tab === "audioTab" && normalizedRole() === "owner") renderAudioSources();
+    if (btn.dataset.tab === "audioTab" && (normalizedRole() === "owner" || normalizedRole() === "admin")) renderAudioSources();
+    if (btn.dataset.tab === "commentTab" && normalizedRole() === "admin") {
+      loadComments().catch((err) => alert(err?.message || String(err)));
+    }
+    if (btn.dataset.tab === "touristTab" && normalizedRole() === "admin") {
+      loadTouristOverview().catch((err) => {
+        alert(err?.message || String(err));
+      });
+    }
   });
 });
 
 byId("audioTableWrap")?.addEventListener("click", async (e) => {
+  const uploadBtn = e.target.closest(".audio-upload-btn");
+  if (uploadBtn && !uploadBtn.disabled) {
+    const id = Number(uploadBtn.dataset.poiId);
+    const row = uploadBtn.closest("tr");
+    if (!id || !row) return;
+    const input = row.querySelector(".audio-file-input");
+    const file = input?.files?.[0];
+    if (!file) {
+      alert("Vui lòng chọn file audio trước khi upload.");
+      return;
+    }
+
+    uploadBtn.disabled = true;
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const result = await apiMultipart("/api/upload/audio", fd);
+      const audioUrl = String(result?.audioUrl || "").trim();
+      if (!audioUrl) throw new Error("Server không trả về đường dẫn audio.");
+
+      const inAudio = row.querySelector(".audio-src-input");
+      if (inAudio) inAudio.value = audioUrl;
+      alert(`Upload thành công: ${audioUrl}\nBấm 'Lưu' để cập nhật vào POI.`);
+    } catch (err) {
+      alert(`Upload audio thất bại: ${err?.message || String(err)}`);
+    } finally {
+      uploadBtn.disabled = false;
+    }
+    return;
+  }
+
   const btn = e.target.closest(".audio-save-btn");
   if (!btn || btn.disabled) return;
   const id = Number(btn.dataset.poiId);
@@ -682,6 +910,128 @@ byId("refreshTouristBtn")?.addEventListener("click", async () => {
   }
 });
 
+byId("touristUserTable")?.addEventListener("click", async (e) => {
+  const raw = e.target;
+  const t = raw instanceof Element ? raw : raw.parentElement;
+  if (!t) return;
+
+  const saveBtn = t.closest("[data-save-tier-id]");
+  const userId = saveBtn?.getAttribute("data-save-tier-id");
+  if (!userId || saveBtn?.disabled) return;
+
+  const select = byId("touristUserTable")
+    ?.querySelector(`select[data-tier-user-id="${userId}"]`);
+  const accountTier = String(select?.value || "").trim().toLowerCase();
+  if (!(accountTier === "free" || accountTier === "premium")) {
+    alert("Tier không hợp lệ.");
+    return;
+  }
+
+  saveBtn.disabled = true;
+  try {
+    await api(`/api/tourists/${userId}/tier`, {
+      method: "PUT",
+      body: JSON.stringify({ accountTier })
+    });
+    await loadTouristOverview();
+    alert(`Đã cập nhật tier thành '${accountTier}'.`);
+  } catch (err) {
+    alert(err?.message || String(err));
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+byId("commentFilterTabs")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".cm-filter-tab");
+  if (!btn) return;
+  byId("commentFilterTabs")
+    ?.querySelectorAll(".cm-filter-tab")
+    .forEach(x => x.classList.remove("active"));
+  btn.classList.add("active");
+  commentState.status = btn.dataset.status || "all";
+  commentState.page = 1;
+  loadComments().catch((err) => alert(err?.message || String(err)));
+});
+
+byId("commentPager")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".cm-page-btn");
+  if (!btn) return;
+  const p = Number(btn.dataset.page || 0);
+  if (!Number.isFinite(p) || p <= 0) return;
+  commentState.page = p;
+  loadComments().catch((err) => alert(err?.message || String(err)));
+});
+
+byId("commentSearchInput")?.addEventListener("input", (e) => {
+  const val = String(e.target?.value || "").trim();
+  if (commentSearchTimer) clearTimeout(commentSearchTimer);
+  commentSearchTimer = setTimeout(() => {
+    commentState.search = val;
+    commentState.page = 1;
+    loadComments().catch((err) => alert(err?.message || String(err)));
+  }, 280);
+});
+
+byId("commentList")?.addEventListener("click", async (e) => {
+  const actionBtn = e.target.closest("[data-comment-action]");
+  const replyBtn = e.target.closest("[data-comment-reply]");
+  const delBtn = e.target.closest("[data-comment-delete]");
+
+  if (actionBtn) {
+    const id = Number(actionBtn.dataset.commentId || 0);
+    const toStatus = String(actionBtn.dataset.commentAction || "").trim();
+    if (!id || !toStatus) return;
+    let reason = "";
+    if (toStatus === "rejected") {
+      const r = prompt("Lý do từ chối:", "");
+      if (r === null) return;
+      reason = r.trim();
+    }
+    try {
+      await api(`/api/comments/${id}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: toStatus, reason })
+      });
+      await loadComments();
+    } catch (err) {
+      alert(err?.message || String(err));
+    }
+    return;
+  }
+
+  if (replyBtn) {
+    const id = Number(replyBtn.dataset.commentReply || 0);
+    if (!id) return;
+    const reply = prompt("Nhập phản hồi admin:", "");
+    if (reply === null) return;
+    try {
+      await api(`/api/comments/${id}/reply`, {
+        method: "PUT",
+        body: JSON.stringify({ reply: reply.trim() })
+      });
+      await loadComments();
+    } catch (err) {
+      alert(err?.message || String(err));
+    }
+    return;
+  }
+
+  if (delBtn) {
+    const id = Number(delBtn.dataset.commentDelete || 0);
+    if (!id) return;
+    if (!confirm("Xóa bình luận này?")) return;
+    try {
+      await api(`/api/comments/${id}`, { method: "DELETE" });
+      const totalPages = Math.max(1, Math.ceil(Math.max(0, (commentState.totalItems || 0) - 1) / commentState.pageSize));
+      if (commentState.page > totalPages) commentState.page = totalPages;
+      await loadComments();
+    } catch (err) {
+      alert(err?.message || String(err));
+    }
+  }
+});
+
 /** Khôi phục phiên khi F5 / quay lại từ trang tạo POI (token trong sessionStorage). */
 (function tryAutoLoginFromStorage() {
   try {
@@ -696,13 +1046,16 @@ byId("refreshTouristBtn")?.addEventListener("click", async () => {
     currentRole = String(r).trim().toLowerCase();
     const nameEl = byId("authDisplayName");
     const roleEl = byId("authRoleLabel");
-    if (nameEl) nameEl.textContent = sessionStorage.getItem("tg_admin_displayName") || "";
+    const displayName = sessionStorage.getItem("tg_admin_displayName") || "";
+    if (nameEl) nameEl.textContent = displayName;
+    syncSidebarAvatar(displayName);
     if (roleEl) roleEl.textContent = currentRole === "admin" ? "Quản trị viên" : "Chủ quán";
     login.classList.add("hidden");
     app.classList.remove("hidden");
     applyRoleChrome();
     loadPois()
       .then(() => loadAccounts())
+      .then(() => loadComments())
       .then(() => loadTouristOverview())
       .then(async () => {
         if (pois.length > 0) await loadTranslation(pois[0].id);

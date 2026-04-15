@@ -1,6 +1,7 @@
 ﻿using LocalizationResourceManager.Maui;
 using TravelGuide.Models;
 using System.Globalization;
+using Microsoft.Maui.Dispatching;
 
 namespace TravelGuide;
 
@@ -9,12 +10,16 @@ namespace TravelGuide;
 /// </summary>
 public partial class HomePage : ContentPage
 {
+    private const int AuthUiRefreshCooldownSeconds = 10;
     private readonly DatabaseService _dbService;
     private readonly NarrationEngine _narrationEngine;
     private readonly TouristAuthService _touristAuthService;
     private List<TouristPlace> _allPlaces = new();
     private string _selectedCategory = "all";
     private string _currentKeyword = "";
+    private DateTime _lastAuthUiRefreshUtc = DateTime.MinValue;
+    private IDispatcherTimer? _authUiSyncTimer;
+    private bool _isAuthUiSyncRunning;
     private readonly List<LangOption> _languageOptions =
     [
         new("vi", "🇻🇳 Tiếng Việt"),
@@ -48,13 +53,21 @@ public partial class HomePage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        EnsureAuthUiSyncTimer();
+        _authUiSyncTimer?.Start();
         MiniPlayer.Attach(_narrationEngine);
         SyncLocalization(AppLanguage.Current);
         UpdateLanguageButton(AppLanguage.Current);
         UpdateLocalizedChrome();
-        await RefreshPremiumUiAsync();
+        await RefreshTouristAuthUiAsync(force: true);
         _dbService.ClearCache();
         await LoadPlacesAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _authUiSyncTimer?.Stop();
     }
 
     private async void OnLanguageButtonClicked(object sender, EventArgs e)
@@ -137,6 +150,25 @@ public partial class HomePage : ContentPage
         BtnUpgradePremiumHome.IsVisible = !isPremium;
     }
 
+    private async Task RefreshTouristAuthUiAsync(bool force = false)
+    {
+        var now = DateTime.UtcNow;
+        if (!force && (now - _lastAuthUiRefreshUtc).TotalSeconds < AuthUiRefreshCooldownSeconds)
+            return;
+        if (_isAuthUiSyncRunning) return;
+
+        _isAuthUiSyncRunning = true;
+        try
+        {
+            _lastAuthUiRefreshUtc = now;
+            await RefreshPremiumUiAsync();
+        }
+        finally
+        {
+            _isAuthUiSyncRunning = false;
+        }
+    }
+
     /// <summary>Lọc danh sách theo từ khóa (tên/mô tả đa ngôn ngữ).</summary>
     private void OnSearchBarTextChanged(object sender, TextChangedEventArgs e)
     {
@@ -178,7 +210,16 @@ public partial class HomePage : ContentPage
 
     private async void OnBottomNavHome(object? sender, EventArgs e)
     {
+        await RefreshTouristAuthUiAsync(force: true);
         await MainScroll.ScrollToAsync(0, 0, true);
+    }
+
+    private void EnsureAuthUiSyncTimer()
+    {
+        if (_authUiSyncTimer is not null) return;
+        _authUiSyncTimer = Dispatcher.CreateTimer();
+        _authUiSyncTimer.Interval = TimeSpan.FromSeconds(5);
+        _authUiSyncTimer.Tick += async (_, _) => await RefreshTouristAuthUiAsync(force: true);
     }
 
     private void OnBottomNavSaved(object? sender, EventArgs e)
@@ -230,7 +271,7 @@ public partial class HomePage : ContentPage
         if (_selectedCategory != "all")
         {
             filtered = filtered.Where(p =>
-                string.Equals((p.Tag ?? "").Trim(), _selectedCategory, StringComparison.OrdinalIgnoreCase));
+                string.Equals(NormalizeTagKey((p.Tag ?? "").Trim()), _selectedCategory, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(_currentKeyword))
@@ -260,10 +301,10 @@ public partial class HomePage : ContentPage
         var chips = new Dictionary<string, Button>(StringComparer.OrdinalIgnoreCase)
         {
             ["all"] = ChipAll,
-            ["quan an"] = ChipFood,
-            ["quan nuoc"] = ChipDrink,
-            ["di tich lich su"] = ChipSight,
-            ["dia diem du lich"] = ChipOther
+            ["quán ăn"] = ChipFood,
+            ["quán nước"] = ChipDrink,
+            ["di tích lịch sử"] = ChipSight,
+            ["địa điểm du lịch"] = ChipOther
         };
 
         foreach (var kv in chips)
@@ -321,4 +362,17 @@ public partial class HomePage : ContentPage
     }
 
     private sealed record LangOption(string Code, string Label);
+
+    private static string NormalizeTagKey(string rawTag)
+    {
+        var t = (rawTag ?? "").Trim().ToLowerInvariant();
+        return t switch
+        {
+            "quan an" => "quán ăn",
+            "quan nuoc" => "quán nước",
+            "di tich lich su" => "di tích lịch sử",
+            "dia diem du lich" => "địa điểm du lịch",
+            _ => t
+        };
+    }
 }

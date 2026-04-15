@@ -39,6 +39,7 @@ public sealed class TouristDb
         await EnsurePremiumClaimTableAsync(connection);
         await EnsureTouristPoiUnlockTableAsync(connection);
         await EnsureTouristPoiQrScanLogTableAsync(connection);
+        await EnsureTouristCommentTableAsync(connection);
         await SeedDefaultPremiumClaimAsync(connection);
     }
 
@@ -192,6 +193,97 @@ public sealed class TouristDb
         await cmd.ExecuteNonQueryAsync();
     }
 
+    private static async Task EnsureTouristCommentTableAsync(SqlConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          IF OBJECT_ID(N'dbo.TouristComment', N'U') IS NULL
+                          BEGIN
+                            CREATE TABLE dbo.TouristComment(
+                              Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                              TouristUserId INT NULL,
+                              Username NVARCHAR(100) NOT NULL,
+                              PoiId INT NOT NULL,
+                              PoiNameVi NVARCHAR(300) NOT NULL DEFAULT N'',
+                              Rating INT NOT NULL DEFAULT 5,
+                              Content NVARCHAR(MAX) NOT NULL,
+                              Status NVARCHAR(20) NOT NULL DEFAULT N'pending',
+                              AdminReply NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              RejectReason NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                              AdminReplyAtUtc DATETIME2(0) NULL,
+                              UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                            );
+                            CREATE INDEX IX_TouristComment_Status ON dbo.TouristComment(Status, CreatedAtUtc DESC);
+                            CREATE INDEX IX_TouristComment_Poi ON dbo.TouristComment(PoiId, CreatedAtUtc DESC);
+                          END;
+                          """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<long> InsertTouristCommentAsync(int touristUserId, string username, int poiId, string? poiNameVi, int rating, string content)
+    {
+        var name = (poiNameVi ?? "").Trim();
+        var text = (content ?? "").Trim();
+        if (poiId <= 0 || text.Length == 0) return 0;
+        if (name.Length > 300) name = name[..300];
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          INSERT INTO dbo.TouristComment(TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, UpdatedAtUtc)
+                          VALUES(@uid, @username, @poiId, @poiName, @rating, @content, N'pending', N'', N'', SYSUTCDATETIME(), SYSUTCDATETIME());
+                          SELECT CAST(SCOPE_IDENTITY() AS BIGINT);
+                          """;
+        cmd.Parameters.AddWithValue("@uid", touristUserId);
+        cmd.Parameters.AddWithValue("@username", (username ?? "").Trim());
+        cmd.Parameters.AddWithValue("@poiId", poiId);
+        cmd.Parameters.AddWithValue("@poiName", name);
+        cmd.Parameters.AddWithValue("@rating", Math.Clamp(rating, 1, 5));
+        cmd.Parameters.AddWithValue("@content", text);
+        var raw = await cmd.ExecuteScalarAsync();
+        return raw is null || raw == DBNull.Value ? 0 : Convert.ToInt64(raw);
+    }
+
+    public async Task<List<TouristCommentDto>> GetTouristCommentsByPoiAsync(int poiId, int take = 100)
+    {
+        var list = new List<TouristCommentDto>();
+        if (poiId <= 0) return list;
+        var top = take < 1 ? 100 : (take > 500 ? 500 : take);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP (@take) Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
+                          FROM dbo.TouristComment
+                          WHERE PoiId = @poiId AND Status IN (N'pending', N'approved')
+                          ORDER BY CreatedAtUtc DESC, Id DESC;
+                          """;
+        cmd.Parameters.AddWithValue("@take", top);
+        cmd.Parameters.AddWithValue("@poiId", poiId);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new TouristCommentDto(
+                reader.GetInt64(0),
+                reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetInt32(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.GetDateTime(10),
+                reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                reader.GetDateTime(12)
+            ));
+        }
+
+        return list;
+    }
+
     /// <summary>Ghi nhật kỳ quét QR mở POI (admin xem lịch sử + doanh thu).</summary>
     public async Task InsertPoiQrScanLogAsync(
         int touristUserId,
@@ -229,7 +321,7 @@ public sealed class TouristDb
         await cmd.ExecuteNonQueryAsync();
     }
 
-    /// <summary>Danh sách POI đã quét (mỗi POI một dòng — lần quét gần nhất).</summary>
+    /// <summary>Danh sách lịch sử quét theo từng lần quét (mới nhất trước).</summary>
     public async Task<List<MyPoiScanHistoryItemDto>> GetMyPoiScanHistoryAsync(int touristUserId, int take = 200)
     {
         var list = new List<MyPoiScanHistoryItemDto>();
@@ -238,15 +330,9 @@ public sealed class TouristDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                            WITH ranked AS (
-                                SELECT PoiId, PoiNameVi, EventType, AmountVnd, CreatedAtUtc,
-                                       ROW_NUMBER() OVER (PARTITION BY PoiId ORDER BY CreatedAtUtc DESC) AS rn
-                                FROM dbo.TouristPoiQrScanLog
-                                WHERE TouristUserId = @uid
-                            )
                             SELECT TOP (@take) PoiId, PoiNameVi, EventType, AmountVnd, CreatedAtUtc AS LastScannedAtUtc
-                            FROM ranked
-                            WHERE rn = 1
+                            FROM dbo.TouristPoiQrScanLog
+                            WHERE TouristUserId = @uid
                             ORDER BY CreatedAtUtc DESC;
                             """;
         cmd.Parameters.AddWithValue("@uid", touristUserId);

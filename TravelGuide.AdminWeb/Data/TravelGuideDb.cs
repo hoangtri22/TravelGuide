@@ -70,7 +70,7 @@ public sealed class TravelGuideDb
                       Priority INT NOT NULL DEFAULT 0,
                       MapLink NVARCHAR(1000) NOT NULL DEFAULT N'',
                       Price DECIMAL(18,2) NOT NULL DEFAULT 0,
-                      Tag NVARCHAR(100) NOT NULL DEFAULT N'dia diem du lich'
+                      Tag NVARCHAR(100) NOT NULL DEFAULT N'Địa Điểm Du Lịch'
                     );
                   END;
 
@@ -178,6 +178,7 @@ public sealed class TravelGuideDb
         await EnsureUserAccountColumnsAsync(connection);
         await EnsureTouristUserAccountTierColumnAsync(connection);
         await EnsureTouristPoiQrScanLogTableAsync(connection);
+        await EnsureTouristCommentTableAsync(connection);
 
         var hasAdmin = await GetUserByUsernameAsync("admin");
         if (hasAdmin is null)
@@ -187,6 +188,7 @@ public sealed class TravelGuideDb
 
         await EnsureDemoOwnerAccountsAsync();
         await EnsurePhoOwnerDemoPasswordsAsync();
+        await EnsureDemoCommentsAsync();
 
         await SyncPoisWithExtraPlacesFileAsync();
 
@@ -274,7 +276,7 @@ public sealed class TravelGuideDb
             int existingOwner = 0;
             await using (var q = connection.CreateCommand())
             {
-                q.CommandText = "SELECT Id, OwnerUserId FROM Poi WHERE NameVi = $n LIMIT 1";
+                q.CommandText = "SELECT Id, OwnerUserId FROM Poi WHERE NameVi = $n";
                 q.Parameters.AddWithValue("$n", row.NameVi);
                 await using var reader = await q.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -302,15 +304,73 @@ public sealed class TravelGuideDb
                 ins.Parameters.AddWithValue("$priority", row.Priority);
                 ins.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
                 ins.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
-                ins.Parameters.AddWithValue("$tag", string.IsNullOrWhiteSpace(row.Tag) ? "dia diem du lich" : row.Tag.Trim());
+                ins.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 ins.Parameters.AddWithValue("$ownerUserId", mappedOwnerId);
                 await ins.ExecuteNonQueryAsync();
             }
             else if (existingOwner == 0 && mappedOwnerId != 0)
             {
                 await using var up = connection.CreateCommand();
-                up.CommandText = "UPDATE Poi SET OwnerUserId = $oid WHERE Id = $id AND OwnerUserId = 0";
+                up.CommandText = """
+                                 UPDATE Poi SET
+                                   DescVi = $descVi,
+                                   Latitude = $lat,
+                                   Longitude = $lon,
+                                   Radius = $radius,
+                                   ImagePath = $imagePath,
+                                   AudioUrl = $audioUrl,
+                                   QrImagePath = $qrImagePath,
+                                   Priority = $priority,
+                                   MapLink = $mapLink,
+                                   Price = $price,
+                                   Tag = $tag,
+                                   OwnerUserId = $oid
+                                 WHERE Id = $id;
+                                 """;
+                up.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
+                up.Parameters.AddWithValue("$lat", row.Latitude);
+                up.Parameters.AddWithValue("$lon", row.Longitude);
+                up.Parameters.AddWithValue("$radius", row.Radius);
+                up.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
+                up.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                up.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
+                up.Parameters.AddWithValue("$priority", row.Priority);
+                up.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                up.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                up.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 up.Parameters.AddWithValue("$oid", mappedOwnerId);
+                up.Parameters.AddWithValue("$id", existingId.Value);
+                await up.ExecuteNonQueryAsync();
+            }
+            else if (existingId is not null)
+            {
+                await using var up = connection.CreateCommand();
+                up.CommandText = """
+                                 UPDATE Poi SET
+                                   DescVi = $descVi,
+                                   Latitude = $lat,
+                                   Longitude = $lon,
+                                   Radius = $radius,
+                                   ImagePath = $imagePath,
+                                   AudioUrl = $audioUrl,
+                                   QrImagePath = $qrImagePath,
+                                   Priority = $priority,
+                                   MapLink = $mapLink,
+                                   Price = $price,
+                                   Tag = $tag
+                                 WHERE Id = $id;
+                                 """;
+                up.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
+                up.Parameters.AddWithValue("$lat", row.Latitude);
+                up.Parameters.AddWithValue("$lon", row.Longitude);
+                up.Parameters.AddWithValue("$radius", row.Radius);
+                up.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
+                up.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                up.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
+                up.Parameters.AddWithValue("$priority", row.Priority);
+                up.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                up.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                up.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 up.Parameters.AddWithValue("$id", existingId.Value);
                 await up.ExecuteNonQueryAsync();
             }
@@ -849,6 +909,21 @@ public sealed class TravelGuideDb
         };
     }
 
+    private static string NormalizeTag(string? rawTag)
+    {
+        var t = (rawTag ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(t)) return "Địa Điểm Du Lịch";
+        var key = t.ToLowerInvariant();
+        return key switch
+        {
+            "quan an" or "quán ăn" => "Quán Ăn",
+            "quan nuoc" or "quán nước" => "Quán Nước",
+            "di tich lich su" or "di tích lịch sử" => "Di Tích Lịch Sử",
+            "dia diem du lich" or "địa điểm du lịch" => "Địa Điểm Du Lịch",
+            _ => t
+        };
+    }
+
     /// <summary>Gán tham số SQL cho INSERT/UPDATE POI.</summary>
     private static void BindPoi(SqliteCommand cmd, PoiDto poi)
     {
@@ -871,7 +946,7 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$priority", poi.Priority);
         cmd.Parameters.AddWithValue("$mapLink", poi.MapLink ?? string.Empty);
         cmd.Parameters.AddWithValue("$price", poi.Price < 0 ? 0 : poi.Price);
-        cmd.Parameters.AddWithValue("$tag", string.IsNullOrWhiteSpace(poi.Tag) ? "dia diem du lich" : poi.Tag.Trim());
+        cmd.Parameters.AddWithValue("$tag", NormalizeTag(poi.Tag));
     }
 
     /// <summary>Chèn vài POI mẫu khi database chưa có dữ liệu.</summary>
@@ -879,9 +954,9 @@ public sealed class TravelGuideDb
     {
         var seed = new[]
         {
-            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "dia diem du lich"),
-            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "quan an"),
-            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "quan nuoc")
+            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
+            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
+            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "Quán Nước")
         };
 
         foreach (var poi in seed)
@@ -924,7 +999,7 @@ public sealed class TravelGuideDb
         await AddColumnIfMissing("MapLink", "NVARCHAR(1000) NOT NULL DEFAULT ''");
         await AddColumnIfMissing("QrImagePath", "NVARCHAR(1000) NULL");
         await AddColumnIfMissing("Price", "DECIMAL(18,2) NOT NULL DEFAULT 0");
-        await AddColumnIfMissing("Tag", "NVARCHAR(100) NOT NULL DEFAULT 'dia diem du lich'");
+        await AddColumnIfMissing("Tag", "NVARCHAR(100) NOT NULL DEFAULT N'Địa Điểm Du Lịch'");
     }
 
     /// <summary>Cho phép <c>QrImagePath</c> NULL trên DB đã tạo trước khi cột hỗ trợ null.</summary>
@@ -1034,16 +1109,191 @@ public sealed class TravelGuideDb
     {
         var logs = await SafeTouristQuery(GetPoiQrScanLogsAsync);
         var revenueByPoi = await SafeTouristQuery(GetPoiQrScanRevenueByPoiAsync);
+        var totalScans = await SafeCountQuery(GetPoiQrScanTotalCountAsync);
         decimal grandTotal = 0;
         foreach (var r in revenueByPoi)
             grandTotal += r.TotalVnd;
-        var totalScans = logs.Count;
         return new
         {
             logs,
             revenueByPoi,
             grandTotalVnd = grandTotal,
             totalScans
+        };
+    }
+
+    public async Task<CommentListResponseDto> GetCommentsAsync(string? status, string? search, int page = 1, int pageSize = 20)
+    {
+        var statusNorm = NormalizeCommentStatus(status, allowAll: true);
+        var searchNorm = (search ?? "").Trim();
+        page = page <= 0 ? 1 : page;
+        pageSize = Math.Clamp(pageSize <= 0 ? 20 : pageSize, 1, 100);
+        var skip = (page - 1) * pageSize;
+
+        static string BuildWhere(bool filterStatus, bool filterSearch)
+        {
+            var parts = new List<string>();
+            if (filterStatus) parts.Add("Status = $status");
+            if (filterSearch)
+                parts.Add("(Username LIKE $kw OR PoiNameVi LIKE $kw OR Content LIKE $kw OR AdminReply LIKE $kw)");
+            return parts.Count == 0 ? "" : " WHERE " + string.Join(" AND ", parts);
+        }
+
+        var whereSql = BuildWhere(statusNorm != "all", !string.IsNullOrWhiteSpace(searchNorm));
+        var rows = new List<TouristCommentDto>();
+        var totalItems = 0;
+        var stats = new CommentStatsDto(0, 0, 0, 0, 0);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        async Task<int> ReadCountAsync(string sql)
+        {
+            await using var c = connection.CreateCommand();
+            c.CommandText = sql;
+            var raw = await c.ExecuteScalarAsync();
+            return raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+        }
+
+        stats = new CommentStatsDto(
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment;"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'pending';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'approved';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'rejected';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'hidden';"));
+
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM TouristComment" + whereSql + ";";
+            if (statusNorm != "all") countCmd.Parameters.AddWithValue("$status", statusNorm);
+            if (!string.IsNullOrWhiteSpace(searchNorm)) countCmd.Parameters.AddWithValue("$kw", "%" + searchNorm + "%");
+            var raw = await countCmd.ExecuteScalarAsync();
+            totalItems = raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+        }
+
+        await using (var listCmd = connection.CreateCommand())
+        {
+            listCmd.CommandText = $"""
+                                   SELECT Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
+                                   FROM TouristComment{whereSql}
+                                   ORDER BY CreatedAtUtc DESC, Id DESC
+                                   OFFSET {skip} ROWS FETCH NEXT {pageSize} ROWS ONLY;
+                                   """;
+            if (statusNorm != "all") listCmd.Parameters.AddWithValue("$status", statusNorm);
+            if (!string.IsNullOrWhiteSpace(searchNorm)) listCmd.Parameters.AddWithValue("$kw", "%" + searchNorm + "%");
+
+            await using var reader = await listCmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                rows.Add(new TouristCommentDto(
+                    reader.GetInt64(0),
+                    reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3),
+                    reader.GetString(4),
+                    reader.GetInt32(5),
+                    reader.GetString(6),
+                    reader.GetString(7),
+                    reader.GetString(8),
+                    reader.GetString(9),
+                    reader.GetDateTime(10),
+                    reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                    reader.GetDateTime(12)));
+            }
+        }
+
+        return new CommentListResponseDto(rows, stats, page, pageSize, totalItems);
+    }
+
+    public async Task<bool> UpdateCommentStatusAsync(long id, string? status, string? reason)
+    {
+        if (id <= 0) return false;
+        var statusNorm = NormalizeCommentStatus(status, allowAll: false);
+        var reasonNorm = statusNorm == "rejected" ? (reason ?? "").Trim() : "";
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristComment
+                          SET Status = $status,
+                              RejectReason = $reason,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$status", statusNorm);
+        cmd.Parameters.AddWithValue("$reason", reasonNorm);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    public async Task<bool> ReplyCommentAsync(long id, string? reply)
+    {
+        if (id <= 0) return false;
+        var replyNorm = (reply ?? "").Trim();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristComment
+                          SET AdminReply = $reply,
+                              AdminReplyAtUtc = CASE WHEN LEN($reply) > 0 THEN SYSUTCDATETIME() ELSE NULL END,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$reply", replyNorm);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    public async Task<long> CreateCommentAsync(CreateCommentRequest request)
+    {
+        var username = string.IsNullOrWhiteSpace(request.Username) ? "guest" : request.Username.Trim();
+        var poiName = string.IsNullOrWhiteSpace(request.PoiNameVi) ? $"POI #{request.PoiId}" : request.PoiNameVi.Trim();
+        var rating = Math.Clamp(request.Rating, 1, 5);
+        var content = (request.Content ?? "").Trim();
+        if (request.PoiId <= 0 || content.Length == 0) return 0;
+        var status = NormalizeCommentStatus(request.Status, allowAll: false);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          INSERT INTO TouristComment(TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, UpdatedAtUtc, AdminReplyAtUtc)
+                          VALUES ($touristUserId, $username, $poiId, $poiNameVi, $rating, $content, $status, N'', N'', SYSUTCDATETIME(), SYSUTCDATETIME(), NULL);
+                          SELECT CAST(SCOPE_IDENTITY() AS BIGINT);
+                          """;
+        cmd.Parameters.AddWithValue("$touristUserId", request.TouristUserId.HasValue ? request.TouristUserId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$username", username);
+        cmd.Parameters.AddWithValue("$poiId", request.PoiId);
+        cmd.Parameters.AddWithValue("$poiNameVi", poiName);
+        cmd.Parameters.AddWithValue("$rating", rating);
+        cmd.Parameters.AddWithValue("$content", content);
+        cmd.Parameters.AddWithValue("$status", status);
+        var raw = await cmd.ExecuteScalarAsync();
+        return raw is null || raw == DBNull.Value ? 0 : Convert.ToInt64(raw);
+    }
+
+    public async Task<bool> DeleteCommentAsync(long id)
+    {
+        if (id <= 0) return false;
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM TouristComment WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    private static string NormalizeCommentStatus(string? status, bool allowAll)
+    {
+        var s = (status ?? "").Trim().ToLowerInvariant();
+        return s switch
+        {
+            "pending" => "pending",
+            "approved" => "approved",
+            "rejected" => "rejected",
+            "hidden" => "hidden",
+            "all" when allowAll => "all",
+            _ => allowAll ? "all" : "pending"
         };
     }
 
@@ -1071,6 +1321,73 @@ public sealed class TravelGuideDb
                           END;
                           """;
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task EnsureTouristCommentTableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          IF OBJECT_ID(N'dbo.TouristComment', N'U') IS NULL
+                          BEGIN
+                            CREATE TABLE dbo.TouristComment(
+                              Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                              TouristUserId INT NULL,
+                              Username NVARCHAR(100) NOT NULL,
+                              PoiId INT NOT NULL,
+                              PoiNameVi NVARCHAR(300) NOT NULL DEFAULT N'',
+                              Rating INT NOT NULL DEFAULT 5,
+                              Content NVARCHAR(MAX) NOT NULL,
+                              Status NVARCHAR(20) NOT NULL DEFAULT N'pending',
+                              AdminReply NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              RejectReason NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                              AdminReplyAtUtc DATETIME2(0) NULL,
+                              UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                            );
+                            CREATE INDEX IX_TouristComment_Status ON dbo.TouristComment(Status, CreatedAtUtc DESC);
+                            CREATE INDEX IX_TouristComment_Poi ON dbo.TouristComment(PoiId, CreatedAtUtc DESC);
+                          END;
+                          """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task EnsureDemoCommentsAsync()
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM TouristComment;";
+            var raw = await countCmd.ExecuteScalarAsync();
+            var count = raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+            if (count > 0) return;
+        }
+
+        var demos = new (string User, int PoiId, string PoiName, int Rating, string Content, string Status, string Reply)[]
+        {
+            ("tranngoc", 1, "Nhà hàng Hải Sản Phú Quốc", 5, "Nhà hàng cực kỳ tươi ngon, hải sản được lấy trực tiếp từ biển mỗi sáng.", "pending", ""),
+            ("minhlong", 2, "Cà phê Sân Thượng Đà Lạt", 4, "View đẹp, đồ uống ổn. Cuối tuần hơi đông nhưng đáng trải nghiệm.", "approved", "Cảm ơn bạn đã chia sẻ trải nghiệm."),
+            ("hoanglinh", 3, "Khu du lịch Bà Nà Hills", 3, "Khá đông khách và xếp hàng lâu, giá vé hơi cao.", "pending", ""),
+            ("vantung", 4, "Phố cổ Hội An", 5, "Hội An về đêm rất lung linh, không khí dễ chịu.", "approved", ""),
+            ("phuchau", 5, "Khách sạn Mường Thanh Nha Trang", 1, "Nội dung bị ẩn do vi phạm chính sách bình luận.", "rejected", "")
+        };
+
+        foreach (var x in demos)
+        {
+            await using var ins = connection.CreateCommand();
+            ins.CommandText = """
+                              INSERT INTO TouristComment(TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, UpdatedAtUtc, AdminReplyAtUtc)
+                              VALUES (NULL, $u, $poiId, $poiName, $rating, $content, $status, $reply, CASE WHEN $status = 'rejected' THEN N'Vi phạm quy tắc cộng đồng' ELSE N'' END, SYSUTCDATETIME(), SYSUTCDATETIME(), CASE WHEN LEN($reply) > 0 THEN SYSUTCDATETIME() ELSE NULL END);
+                              """;
+            ins.Parameters.AddWithValue("$u", x.User);
+            ins.Parameters.AddWithValue("$poiId", x.PoiId);
+            ins.Parameters.AddWithValue("$poiName", x.PoiName);
+            ins.Parameters.AddWithValue("$rating", x.Rating);
+            ins.Parameters.AddWithValue("$content", x.Content);
+            ins.Parameters.AddWithValue("$status", x.Status);
+            ins.Parameters.AddWithValue("$reply", x.Reply);
+            await ins.ExecuteNonQueryAsync();
+        }
     }
 
     private async Task<List<PoiQrScanLogDto>> GetPoiQrScanLogsAsync()
@@ -1133,6 +1450,17 @@ public sealed class TravelGuideDb
         return result;
     }
 
+    private async Task<int> GetPoiQrScanTotalCountAsync()
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM TouristPoiQrScanLog;";
+        var raw = await cmd.ExecuteScalarAsync();
+        if (raw is null || raw == DBNull.Value) return 0;
+        return Convert.ToInt32(raw);
+    }
+
     private static async Task<List<T>> SafeTouristQuery<T>(Func<Task<List<T>>> query)
     {
         try
@@ -1143,6 +1471,19 @@ public sealed class TravelGuideDb
         {
             System.Diagnostics.Debug.WriteLine($"[TravelGuideDb] GetTouristOverviewAsync: {ex.Message}");
             return [];
+        }
+    }
+
+    private static async Task<int> SafeCountQuery(Func<Task<int>> query)
+    {
+        try
+        {
+            return await query();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TravelGuideDb] SafeCountQuery: {ex.Message}");
+            return 0;
         }
     }
 
@@ -1168,6 +1509,32 @@ public sealed class TravelGuideDb
                 reader.GetDateTime(4)));
         }
         return result;
+    }
+
+    /// <summary>Admin đổi tier cho tài khoản du khách (chỉ <c>free</c>/<c>premium</c>).</summary>
+    public async Task<bool> UpdateTouristUserTierAsync(int touristUserId, string? accountTier)
+    {
+        if (touristUserId <= 0) return false;
+        var tier = NormalizeTouristTier(accountTier);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristUser
+                          SET AccountTier = $tier,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$tier", tier);
+        cmd.Parameters.AddWithValue("$id", touristUserId);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    private static string NormalizeTouristTier(string? tier)
+    {
+        var normalized = (tier ?? "free").Trim().ToLowerInvariant();
+        return normalized == "premium" ? "premium" : "free";
     }
 
     private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()

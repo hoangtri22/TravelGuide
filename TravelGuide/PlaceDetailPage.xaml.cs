@@ -1,18 +1,23 @@
 using TravelGuide.Models;
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Devices;
+using Microsoft.Maui.ApplicationModel.DataTransfer;
 using System.Globalization;
 
 namespace TravelGuide;
 /// <summary>Chi tiết một POI: ảnh, tên/mô tả theo ngôn ngữ, nút phát TTS, mini player.</summary>
 public partial class PlaceDetailPage : ContentPage
 {
+    private const string AdminWebBaseLoopback = "http://127.0.0.1:5280";
+    private const string AdminWebBaseAndroid = "http://10.0.2.2:5280";
+
     private TouristPlace? _currentPlace;
     private readonly NarrationEngine _narrationEngine;
     private readonly DatabaseService _dbService;
     private readonly TouristAuthService _authService;
     private string _activeTab = "overview";
     private bool _isSubmittingReview;
-    private sealed record LocalReviewVm(string Author, string RatingText, string TimeText, string Content);
+    private sealed record LocalReviewVm(string Author, string RatingText, string TimeText, string Content, string AdminReplyText);
 
     public PlaceDetailPage(NarrationEngine narrationEngine, DatabaseService dbService, TouristAuthService authService)
     {
@@ -49,22 +54,12 @@ public partial class PlaceDetailPage : ContentPage
         var map = (_currentPlace.MapLink ?? "").Trim();
         BtnMapLink.IsVisible = map.Length > 0 && Uri.TryCreate(map, UriKind.Absolute, out var u) &&
                                (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps);
-        var qr = (_currentPlace.QrImagePath ?? "").Trim();
-        if (qr.Length > 0)
-        {
-            ImgQr.Source = qr;
-            QrSection.IsVisible = true;
-        }
-        else
-        {
-            ImgQr.Source = null;
-            QrSection.IsVisible = false;
-        }
 
         LblAboutTag.Text = $"Danh mục: {GetTagLabel(_currentPlace.Tag)}";
         LblAboutPrice.Text = $"Mức giá tham khảo: {Math.Max(0, _currentPlace.Price):N0} VND";
         LblAboutCoords.Text = $"Tọa độ: {_currentPlace.Latitude:F6}, {_currentPlace.Longitude:F6}";
         LblAboutMapLink.Text = string.IsNullOrWhiteSpace(map) ? "Map link: chưa có" : $"Map link: {map}";
+        ImgQr.Source = ResolveQrImageSource(_currentPlace);
 
         var keywords = BuildKeywords(_currentPlace.Tag);
         LblReviewKeywords.Text = string.Join(" · ", keywords);
@@ -109,11 +104,23 @@ public partial class PlaceDetailPage : ContentPage
         }
     }
 
+    private async void OnOpenQrScannerClicked(object sender, EventArgs e)
+    {
+        var poiId = _currentPlace?.Id ?? 0;
+        if (poiId > 0)
+        {
+            await Shell.Current.GoToAsync($"{nameof(QrScannerPage)}?payload={Uri.EscapeDataString(poiId.ToString(CultureInfo.InvariantCulture))}");
+            return;
+        }
+
+        await Shell.Current.GoToAsync(nameof(QrScannerPage));
+    }
+
     private void OnTabClicked(object sender, EventArgs e)
     {
         if (sender is not Button btn) return;
         var tab = (btn.CommandParameter as string)?.Trim().ToLowerInvariant();
-        if (tab is not ("overview" or "reviews" or "about")) return;
+        if (tab is not ("overview" or "reviews" or "about" or "qr")) return;
         _activeTab = tab;
         RefreshTabState();
     }
@@ -123,10 +130,12 @@ public partial class PlaceDetailPage : ContentPage
         SectionOverview.IsVisible = _activeTab == "overview";
         SectionReviews.IsVisible = _activeTab == "reviews";
         SectionAbout.IsVisible = _activeTab == "about";
+        SectionQr.IsVisible = _activeTab == "qr";
 
         SetTabButtonState(TabOverview, _activeTab == "overview");
         SetTabButtonState(TabReviews, _activeTab == "reviews");
         SetTabButtonState(TabAbout, _activeTab == "about");
+        SetTabButtonState(TabQr, _activeTab == "qr");
     }
 
     private static void SetTabButtonState(Button btn, bool active)
@@ -152,9 +161,9 @@ public partial class PlaceDetailPage : ContentPage
         var t = (tag ?? "").Trim().ToLowerInvariant();
         return t switch
         {
-            "quan an" => "Ẩm thực",
-            "quan nuoc" => "Đồ uống",
-            "di tich lich su" => "Di tích",
+            "quán ăn" or "quan an" => "Ẩm thực",
+            "quán nước" or "quan nuoc" => "Đồ uống",
+            "di tích lịch sử" or "di tich lich su" => "Di tích",
             _ => "Điểm tham quan"
         };
     }
@@ -164,9 +173,9 @@ public partial class PlaceDetailPage : ContentPage
         var t = (tag ?? "").Trim().ToLowerInvariant();
         return t switch
         {
-            "quan an" => ["món ngon", "phục vụ nhanh", "giá hợp lý", "hải sản tươi"],
-            "quan nuoc" => ["không gian đẹp", "menu đa dạng", "phục vụ thân thiện", "view chill"],
-            "di tich lich su" => ["giàu lịch sử", "kiến trúc đẹp", "đáng tham quan", "nhiều thông tin"],
+            "quán ăn" or "quan an" => ["món ngon", "phục vụ nhanh", "giá hợp lý", "hải sản tươi"],
+            "quán nước" or "quan nuoc" => ["không gian đẹp", "menu đa dạng", "phục vụ thân thiện", "view chill"],
+            "di tích lịch sử" or "di tich lich su" => ["giàu lịch sử", "kiến trúc đẹp", "đáng tham quan", "nhiều thông tin"],
             _ => ["đáng ghé", "khung cảnh đẹp", "thuận tiện", "nhiều trải nghiệm"]
         };
     }
@@ -174,24 +183,50 @@ public partial class PlaceDetailPage : ContentPage
     private async Task RefreshReviewsAsync(double defaultRating)
     {
         if (_currentPlace == null) return;
+        var remote = await _authService.GetPlaceReviewsWithAdminReplyAsync(_currentPlace.Id);
+        if (remote.Ok)
+        {
+            var reviewCount = remote.Items.Count;
+            var avgRating = reviewCount == 0
+                ? defaultRating
+                : Math.Round(remote.Items.Average(r => Math.Max(1, Math.Min(5, r.Rating))), 1);
+
+            LblRating.Text = $"{avgRating:F1} ★★★★★";
+            LblReviewCount.Text = $"({reviewCount:N0})";
+            LblReviewSummary.Text = reviewCount == 0
+                ? $"Chưa có đánh giá cho {GetTagLabel(_currentPlace.Tag)}"
+                : $"Đánh giá từ khách đã đăng nhập ({reviewCount:N0})";
+
+            ReviewsCollection.ItemsSource = remote.Items
+                .Select(r => new LocalReviewVm(
+                    r.Username,
+                    $"{new string('★', Math.Max(1, Math.Min(5, r.Rating)))}",
+                    FormatRelativeTime(r.CreatedAtUtc),
+                    r.Content,
+                    BuildAdminReplyText(r.AdminReply)))
+                .ToList();
+            return;
+        }
+
         var rows = await _dbService.GetPlaceReviewsAsync(_currentPlace.Id);
-        var reviewCount = rows.Count;
-        var avgRating = reviewCount == 0
+        var localCount = rows.Count;
+        var localAvgRating = localCount == 0
             ? defaultRating
             : Math.Round(rows.Average(r => Math.Max(1, Math.Min(5, r.Rating))), 1);
 
-        LblRating.Text = $"{avgRating:F1} ★★★★★";
-        LblReviewCount.Text = $"({reviewCount:N0})";
-        LblReviewSummary.Text = reviewCount == 0
+        LblRating.Text = $"{localAvgRating:F1} ★★★★★";
+        LblReviewCount.Text = $"({localCount:N0})";
+        LblReviewSummary.Text = localCount == 0
             ? $"Chưa có đánh giá cho {GetTagLabel(_currentPlace.Tag)}"
-            : $"Đánh giá từ khách đã đăng nhập ({reviewCount:N0})";
+            : $"Đánh giá từ khách đã đăng nhập ({localCount:N0})";
 
         ReviewsCollection.ItemsSource = rows
             .Select(r => new LocalReviewVm(
                 r.Username,
                 $"{new string('★', Math.Max(1, Math.Min(5, r.Rating)))}",
                 FormatRelativeTime(r.CreatedAtUtc),
-                r.Content))
+                r.Content,
+                string.Empty))
             .ToList();
     }
 
@@ -254,4 +289,36 @@ public partial class PlaceDetailPage : ContentPage
         var months = Math.Max(1, (int)(ts.TotalDays / 30));
         return $"{months} tháng trước";
     }
+
+    private static string BuildAdminReplyText(string? adminReply)
+    {
+        var text = (adminReply ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(text) ? string.Empty : $"Phản hồi admin: {text}";
+    }
+
+    private static string ResolveQrImageSource(TouristPlace place)
+    {
+        var raw = (place.QrImagePath ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(raw))
+            return BuildFallbackQr(place.Id);
+        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return raw;
+
+        var normalized = raw.TrimStart('.', '/');
+        if (normalized.StartsWith("WEB/", StringComparison.OrdinalIgnoreCase))
+            normalized = normalized[4..];
+
+        if (normalized.Length == 0) return BuildFallbackQr(place.Id);
+        return $"{GetAdminWebBaseUrlForQr().TrimEnd('/')}/{normalized}";
+    }
+
+    private static string GetAdminWebBaseUrlForQr() =>
+        DeviceInfo.Platform == DevicePlatform.Android
+            ? AdminWebBaseAndroid
+            : AdminWebBaseLoopback;
+
+    private static string BuildFallbackQr(int poiId) =>
+        $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(poiId.ToString(CultureInfo.InvariantCulture))}";
+
 }

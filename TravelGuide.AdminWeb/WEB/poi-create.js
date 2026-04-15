@@ -19,6 +19,21 @@ const api = async (url, options = {}) => {
   return ct.includes("application/json") ? res.json() : res.text();
 };
 
+const apiMultipart = async (url, formData, options = {}) => {
+  const t = sessionStorage.getItem("tg_admin_token") || "";
+  const headers = { ...(options.headers || {}) };
+  if (t) headers.Authorization = `Bearer ${t}`;
+  const res = await fetch(url, { ...options, method: options.method || "POST", headers, body: formData });
+  if (!res.ok) {
+    const text = (await res.text()).trim();
+    if (res.status === 401) throw new Error(text || "Phiên đăng nhập không hợp lệ.");
+    if (res.status === 403) throw new Error(text || "Không có quyền.");
+    throw new Error(text || `Lỗi ${res.status}`);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("application/json") ? res.json() : res.text();
+};
+
 function normalizedRole() {
   return String(sessionStorage.getItem("tg_admin_role") || "").trim().toLowerCase();
 }
@@ -35,11 +50,21 @@ function resetEmptyForm() {
   form.reset();
   byId("poiId").value = "";
   byId("price").value = "1000";
-  byId("tag").value = "dia diem du lich";
+  byId("tag").value = "Địa Điểm Du Lịch";
   byId("qrImagePath").value = "";
   byId("poiCreateFormTitle").textContent = "Tạo địa điểm mới";
   byId("poiCreateFormSubtitle").textContent =
     "Điền thông tin và bấm Lưu. Phí duy trì POI: 100.000đ/tháng (thu ngoài app).";
+}
+
+function normalizeTagForSelect(rawTag) {
+  const t = String(rawTag || "").trim().toLowerCase();
+  if (!t) return "Địa Điểm Du Lịch";
+  if (t === "quan an" || t === "quán ăn") return "Quán Ăn";
+  if (t === "quan nuoc" || t === "quán nước") return "Quán Nước";
+  if (t === "di tich lich su" || t === "di tích lịch sử") return "Di Tích Lịch Sử";
+  if (t === "dia diem du lich" || t === "địa điểm du lịch") return "Địa Điểm Du Lịch";
+  return rawTag;
 }
 
 function requireAuth() {
@@ -73,7 +98,7 @@ async function loadPoiForEdit(id) {
   byId("radius").value = p.radius;
   byId("priority").value = p.priority ?? 0;
   byId("price").value = p.price ?? 0;
-  byId("tag").value = p.tag || "dia diem du lich";
+  byId("tag").value = normalizeTagForSelect(p.tag);
   byId("qrImagePath").value = p.qrImagePath || "";
   byId("mapLink").value = p.mapLink || "";
   byId("imagePath").value = p.imagePath || "";
@@ -115,6 +140,8 @@ async function main() {
 
 byId("poiForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
+  const submitBtn = e.submitter;
+  if (submitBtn) submitBtn.disabled = true;
   const editingId = Number(byId("poiId").value || 0);
   let existing = null;
   if (editingId > 0) {
@@ -124,6 +151,17 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
       existing = null;
     }
   }
+  let resolvedAudioUrl = (byId("audioUrl").value || "").trim();
+  const selectedAudio = byId("audioFile")?.files?.[0];
+  if (selectedAudio) {
+    const fd = new FormData();
+    fd.append("file", selectedAudio);
+    const uploaded = await apiMultipart("/api/upload/audio", fd);
+    resolvedAudioUrl = String(uploaded?.audioUrl || "").trim();
+    if (!resolvedAudioUrl) throw new Error("Upload audio không trả về đường dẫn.");
+    byId("audioUrl").value = resolvedAudioUrl;
+  }
+
   const payload = {
     id: editingId,
     nameVi: byId("nameVi").value,
@@ -141,11 +179,11 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
     radius: Number(byId("radius").value),
     priority: Number(byId("priority").value || 0),
     price: Number(byId("price").value || 0),
-    tag: byId("tag").value || "dia diem du lich",
+    tag: byId("tag").value || "Địa Điểm Du Lịch",
     qrImagePath: byId("qrImagePath").value || "",
     mapLink: byId("mapLink").value || "",
     imagePath: byId("imagePath").value,
-    audioUrl: byId("audioUrl").value
+    audioUrl: resolvedAudioUrl
   };
   const id = payload.id;
   try {
@@ -166,6 +204,8 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
     }
   } catch (err) {
     alert(`Lưu thất bại: ${err?.message || err}`);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 });
 

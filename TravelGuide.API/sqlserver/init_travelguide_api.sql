@@ -88,7 +88,7 @@ BEGIN
         Priority      INT NOT NULL CONSTRAINT DF_PublicPoi_Priority DEFAULT 0,
         MapLink       NVARCHAR(1000) NOT NULL CONSTRAINT DF_PublicPoi_MapLink DEFAULT N'',
         Price         DECIMAL(18,2) NOT NULL CONSTRAINT DF_PublicPoi_Price DEFAULT 0,
-        Tag           NVARCHAR(100) NOT NULL CONSTRAINT DF_PublicPoi_Tag DEFAULT N'dia diem du lich',
+        Tag           NVARCHAR(100) NOT NULL CONSTRAINT DF_PublicPoi_Tag DEFAULT N'Địa Điểm Du Lịch',
         IsPublished   BIT NOT NULL CONSTRAINT DF_PublicPoi_IsPublished DEFAULT 1,
         CreatedAtUtc  DATETIME2(0) NOT NULL CONSTRAINT DF_PublicPoi_CreatedAtUtc DEFAULT SYSUTCDATETIME(),
         UpdatedAtUtc  DATETIME2(0) NOT NULL CONSTRAINT DF_PublicPoi_UpdatedAtUtc DEFAULT SYSUTCDATETIME()

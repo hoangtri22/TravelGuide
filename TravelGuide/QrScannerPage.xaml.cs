@@ -6,11 +6,14 @@ using ZXing.Net.Maui;
 
 namespace TravelGuide;
 
-public partial class QrScannerPage : ContentPage
+public partial class QrScannerPage : ContentPage, IQueryAttributable
 {
     private readonly DatabaseService _dbService;
     private readonly TouristAuthService _authService;
     private bool _isHandlingResult;
+    private string? _pendingPayload;
+    private bool _autoPayloadHandled;
+    private bool _isSimulatedScanFlow;
 
     public QrScannerPage(DatabaseService dbService, TouristAuthService authService)
     {
@@ -23,6 +26,46 @@ public partial class QrScannerPage : ContentPage
             Multiple = false,
             Formats = BarcodeFormats.TwoDimensional
         };
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (!query.TryGetValue("payload", out var raw)) return;
+        var payload = Uri.UnescapeDataString(raw?.ToString() ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(payload)) return;
+        _pendingPayload = payload;
+        _autoPayloadHandled = false;
+        _isSimulatedScanFlow = true;
+    }
+
+    protected override async void OnAppearing()
+    {
+        base.OnAppearing();
+        if (_autoPayloadHandled || string.IsNullOrWhiteSpace(_pendingPayload) || _isHandlingResult) return;
+
+        _autoPayloadHandled = true;
+        _isHandlingResult = true;
+        CameraView.IsDetecting = false;
+        StatusLabel.Text = $"Đã nhận từ bản đồ: {_pendingPayload}";
+
+        try
+        {
+            await HandleQrPayloadAsync(_pendingPayload);
+        }
+        finally
+        {
+            _pendingPayload = null;
+            _isSimulatedScanFlow = false;
+            _isHandlingResult = false;
+            try
+            {
+                CameraView.IsDetecting = true;
+            }
+            catch
+            {
+                // Trang có thể đã bị pop/remove sau khi mở trang chi tiết.
+            }
+        }
     }
 
     private async void OnOpenScanHistoryClicked(object? sender, EventArgs e)
@@ -43,6 +86,7 @@ public partial class QrScannerPage : ContentPage
         var value = e.Results?.FirstOrDefault()?.Value?.Trim();
         if (string.IsNullOrWhiteSpace(value)) return;
 
+        _isSimulatedScanFlow = false;
         _isHandlingResult = true;
         CameraView.IsDetecting = false;
 
@@ -118,10 +162,23 @@ public partial class QrScannerPage : ContentPage
         var me = await _authService.GetMeAsync();
         if (!me.Ok)
         {
+            if (_isSimulatedScanFlow)
+            {
+                await OpenPlaceDetailWithoutLogAsync(place);
+                return;
+            }
             await DisplayAlert(
                 "Đăng nhập",
                 "Đăng nhập du khách để xác nhận thanh toán và xem địa điểm (tài khoản Premium xem miễn phí).",
                 "OK");
+            return;
+        }
+
+        // Luồng từ nút QR trong chi tiết POI: luôn ghi nhận một lượt quét có doanh thu mô phỏng
+        // để bảng doanh thu trên Admin Web tăng ngay theo mỗi lần thao tác.
+        if (_isSimulatedScanFlow)
+        {
+            await OpenPlaceDetailAsync(place, TouristPricing.DefaultPoiUnlockVnd, "simulated_qr_access");
             return;
         }
 
@@ -190,11 +247,39 @@ public partial class QrScannerPage : ContentPage
             deviceModel,
             platform);
 
+        await ShowGeneratedDiscountCodeAsync(place);
+
         if (Handler?.MauiContext == null) return;
         var detailPage = Handler.MauiContext.Services.GetRequiredService<PlaceDetailPage>();
         detailPage.LoadPlace(place);
         await Navigation.PushAsync(detailPage);
         Navigation.RemovePage(this);
+    }
+
+    private async Task OpenPlaceDetailWithoutLogAsync(TouristPlace place)
+    {
+        await ShowGeneratedDiscountCodeAsync(place);
+        if (Handler?.MauiContext == null) return;
+        var detailPage = Handler.MauiContext.Services.GetRequiredService<PlaceDetailPage>();
+        detailPage.LoadPlace(place);
+        await Navigation.PushAsync(detailPage);
+        Navigation.RemovePage(this);
+    }
+
+    private async Task ShowGeneratedDiscountCodeAsync(TouristPlace place)
+    {
+        var code = GenerateDiscountCode(place.Id);
+        await DisplayAlert(
+            "Mã giảm giá",
+            $"Mã ưu đãi của bạn: {code}\n\nXuất trình mã này tại quầy để được áp dụng khuyến mãi.",
+            "OK");
+    }
+
+    private static string GenerateDiscountCode(int poiId)
+    {
+        var now = DateTime.Now;
+        var suffix = Random.Shared.Next(100, 1000);
+        return $"TG{poiId}-{now:ddMM}-{suffix}";
     }
 
     /// <summary>Nội dung QR kích hoạt Premium: <c>tg-premium:MÃ</c> hoặc URL có <c>tg_premium=</c>.</summary>

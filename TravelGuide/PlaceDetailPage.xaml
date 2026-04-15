@@ -56,7 +56,7 @@
                                     Clicked="OnMapLinkClicked"/>
                         </Grid>
 
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="0">
+                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="0">
                             <Button x:Name="TabOverview"
                                     Grid.Column="0"
                                     Text="Overview"
@@ -79,6 +79,13 @@
                                     CommandParameter="about"
                                     BackgroundColor="Transparent"
                                     TextColor="#6B7280"/>
+                            <Button x:Name="TabQr"
+                                    Grid.Column="3"
+                                    Text="QR"
+                                    Clicked="OnTabClicked"
+                                    CommandParameter="qr"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#6B7280"/>
                         </Grid>
 
                         <BoxView x:Name="TabIndicator" HeightRequest="2" Color="#0B74B2" HorizontalOptions="Fill"/>
@@ -88,10 +95,6 @@
                                    FontSize="15"
                                    LineHeight="1.45"
                                    TextColor="#374151"/>
-                            <VerticalStackLayout x:Name="QrSection" IsVisible="False" Spacing="8">
-                                <Label Text="QR quán" FontAttributes="Bold" TextColor="#111827"/>
-                                <Image x:Name="ImgQr" HeightRequest="180" Aspect="AspectFit"/>
-                            </VerticalStackLayout>
                         </VerticalStackLayout>
 
                         <VerticalStackLayout x:Name="SectionReviews" IsVisible="False" Spacing="10">
@@ -145,6 +148,7 @@
                                                 <Label Text="{Binding RatingText}" TextColor="#F59E0B"/>
                                                 <Label Text="{Binding TimeText}" FontSize="12" TextColor="#6B7280"/>
                                                 <Label Text="{Binding Content}" FontSize="13" TextColor="#374151"/>
+                                                <Label Text="{Binding AdminReplyText}" FontSize="12" TextColor="#1D4ED8"/>
                                             </VerticalStackLayout>
                                         </Border>
                                     </DataTemplate>
@@ -157,6 +161,24 @@
                             <Label x:Name="LblAboutPrice" FontSize="14" TextColor="#374151"/>
                             <Label x:Name="LblAboutCoords" FontSize="14" TextColor="#374151"/>
                             <Label x:Name="LblAboutMapLink" FontSize="14" TextColor="#0B74B2" LineBreakMode="TailTruncation"/>
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout x:Name="SectionQr" IsVisible="False" Spacing="10">
+                            <Image x:Name="ImgQr"
+                                   HeightRequest="180"
+                                   WidthRequest="180"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   Aspect="AspectFit"/>
+                            <Button Text="Quét QR để nhận mã khuyến mãi"
+                                    BackgroundColor="#E8F4FC"
+                                    TextColor="#0B74B2"
+                                    BorderColor="#9BD0F5"
+                                    BorderWidth="1"
+                                    CornerRadius="12"
+                                    HeightRequest="42"
+                                    FontAttributes="Bold"
+                                    Clicked="OnOpenQrScannerClicked"/>
                         </VerticalStackLayout>
                     </VerticalStackLayout>
                 </Border>

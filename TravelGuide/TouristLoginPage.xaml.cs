@@ -3,6 +3,7 @@ namespace TravelGuide;
 public partial class TouristLoginPage : ContentPage
 {
     private readonly TouristAuthService _authService;
+    private bool _isSubmitting;
 
     public TouristLoginPage(TouristAuthService authService)
     {
@@ -12,7 +13,29 @@ public partial class TouristLoginPage : ContentPage
 
     private async void OnLoginClicked(object sender, EventArgs e)
     {
-        if (sender is Button loginBtn) loginBtn.IsEnabled = false;
+        await TryLoginAsync(sender as Button);
+    }
+
+    private async void OnGoRegisterClicked(object sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync(nameof(TouristRegisterPage));
+    }
+
+    private void OnUsernameCompleted(object? sender, EventArgs e)
+    {
+        PasswordEntry.Focus();
+    }
+
+    private async void OnPasswordCompleted(object? sender, EventArgs e)
+    {
+        await TryLoginAsync();
+    }
+
+    private async Task TryLoginAsync(Button? loginButton = null)
+    {
+        if (_isSubmitting) return;
+        _isSubmitting = true;
+        if (loginButton != null) loginButton.IsEnabled = false;
         try
         {
             var username = (UsernameEntry.Text ?? "").Trim();
@@ -38,12 +61,8 @@ public partial class TouristLoginPage : ContentPage
         }
         finally
         {
-            if (sender is Button loginButton) loginButton.IsEnabled = true;
+            _isSubmitting = false;
+            if (loginButton != null) loginButton.IsEnabled = true;
         }
-    }
-
-    private async void OnGoRegisterClicked(object sender, EventArgs e)
-    {
-        await Shell.Current.GoToAsync(nameof(TouristRegisterPage));
     }
 }

@@ -63,18 +63,25 @@
         <p id="brandSubtitle">Cổng quản trị</p>
       </div>
       <nav class="nav">
+        <p class="nav-group-title">QUẢN LÝ</p>
         <button type="button" class="tab active" data-tab="poiTab">
           <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></span>
           <span class="tab-label">Quản lý địa điểm</span>
+        </button>
+        <button type="button" class="tab admin-only" data-tab="commentTab">
+          <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+          <span class="tab-label">Quản lí bình luận</span>
+          <span class="tab-badge admin-only" id="commentPendingBadge">0</span>
         </button>
         <button type="button" class="tab" data-tab="translationTab">
           <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
           <span class="tab-label">Đa ngôn ngữ</span>
         </button>
-        <button type="button" class="tab owner-only hidden" data-tab="audioTab">
+        <button type="button" class="tab" data-tab="audioTab">
           <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg></span>
           <span class="tab-label">Nguồn audio</span>
         </button>
+        <p class="nav-group-title">NGƯỜI DÙNG</p>
         <button type="button" class="tab admin-only" data-tab="accountTab">
           <span class="tab-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
           <span class="tab-label">Tài khoản web</span>
@@ -85,8 +92,13 @@
         </button>
       </nav>
       <div class="sidebar-footer">
-        <p id="authDisplayName" class="sidebar-user-name"></p>
-        <p id="authRoleLabel" class="sidebar-user-role"></p>
+        <div class="sidebar-user-card">
+          <span class="sidebar-avatar" aria-hidden="true">A</span>
+          <div class="sidebar-user-meta">
+            <p id="authDisplayName" class="sidebar-user-name"></p>
+            <p id="authRoleLabel" class="sidebar-user-role"></p>
+          </div>
+        </div>
         <button type="button" id="logoutBtn">
           <span class="logout-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg></span>
           Đăng xuất
@@ -162,6 +174,63 @@
         </div>
       </section>
 
+      <section id="commentTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Quản lí bình luận</h2>
+        <p class="hint card-desc">Theo dõi và xử lý bình luận từ du khách.</p>
+
+        <div class="cm-stats">
+          <article class="cm-stat-card all">
+            <div class="cm-stat-icon">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </div>
+            <p class="cm-stat-num" id="commentStatTotal">0</p>
+            <p class="cm-stat-label">Tổng bình luận</p>
+          </article>
+          <article class="cm-stat-card pending">
+            <div class="cm-stat-icon">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <p class="cm-stat-num" id="commentStatPending">0</p>
+            <p class="cm-stat-label">Chờ duyệt</p>
+          </article>
+          <article class="cm-stat-card approved">
+            <div class="cm-stat-icon">
+              <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <p class="cm-stat-num" id="commentStatApproved">0</p>
+            <p class="cm-stat-label">Đã duyệt</p>
+          </article>
+          <article class="cm-stat-card rejected">
+            <div class="cm-stat-icon">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </div>
+            <p class="cm-stat-num" id="commentStatRejected">0</p>
+            <p class="cm-stat-label">Từ chối</p>
+          </article>
+        </div>
+
+        <div class="cm-toolbar">
+          <div class="cm-filter-tabs" id="commentFilterTabs">
+            <button type="button" class="cm-filter-tab active" data-status="all">Tất cả</button>
+            <button type="button" class="cm-filter-tab" data-status="pending">Chờ duyệt</button>
+            <button type="button" class="cm-filter-tab" data-status="approved">Đã duyệt</button>
+            <button type="button" class="cm-filter-tab" data-status="rejected">Từ chối</button>
+            <button type="button" class="cm-filter-tab" data-status="hidden">Đã ẩn</button>
+          </div>
+          <div class="cm-search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="commentSearchInput" placeholder="Tìm kiếm bình luận, địa điểm...">
+          </div>
+        </div>
+
+        <div class="cm-list" id="commentList"></div>
+
+        <div class="cm-pagination">
+          <p class="cm-page-info" id="commentPageInfo">Hiển thị 0-0 / 0 bình luận</p>
+          <div class="cm-page-btns" id="commentPager"></div>
+        </div>
+      </section>
+
       <section id="translationTab" class="card card-elevated tab-content hidden">
         <h2 class="card-title">Đa ngôn ngữ</h2>
         <p class="hint card-desc">Bản dịch tên và mô tả cho từng POI.</p>
@@ -182,7 +251,7 @@
 
       <section id="audioTab" class="card card-elevated tab-content hidden">
         <h2 class="card-title">Nguồn audio &amp; bản đồ</h2>
-        <p class="hint">Gán URL file audio (MP3…) và link mở bản đồ cho từng POI của quán. Lưu từng dòng hoặc chỉnh đầy đủ tại tab Quản lý POI.</p>
+        <p class="hint">Có thể upload file audio trực tiếp theo từng dòng POI, hệ thống sẽ điền path dạng <code>audio/...</code>. Sau upload nhớ bấm Lưu.</p>
         <div id="audioTableWrap">
           <table id="audioTable">
             <thead><tr><th>ID</th><th>Tên (VI)</th><th>Audio URL</th><th>Map link</th><th></th></tr></thead>
@@ -202,7 +271,7 @@
           <div class="full"><button type="submit" class="btn-primary">Tạo tài khoản</button></div>
         </form>
         <table id="accountTable">
-          <thead><tr><th>ID</th><th>Username</th><th>Tên</th><th>Role</th><th>Trạng thái</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Username</th><th>Mật khẩu (đăng nhập)</th><th>Tên</th><th>Role</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
@@ -216,7 +285,7 @@
 
         <h3>Tài khoản du khách</h3>
         <table id="touristUserTable">
-          <thead><tr><th>ID</th><th>Username</th><th>DisplayName</th><th>Tier</th><th>Created</th></tr></thead>
+          <thead><tr><th>ID</th><th>Username</th><th>DisplayName</th><th>Tier</th><th>Created</th><th>Hành động</th></tr></thead>
           <tbody></tbody>
         </table>
 
@@ -264,6 +333,6 @@
       </section>
     </main>
   </section>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>

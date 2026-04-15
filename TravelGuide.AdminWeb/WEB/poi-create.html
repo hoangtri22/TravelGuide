@@ -43,15 +43,21 @@
         <div><label for="price">Giá hiển thị (VND)</label><input id="price" type="number" step="1000" min="0" value="1000" title="Hiển thị trên app; du khách Free trả 1.000đ/lần mở quán (theo chính sách app)"></div>
         <div><label for="tag">Tag</label>
           <select id="tag">
-            <option value="quan an">quán ăn</option>
-            <option value="quan nuoc">quán nước</option>
-            <option value="dia diem du lich">địa điểm du lịch</option>
-            <option value="di tich lich su">di tích lịch sử</option>
+            <option value="Quán Ăn">Quán Ăn</option>
+            <option value="Quán Nước">Quán Nước</option>
+            <option value="Địa Điểm Du Lịch">Địa Điểm Du Lịch</option>
+            <option value="Di Tích Lịch Sử">Di Tích Lịch Sử</option>
           </select>
         </div>
         <div class="full"><label for="qrImagePath">QR ImagePath</label><input id="qrImagePath" placeholder="Để trống: tự tạo khi lưu POI mới (ảnh lưu /qrcodes/...)"></div>
         <div class="full"><label for="mapLink">Map link</label><input id="mapLink" placeholder="https://maps.google.com/... hoặc Mapbox"></div>
-        <div class="full"><label for="audioUrl">Audio URL</label><input id="audioUrl" placeholder="https://.../audio.mp3 (app phát file trước, lỗi thì TTS)"></div>
+        <div class="full"><label for="audioUrl">Audio URL / Path</label><input id="audioUrl" placeholder="audio/ten-file.mp3 hoặc https://.../audio.mp3"></div>
+        <div class="full">
+          <label for="audioFile">Chọn file audio</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            <input id="audioFile" type="file" accept=".mp3,.wav,.m4a,.aac,.ogg,audio/*">
+          </div>
+        </div>
         <div class="full" style="display:flex;gap:10px;flex-wrap:wrap;">
           <button type="submit" class="btn-primary">Lưu POI</button>
           <button type="button" id="btnAnotherPoi" class="btn-outline hidden">＋ Tạo POI khác</button>
@@ -59,6 +65,6 @@
       </form>
     </div>
   </div>
-  <script src="poi-create.js?v=1"></script>
+  <script src="poi-create.js?v=3"></script>
 </body>
 </html>

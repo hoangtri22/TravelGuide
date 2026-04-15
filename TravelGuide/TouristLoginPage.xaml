@@ -24,7 +24,12 @@
                 <Border Stroke="#CBD5E1" StrokeThickness="2" StrokeShape="RoundRectangle 14" BackgroundColor="White" Padding="14,10">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                         <Label Text="👤" FontSize="15" VerticalTextAlignment="Center"/>
-                        <Entry x:Name="UsernameEntry" Grid.Column="1" Placeholder="Enter your username" FontSize="16"/>
+                        <Entry x:Name="UsernameEntry"
+                               Grid.Column="1"
+                               Placeholder="Enter your username"
+                               FontSize="16"
+                               ReturnType="Next"
+                               Completed="OnUsernameCompleted"/>
                     </Grid>
                 </Border>
             </VerticalStackLayout>
@@ -34,7 +39,13 @@
                 <Border Stroke="#CBD5E1" StrokeThickness="2" StrokeShape="RoundRectangle 14" BackgroundColor="White" Padding="14,10">
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                         <Label Text="🔐" FontSize="15" VerticalTextAlignment="Center"/>
-                        <Entry x:Name="PasswordEntry" Grid.Column="1" Placeholder="Enter your password" IsPassword="True" FontSize="16"/>
+                        <Entry x:Name="PasswordEntry"
+                               Grid.Column="1"
+                               Placeholder="Enter your password"
+                               IsPassword="True"
+                               FontSize="16"
+                               ReturnType="Done"
+                               Completed="OnPasswordCompleted"/>
                         <Label Grid.Column="2" Text="👁️" FontSize="16" VerticalTextAlignment="Center"/>
                     </Grid>
                 </Border>

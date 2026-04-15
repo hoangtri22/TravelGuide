@@ -19,6 +19,27 @@ public record TouristPoiScanLogRequest(
     string? DeviceModel,
     string? AppPlatform);
 
+public record TouristCommentCreateRequest(
+    int PoiId,
+    string? PoiNameVi,
+    int Rating,
+    string? Content);
+
+public record TouristCommentDto(
+    long Id,
+    int? TouristUserId,
+    string Username,
+    int PoiId,
+    string PoiNameVi,
+    int Rating,
+    string Content,
+    string Status,
+    string AdminReply,
+    string RejectReason,
+    DateTime CreatedAtUtc,
+    DateTime? AdminReplyAtUtc,
+    DateTime UpdatedAtUtc);
+
 /// <summary>Một dòng trong lịch quét: POI mới nhất theo thời gian quét.</summary>
 public record MyPoiScanHistoryItemDto(int PoiId, string PoiNameVi, string EventType, decimal AmountVnd, DateTime LastScannedAtUtc);
 
