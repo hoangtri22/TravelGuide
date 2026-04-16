@@ -10,6 +10,12 @@ public partial class TouristRegisterPage : ContentPage
         _authService = authService;
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _authService.EnsureValidApiUrlForCurrentPlatform();
+    }
+
     private async void OnRegisterClicked(object sender, EventArgs e)
     {
         if (sender is Button registerBtn) registerBtn.IsEnabled = false;

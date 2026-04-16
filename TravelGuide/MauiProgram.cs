@@ -19,6 +19,14 @@ public static class MauiProgram
         AppLanguage.LoadSaved();
         MapboxTokenBootstrap.TryLoadFromBundledSecretFile();
 
+        // Chỉ ghi URL mặc định khi chưa cấu hình (để màn đăng nhập / device-endpoints.json không bị ghi đè mỗi lần mở app).
+        if (string.IsNullOrWhiteSpace(Preferences.Get("tourist_api_base_url", null)?.Trim()))
+        {
+            var defaultApi = EndpointResolver.GetDefaultApiBaseUrl();
+            Preferences.Set("tourist_api_base_url", defaultApi);
+            Preferences.Set("api_base_url", defaultApi);
+        }
+
         var builder = MauiApp.CreateBuilder();
 
         builder

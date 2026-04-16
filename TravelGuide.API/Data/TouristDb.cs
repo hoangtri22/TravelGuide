@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Data.SqlClient;
 using TravelGuide.API.Models;
 using TravelGuide.API.Services;
@@ -40,7 +42,113 @@ public sealed class TouristDb
         await EnsureTouristPoiUnlockTableAsync(connection);
         await EnsureTouristPoiQrScanLogTableAsync(connection);
         await EnsureTouristCommentTableAsync(connection);
+        await EnsureRefreshTokenTableAsync(connection);
         await SeedDefaultPremiumClaimAsync(connection);
+    }
+
+    private static async Task EnsureRefreshTokenTableAsync(SqlConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            IF OBJECT_ID(N'dbo.RefreshToken', N'U') IS NULL
+                            BEGIN
+                              CREATE TABLE dbo.RefreshToken(
+                                Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                TouristUserId INT NOT NULL,
+                                TokenHash NVARCHAR(256) NOT NULL,
+                                DeviceId NVARCHAR(120) NULL,
+                                UserAgent NVARCHAR(500) NULL,
+                                IpAddress NVARCHAR(64) NULL,
+                                ExpiresAtUtc DATETIME2(0) NOT NULL,
+                                RevokedAtUtc DATETIME2(0) NULL,
+                                CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                                CONSTRAINT FK_RefreshToken_TouristUser FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                              );
+                              CREATE UNIQUE INDEX UX_RefreshToken_TokenHash ON dbo.RefreshToken(TokenHash);
+                              CREATE INDEX IX_RefreshToken_TouristUserId ON dbo.RefreshToken(TouristUserId, ExpiresAtUtc DESC);
+                            END;
+                            """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Ghi phiên đăng nhập để admin đếm "trực tuyến" (bảng RefreshToken).</summary>
+    public async Task RecordLoginSessionAsync(int touristUserId, string bearerToken)
+    {
+        var hash = HashBearerToken(bearerToken);
+        var expires = DateTime.UtcNow.AddHours(48);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await RevokeAllSessionsForTouristCoreAsync(connection, touristUserId);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          INSERT INTO dbo.RefreshToken(TouristUserId, TokenHash, ExpiresAtUtc)
+                          VALUES(@uid, @hash, @exp);
+                          """;
+        cmd.Parameters.AddWithValue("@uid", touristUserId);
+        cmd.Parameters.AddWithValue("@hash", hash);
+        cmd.Parameters.AddWithValue("@exp", expires);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Thu hồi mọi phiên DB của du khách (đăng xuất / đăng nhập lại — tránh vẫn đếm là trực tuyến).</summary>
+    public async Task RevokeAllSessionsForTouristAsync(int touristUserId)
+    {
+        if (touristUserId <= 0) return;
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await RevokeAllSessionsForTouristCoreAsync(connection, touristUserId);
+    }
+
+    private static async Task RevokeAllSessionsForTouristCoreAsync(SqlConnection connection, int touristUserId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE dbo.RefreshToken
+                          SET RevokedAtUtc = SYSUTCDATETIME()
+                          WHERE TouristUserId = @uid AND RevokedAtUtc IS NULL;
+                          """;
+        cmd.Parameters.AddWithValue("@uid", touristUserId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Gia hạn phiên khi app gọi /me — giữ số "đang trực tuyến" khớp khi đang dùng app.</summary>
+    public async Task TouchSessionByBearerTokenAsync(string bearerToken)
+    {
+        var hash = HashBearerToken(bearerToken);
+        var newExp = DateTime.UtcNow.AddHours(48);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE dbo.RefreshToken
+                          SET ExpiresAtUtc = @exp
+                          WHERE TokenHash = @hash AND RevokedAtUtc IS NULL;
+                          """;
+        cmd.Parameters.AddWithValue("@hash", hash);
+        cmd.Parameters.AddWithValue("@exp", newExp);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static string HashBearerToken(string bearerToken)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(bearerToken.Trim()));
+        return Convert.ToHexString(bytes);
+    }
+
+    /// <summary>Thu hồi phiên SQL khi đăng xuất — dashboard admin không còn đếm là đang trực tuyến.</summary>
+    public async Task<int> RevokeRefreshTokenByBearerAsync(string bearerToken)
+    {
+        var hash = HashBearerToken(bearerToken);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE dbo.RefreshToken
+                          SET RevokedAtUtc = SYSUTCDATETIME()
+                          WHERE TokenHash = @hash AND RevokedAtUtc IS NULL;
+                          """;
+        cmd.Parameters.AddWithValue("@hash", hash);
+        return await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task<bool> CreateUserAsync(string username, string password, string displayName, string? accountTier = null)
@@ -256,7 +364,8 @@ public sealed class TouristDb
         cmd.CommandText = """
                           SELECT TOP (@take) Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
                           FROM dbo.TouristComment
-                          WHERE PoiId = @poiId AND Status IN (N'pending', N'approved')
+                          WHERE PoiId = @poiId
+                            AND LOWER(LTRIM(RTRIM(Status))) IN (N'pending', N'approved')
                           ORDER BY CreatedAtUtc DESC, Id DESC;
                           """;
         cmd.Parameters.AddWithValue("@take", top);

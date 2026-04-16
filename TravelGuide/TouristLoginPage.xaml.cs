@@ -11,6 +11,12 @@ public partial class TouristLoginPage : ContentPage
         _authService = authService;
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        _authService.EnsureValidApiUrlForCurrentPlatform();
+    }
+
     private async void OnLoginClicked(object sender, EventArgs e)
     {
         await TryLoginAsync(sender as Button);
