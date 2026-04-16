@@ -1,6 +1,5 @@
 using TravelGuide.Models;
 using Microsoft.Maui.ApplicationModel;
-using Microsoft.Maui.Devices;
 using Microsoft.Maui.ApplicationModel.DataTransfer;
 using System.Globalization;
 
@@ -8,9 +7,6 @@ namespace TravelGuide;
 /// <summary>Chi tiết một POI: ảnh, tên/mô tả theo ngôn ngữ, nút phát TTS, mini player.</summary>
 public partial class PlaceDetailPage : ContentPage
 {
-    private const string AdminWebBaseLoopback = "http://127.0.0.1:5280";
-    private const string AdminWebBaseAndroid = "http://10.0.2.2:5280";
-
     private TouristPlace? _currentPlace;
     private readonly NarrationEngine _narrationEngine;
     private readonly DatabaseService _dbService;
@@ -184,18 +180,17 @@ public partial class PlaceDetailPage : ContentPage
     {
         if (_currentPlace == null) return;
         var remote = await _authService.GetPlaceReviewsWithAdminReplyAsync(_currentPlace.Id);
-        if (remote.Ok)
+        // Chỉ dùng dữ liệu API khi thực sự có ít nhất một dòng. Nếu HTTP 200 nhưng [] thì vẫn fallback
+        // SQLite — tránh lỗi "ra vào lại mất bình luận" khi API trả rỗng (DB lệch, chưa đồng bộ…)
+        // trong khi đánh giá đã lưu cục bộ sau khi gửi.
+        if (remote.Ok && remote.Items.Count > 0)
         {
             var reviewCount = remote.Items.Count;
-            var avgRating = reviewCount == 0
-                ? defaultRating
-                : Math.Round(remote.Items.Average(r => Math.Max(1, Math.Min(5, r.Rating))), 1);
+            var avgRating = Math.Round(remote.Items.Average(r => Math.Max(1, Math.Min(5, r.Rating))), 1);
 
             LblRating.Text = $"{avgRating:F1} ★★★★★";
             LblReviewCount.Text = $"({reviewCount:N0})";
-            LblReviewSummary.Text = reviewCount == 0
-                ? $"Chưa có đánh giá cho {GetTagLabel(_currentPlace.Tag)}"
-                : $"Đánh giá từ khách đã đăng nhập ({reviewCount:N0})";
+            LblReviewSummary.Text = $"Đánh giá từ khách đã đăng nhập ({reviewCount:N0})";
 
             ReviewsCollection.ItemsSource = remote.Items
                 .Select(r => new LocalReviewVm(
@@ -314,9 +309,7 @@ public partial class PlaceDetailPage : ContentPage
     }
 
     private static string GetAdminWebBaseUrlForQr() =>
-        DeviceInfo.Platform == DevicePlatform.Android
-            ? AdminWebBaseAndroid
-            : AdminWebBaseLoopback;
+        EndpointResolver.ResolveAdminWebBaseUrls().Primary;
 
     private static string BuildFallbackQr(int poiId) =>
         $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(poiId.ToString(CultureInfo.InvariantCulture))}";

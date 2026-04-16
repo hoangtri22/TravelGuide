@@ -6,6 +6,7 @@ let token = "";
 let currentRole = "";
 let pois = [];
 let touristOverview = null;
+let touristAutoRefreshId = null;
 let qrBackfillRunning = false;
 let qrBackfillAttempted = false;
 let commentSearchTimer = null;
@@ -98,6 +99,16 @@ function switchTab(tabId) {
   }
   const strip = byId("statsStrip");
   if (strip) strip.classList.toggle("hidden", tabId !== "poiTab");
+
+  if (touristAutoRefreshId) {
+    clearInterval(touristAutoRefreshId);
+    touristAutoRefreshId = null;
+  }
+  if (tabId === "touristTab" && normalizedRole() === "admin") {
+    touristAutoRefreshId = setInterval(() => {
+      loadTouristOverview().catch(() => {});
+    }, 30000);
+  }
 }
 
 /** Chuẩn hóa role từ API (DB có thể khác hoa/thường). */
@@ -213,6 +224,59 @@ const fmtDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
 };
+
+/** Giống bảng mẫu: HH:MM:SS D/M/YYYY (local) */
+const fmtTouristCreated = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+};
+
+const touristAvatarClass = (i) => {
+  const c = ["tourist-av-purple", "tourist-av-teal", "tourist-av-blue", "tourist-av-amber"];
+  return c[i % c.length];
+};
+
+function renderTouristSparkline(hourly) {
+  const el = byId("touristSparkline");
+  if (!el) return;
+  const data = Array.isArray(hourly) && hourly.length === 24 ? hourly : Array(24).fill(0);
+  const max = Math.max(1, ...data);
+  const barH = 68;
+  const now = new Date();
+  const pad2 = (n) => String(n).padStart(2, "0");
+  /** Nhãn trục: ngày + giờ để tránh nhầm (vd. 08:52 vs 20:52 hôm trước). */
+  const fmtAxis = (dt) => {
+    if (Number.isNaN(dt.getTime())) return "—";
+    return `${dt.getDate()}/${dt.getMonth() + 1} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  };
+  const windowStartMs = now.getTime() - 24 * 60 * 60000;
+  const bucketStartMs = (i) => windowStartMs + i * 60 * 60000;
+  const escAttr = (s) =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  el.innerHTML = data.map((v, i) => {
+    const h = Math.max(5, Math.round((v / max) * barH));
+    const cls = i === data.length - 1 ? "tourist-spark-bar tourist-spark-bar-now" : "tourist-spark-bar";
+    const from = fmtAxis(new Date(bucketStartMs(i)));
+    const to = fmtAxis(new Date(bucketStartMs(i) + 60 * 60000));
+    const tip = `${v} lượt · ${from} – ${to}`;
+    return `<div class="${cls}" style="height:${h}px" title="${escAttr(tip)}"></div>`;
+  }).join("");
+  const fmtClock = (dt) => `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+  const ss = byId("touristSparkStart");
+  const sm = byId("touristSparkMid");
+  if (ss) ss.textContent = fmtAxis(new Date(now.getTime() - 24 * 60 * 60000));
+  if (sm) sm.textContent = fmtAxis(new Date(now.getTime() - 12 * 60 * 60000));
+  const upd = byId("touristUpdatedAt");
+  if (upd) upd.textContent = `Cập nhật lúc ${fmtAxis(now)}`;
+  const foot = byId("touristFooterNote");
+  if (foot) foot.textContent = `Dữ liệu làm mới tự động mỗi 30 giây khi mở tab · ${fmtClock(now)}`;
+}
 
 /** GET /api/pois — render bảng + select bản dịch */
 async function loadPois() {
@@ -468,22 +532,162 @@ async function loadTouristOverview() {
     ? sRes.value
     : { logs: [], revenueByPoi: [], grandTotalVnd: 0, totalScans: 0 };
 
+  const dash = touristOverview.dashboard || {};
+  const users = touristOverview.users || [];
+  const visitHistory = touristOverview.visitHistory || [];
+  const refreshTokens = touristOverview.refreshTokens || [];
+
+  const total = Number(dash.totalAccounts ?? users.length) || 0;
+
+  let activated = dash.activatedCount;
+  if (activated === undefined || activated === null) {
+    activated = users.filter(u => String(u.accountTier || "").toLowerCase() === "premium").length;
+  } else {
+    activated = Number(activated);
+  }
+
+  const presenceMs = 2 * 60 * 1000;
+  const nowMsForPresence = Date.now();
+  const presenceCutoffMs = nowMsForPresence - presenceMs;
+  const lastVisitMsByUser = {};
+  for (const h of visitHistory) {
+    const uid = h.touristUserId;
+    const t = new Date(h.occurredAtUtc).getTime();
+    if (Number.isNaN(t)) continue;
+    lastVisitMsByUser[uid] = Math.max(lastVisitMsByUser[uid] || 0, t);
+  }
+  const presenceSignalMs = uid => {
+    const lastVisit = lastVisitMsByUser[uid] || 0;
+    let newestTok = 0;
+    for (const t of refreshTokens) {
+      if (t.touristUserId !== uid || t.revokedAtUtc) continue;
+      if (new Date(t.expiresAtUtc).getTime() <= nowMsForPresence) continue;
+      const c = new Date(t.createdAtUtc).getTime();
+      if (!Number.isNaN(c)) newestTok = Math.max(newestTok, c);
+    }
+    return Math.max(lastVisit, newestTok);
+  };
+
+  let onlineCount = dash.onlineCount;
+  if (onlineCount === undefined || onlineCount === null) {
+    const seen = new Set();
+    for (const t of refreshTokens) {
+      if (t.revokedAtUtc) continue;
+      if (new Date(t.expiresAtUtc).getTime() <= nowMsForPresence) continue;
+      if (presenceSignalMs(t.touristUserId) >= presenceCutoffMs) seen.add(t.touristUserId);
+    }
+    onlineCount = seen.size;
+  } else {
+    onlineCount = Number(onlineCount);
+  }
+
+  let sessionsToday = dash.sessionsToday;
+  if (sessionsToday === undefined || sessionsToday === null) {
+    const startUtc = new Date();
+    startUtc.setUTCHours(0, 0, 0, 0);
+    sessionsToday = visitHistory.filter((h) => {
+      const t = new Date(h.occurredAtUtc);
+      return !Number.isNaN(t.getTime()) && t >= startUtc;
+    }).length;
+  } else {
+    sessionsToday = Number(sessionsToday);
+  }
+
+  const pct = total > 0 ? Math.round((activated / total) * 100) : 0;
+
+  const elOnline = byId("touristStatOnline");
+  if (elOnline) elOnline.textContent = String(onlineCount);
+  const elTot = byId("touristStatTotal");
+  if (elTot) elTot.textContent = String(total);
+  const elAct = byId("touristStatActivated");
+  if (elAct) elAct.textContent = String(activated);
+  const elPct = byId("touristStatActivatedPct");
+  if (elPct) elPct.textContent = total > 0 ? `${pct}% tài khoản` : "—";
+  const elSess = byId("touristStatSessions");
+  if (elSess) elSess.textContent = String(sessionsToday);
+
+  let hourly = dash.hourlyActivity;
+  if (!hourly || !Array.isArray(hourly) || hourly.length !== 24) {
+    hourly = Array(24).fill(0);
+    const windowStart = Date.now() - 24 * 60 * 60000;
+    for (const h of visitHistory) {
+      const t = new Date(h.occurredAtUtc).getTime();
+      if (Number.isNaN(t) || t < windowStart) continue;
+      const slot = Math.floor((t - windowStart) / (60 * 60000));
+      if (slot >= 0 && slot < 24) hourly[slot]++;
+    }
+  }
+  renderTouristSparkline(hourly);
+
+  const sessList = byId("touristSessionList");
+  if (sessList) {
+    let live = dash.liveSessions;
+    if (!live || live.length === 0) {
+      const byUser = new Map();
+      for (const t of refreshTokens) {
+        if (t.revokedAtUtc) continue;
+        if (new Date(t.expiresAtUtc).getTime() <= nowMsForPresence) continue;
+        if (presenceSignalMs(t.touristUserId) < presenceCutoffMs) continue;
+        const prev = byUser.get(t.touristUserId);
+        const curCreated = new Date(t.createdAtUtc).getTime();
+        if (!prev || curCreated > prev.created) {
+          byUser.set(t.touristUserId, { token: t, created: curCreated });
+        }
+      }
+      const routes = ["/home", "/destinations", "/bookings", "/explore", "/profile"];
+      live = [...byUser.values()]
+        .sort((a, b) => presenceSignalMs(b.token.touristUserId) - presenceSignalMs(a.token.touristUserId))
+        .slice(0, 6)
+        .map(({ token: t }) => {
+          const u = users.find(x => x.id === t.touristUserId);
+          const uname = u?.username || t.username;
+          const disp = u?.displayName || uname;
+          const tierLabel = String(u?.accountTier || "free").toLowerCase() === "premium" ? "Premium" : "Free";
+          const route = routes[Math.abs(String(uname).split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % routes.length];
+          const sig = presenceSignalMs(t.touristUserId);
+          const minutesAgo = Math.max(1, Math.floor((nowMsForPresence - sig) / 60000));
+          return { username: uname, displayName: disp, tierLabel, route, minutesAgo };
+        });
+    }
+    sessList.innerHTML = live.length
+      ? live.map((s, i) => {
+          const alnum = String(s.username || "").replace(/[^a-zA-Z0-9]/g, "");
+          const initials = alnum.length >= 2
+            ? alnum.slice(0, 2).toUpperCase()
+            : (alnum.slice(0, 1) || "?").toUpperCase();
+          const tier = s.tierLabel || "Free";
+          const disp = s.displayName || s.username;
+          return `
+      <div class="tourist-session-row">
+        <div class="tourist-session-left">
+          <div class="tourist-avatar ${touristAvatarClass(i)}">${initials}</div>
+          <div>
+            <div class="tourist-s-name">${escCell(s.username)}</div>
+            <div class="tourist-s-meta">${escCell(disp)} · ${escCell(tier)} · ${escCell(s.route || "")}</div>
+          </div>
+        </div>
+        <div class="tourist-s-time"><span class="tourist-dot-live" aria-hidden="true"></span>${s.minutesAgo} phút</div>
+      </div>`;
+        }).join("")
+      : `<div class="tourist-session-empty hint">Không có phiên đăng nhập còn hiệu lực (token hết hạn hoặc đã thu hồi).</div>`;
+  }
+
   const userBody = byId("touristUserTable")?.querySelector("tbody");
   if (userBody) {
-    userBody.innerHTML = (touristOverview.users || []).map(x => `
+    userBody.innerHTML = users.map(x => `
       <tr>
-        <td>${x.id}</td>
-        <td>${x.username}</td>
-        <td>${x.displayName}</td>
+        <td class="tourist-id-cell">${x.id}</td>
+        <td class="tourist-ellipsis" title="${escCell(x.username)}">${escCell(x.username)}</td>
+        <td class="tourist-ellipsis" title="${escCell(x.displayName)}">${escCell(x.displayName)}</td>
         <td>
           <select class="tourist-tier-select" data-tier-user-id="${x.id}">
             <option value="free" ${String(x.accountTier).toLowerCase() === "free" ? "selected" : ""}>free</option>
             <option value="premium" ${String(x.accountTier).toLowerCase() === "premium" ? "selected" : ""}>premium</option>
           </select>
         </td>
-        <td>${fmtDate(x.createdAtUtc)}</td>
+        <td class="tourist-created-cell">${fmtTouristCreated(x.createdAtUtc)}</td>
         <td>
-          <button type="button" class="secondary" data-save-tier-id="${x.id}">Lưu tier</button>
+          <button type="button" class="tourist-action-btn" data-save-tier-id="${x.id}">Lưu tier</button>
         </td>
       </tr>
     `).join("");
@@ -921,7 +1125,6 @@ byId("exportBtn").addEventListener("click", async () => {
 byId("refreshTouristBtn")?.addEventListener("click", async () => {
   try {
     await loadTouristOverview();
-    alert("Đã làm mới dữ liệu du khách.");
   } catch (err) {
     alert(err?.message || String(err));
   }

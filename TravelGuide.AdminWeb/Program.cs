@@ -11,10 +11,29 @@ using TravelGuide.AdminWeb.Services;
 // public POI cho app, audio list, tài khoản, dịch thủ công, export JSON.
 // =============================================================================
 
+string ResolveWebRootPath()
+{
+    // Khi chạy từ bin/Debug/net9.0, WebRoot "WEB" relative không tồn tại cạnh exe — tìm thư mục WEB cạnh .csproj.
+    var tryPaths = new[]
+    {
+        Path.Combine(Directory.GetCurrentDirectory(), "WEB"),
+        Path.Combine(AppContext.BaseDirectory, "WEB"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "WEB")),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "WEB"))
+    };
+    foreach (var p in tryPaths)
+    {
+        if (Directory.Exists(p))
+            return p;
+    }
+
+    return Path.Combine(Directory.GetCurrentDirectory(), "WEB");
+}
+
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
-    WebRootPath = "WEB"
+    WebRootPath = ResolveWebRootPath()
 });
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
@@ -224,6 +243,12 @@ app.MapGet("/api/public/pois", async (TravelGuideDb db, IHttpClientFactory httpC
     await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), targetLang: lang);
     var pois = await db.GetPoisAsync(includeUnpublished: false);
     return Results.Ok(pois);
+});
+
+app.MapGet("/api/public/tourist-comments/{poiId:int}", async (int poiId, TravelGuideDb db, int take = 100) =>
+{
+    var rows = await db.GetPublicCommentsByPoiAsync(poiId, take);
+    return Results.Ok(rows);
 });
 
 app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>

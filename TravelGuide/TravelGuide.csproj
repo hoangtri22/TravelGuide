@@ -77,4 +77,14 @@
 			<Generator>MSBuild:Compile</Generator>
 		</MauiXaml>
 	</ItemGroup>
+
+	<!-- Tự động cập nhật endpoint cho Android máy thật từ IP LAN của PC host ở mỗi lần build trên Windows. -->
+	<Target Name="AutoUpdateAndroidPhysicalEndpoint"
+	        BeforeTargets="PrepareForBuild"
+	        Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\update-device-endpoints.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot; -ApiPort 5096"
+		      ConsoleToMSBuild="true" />
+	</Target>
+
+	<ProjectExtensions><VisualStudio><UserProperties resources_4raw_4extra_3places_1json__JsonSchema="C:\Users\nhiph\AppData\Local\Microsoft\VisualStudio\18.0_1f482b63\OpenFolder\CMakePresets_schema.json" /></VisualStudio></ProjectExtensions>
 </Project>
