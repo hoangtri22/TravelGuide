@@ -1,5 +1,7 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Maui.Devices;
 using TravelGuide.Models;
 
 namespace TravelGuide;
@@ -23,7 +25,7 @@ public sealed class TouristAuthService
         if (!ShouldForceAdminBase(resolved))
             return resolved;
 
-        var defaultUrl = EndpointResolver.GetDefaultApiBaseUrlForCurrentPlatform();
+        var defaultUrl = EndpointResolver.GetDefaultApiBaseUrl();
         Preferences.Set("tourist_api_base_url", defaultUrl);
         Preferences.Set("api_base_url", defaultUrl);
         System.Diagnostics.Debug.WriteLine($"[AuthAPI] Reset invalid API URL '{resolved}' -> '{defaultUrl}'");
@@ -65,6 +67,31 @@ public sealed class TouristAuthService
         Preferences.Set("tourist_api_base_url", normalizedUrl);
         Preferences.Set("api_base_url", normalizedUrl);
         return true;
+    }
+
+    /// <summary>
+    /// Trên Android emulator, <c>127.0.0.1</c>/<c>localhost</c> là chính emulator — không tới máy host.
+    /// Tự đổi sang <c>10.0.2.2</c> (alias host) để đăng nhập/API không bị treo.
+    /// </summary>
+    public void EnsureValidApiUrlForCurrentPlatform()
+    {
+        if (DeviceInfo.Platform != DevicePlatform.Android)
+            return;
+
+        var resolved = EndpointResolver.ResolveApiBaseUrl();
+        if (!Uri.TryCreate(resolved, UriKind.Absolute, out var uri))
+            return;
+
+        var host = uri.Host;
+        if (!string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var port = uri.IsDefaultPort ? 5096 : uri.Port;
+        var scheme = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttps
+            : Uri.UriSchemeHttp;
+        TrySetApiBaseUrl($"{scheme}://10.0.2.2:{port}", out _, out _);
     }
 
     public async Task<(bool Ok, string Message)> RegisterAsync(string username, string password, string displayName, string accountTier)
@@ -169,11 +196,47 @@ public sealed class TouristAuthService
         }
     }
 
-    public void Logout()
+    /// <summary>Đăng xuất: thu hồi phiên trên API (RefreshToken) rồi xóa token cục bộ.</summary>
+    public async Task LogoutAsync()
     {
-        SecureStorage.Default.Remove(TokenKey);
-        Preferences.Remove(UsernameKey);
-        Preferences.Remove(TierKey);
+        string? bearer = null;
+        try
+        {
+            bearer = await SecureStorage.Default.GetAsync(TokenKey);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (!string.IsNullOrWhiteSpace(bearer))
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(ApiTimeout);
+                var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/logout";
+                using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer.Trim());
+                await _httpClient.SendAsync(req, cts.Token);
+            }
+            catch
+            {
+                // vẫn xóa local
+            }
+        }
+
+        try
+        {
+            SecureStorage.Default.Remove(TokenKey);
+        }
+        catch { /* ignore */ }
+
+        try
+        {
+            Preferences.Remove(UsernameKey);
+            Preferences.Remove(TierKey);
+        }
+        catch { /* ignore */ }
     }
 
     /// <summary>Kích hoạt Premium bằng mã trong QR (sau khi người dùng xác nhận thanh toán mô phỏng trên app).</summary>
@@ -367,75 +430,132 @@ public sealed class TouristAuthService
     public async Task<(bool Ok, IReadOnlyList<TouristPlaceReview> Items, string Message)> GetPlaceReviewsAsync(int poiId, int take = 100)
     {
         var token = await SecureStorage.Default.GetAsync(TokenKey);
+        var clamped = Math.Clamp(take, 1, 500);
+        string? apiErr = null;
+        List<ApiTouristComment>? apiRows = null;
 
         try
         {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={Math.Clamp(take, 1, 500)}";
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={clamped}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrWhiteSpace(token))
-                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await _httpClient.SendAsync(req);
-            if (!response.IsSuccessStatusCode)
-            {
-                var text = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, Array.Empty<TouristPlaceReview>(), string.IsNullOrWhiteSpace(text) ? "Không tải được bình luận." : text);
-            }
-
-            var rows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
-            if (rows is null) return (true, Array.Empty<TouristPlaceReview>(), "");
-            var items = rows.Select(x => new TouristPlaceReview
-            {
-                Id = x.Id > int.MaxValue ? int.MaxValue : (int)Math.Max(0, x.Id),
-                PoiId = x.PoiId,
-                Username = x.Username ?? "",
-                Rating = Math.Clamp(x.Rating, 1, 5),
-                Content = x.Content ?? "",
-                CreatedAtUtc = x.CreatedAtUtc
-            }).ToList();
-            return (true, items, "");
+            if (response.IsSuccessStatusCode)
+                apiRows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
+            else
+                apiErr = (await response.Content.ReadAsStringAsync()).Trim();
         }
         catch (Exception ex)
         {
-            return (false, Array.Empty<TouristPlaceReview>(), ex.Message);
+            apiErr = ex.Message;
         }
+
+        var adminRows = await TryFetchCommentsFromAdminPublicAsync(poiId, clamped);
+        var merged = MergeCommentRows(apiRows, adminRows);
+        var items = merged.Select(x => new TouristPlaceReview
+        {
+            Id = x.Id > int.MaxValue ? int.MaxValue : (int)Math.Max(0, x.Id),
+            PoiId = x.PoiId,
+            Username = x.Username ?? "",
+            Rating = Math.Clamp(x.Rating, 1, 5),
+            Content = x.Content ?? "",
+            CreatedAtUtc = x.CreatedAtUtc
+        }).ToList();
+
+        if (items.Count == 0 && !string.IsNullOrEmpty(apiErr) && adminRows is null)
+            return (false, Array.Empty<TouristPlaceReview>(), string.IsNullOrWhiteSpace(apiErr) ? "Không tải được bình luận." : apiErr);
+
+        return (true, items, "");
     }
 
     public async Task<(bool Ok, IReadOnlyList<PlaceReviewWithAdminReply> Items, string Message)> GetPlaceReviewsWithAdminReplyAsync(int poiId, int take = 100)
     {
         var token = await SecureStorage.Default.GetAsync(TokenKey);
+        var clamped = Math.Clamp(take, 1, 500);
+        string? apiErr = null;
+        List<ApiTouristComment>? apiRows = null;
 
         try
         {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={Math.Clamp(take, 1, 500)}";
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/comments/{poiId}?take={clamped}";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrWhiteSpace(token))
-                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await _httpClient.SendAsync(req);
-            if (!response.IsSuccessStatusCode)
-            {
-                var text = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, Array.Empty<PlaceReviewWithAdminReply>(), string.IsNullOrWhiteSpace(text) ? "Không tải được bình luận." : text);
-            }
-
-            var rows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
-            if (rows is null) return (true, Array.Empty<PlaceReviewWithAdminReply>(), "");
-            var items = rows.Select(x => new PlaceReviewWithAdminReply
-            {
-                Id = x.Id,
-                PoiId = x.PoiId,
-                Username = x.Username ?? "",
-                Rating = Math.Clamp(x.Rating, 1, 5),
-                Content = x.Content ?? "",
-                AdminReply = x.AdminReply ?? "",
-                Status = x.Status ?? "",
-                CreatedAtUtc = x.CreatedAtUtc
-            }).ToList();
-            return (true, items, "");
+            if (response.IsSuccessStatusCode)
+                apiRows = await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
+            else
+                apiErr = (await response.Content.ReadAsStringAsync()).Trim();
         }
         catch (Exception ex)
         {
-            return (false, Array.Empty<PlaceReviewWithAdminReply>(), ex.Message);
+            apiErr = ex.Message;
         }
+
+        var adminRows = await TryFetchCommentsFromAdminPublicAsync(poiId, clamped);
+        var merged = MergeCommentRows(apiRows, adminRows);
+        var items = merged.Select(x => new PlaceReviewWithAdminReply
+        {
+            Id = x.Id,
+            PoiId = x.PoiId,
+            Username = x.Username ?? "",
+            Rating = Math.Clamp(x.Rating, 1, 5),
+            Content = x.Content ?? "",
+            AdminReply = x.AdminReply ?? "",
+            Status = x.Status ?? "",
+            CreatedAtUtc = x.CreatedAtUtc
+        }).ToList();
+
+        if (items.Count == 0 && !string.IsNullOrEmpty(apiErr) && adminRows is null)
+            return (false, Array.Empty<PlaceReviewWithAdminReply>(), string.IsNullOrWhiteSpace(apiErr) ? "Không tải được bình luận." : apiErr);
+
+        return (true, items, "");
+    }
+
+    private async Task<List<ApiTouristComment>?> TryFetchCommentsFromAdminPublicAsync(int poiId, int take)
+    {
+        try
+        {
+            var adminBase = EndpointResolver.ResolveAdminWebBaseUrls().Primary.TrimEnd('/');
+            var url = $"{adminBase}/api/public/tourist-comments/{poiId}?take={take}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadFromJsonAsync<List<ApiTouristComment>>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static List<ApiTouristComment> MergeCommentRows(
+        IReadOnlyList<ApiTouristComment>? api,
+        IReadOnlyList<ApiTouristComment>? admin)
+    {
+        var dict = new Dictionary<string, ApiTouristComment>(StringComparer.Ordinal);
+        void AddRange(IReadOnlyList<ApiTouristComment>? src)
+        {
+            if (src is null) return;
+            foreach (var x in src)
+            {
+                var k = MergeDedupeKey(x);
+                if (!dict.ContainsKey(k))
+                    dict[k] = x;
+            }
+        }
+
+        AddRange(api);
+        AddRange(admin);
+        return dict.Values.OrderByDescending(x => x.CreatedAtUtc).ToList();
+    }
+
+    private static string MergeDedupeKey(ApiTouristComment x)
+    {
+        var u = (x.Username ?? "").Trim();
+        var c = (x.Content ?? "").Trim();
+        return $"{u}\u001f{c}\u001f{x.CreatedAtUtc:yyyy-MM-ddTHH:mm:ss.fff}Z";
     }
 
     private static bool ShouldForceAdminBase(string url)

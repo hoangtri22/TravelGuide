@@ -44,6 +44,13 @@ public static class MauiProgram
         // Emulator: đổi thành "" để không ghi đè.
         ApplyDebugAndroidPhysicalApiBase("http://192.168.1.115:5096");
 #endif
+        // Chỉ ghi URL mặc định khi chưa cấu hình (để màn đăng nhập / device-endpoints.json không bị ghi đè mỗi lần mở app).
+        if (string.IsNullOrWhiteSpace(Preferences.Get("tourist_api_base_url", null)?.Trim()))
+        {
+            var defaultApi = EndpointResolver.GetDefaultApiBaseUrl();
+            Preferences.Set("tourist_api_base_url", defaultApi);
+            Preferences.Set("api_base_url", defaultApi);
+        }
 
         var builder = MauiApp.CreateBuilder();
 

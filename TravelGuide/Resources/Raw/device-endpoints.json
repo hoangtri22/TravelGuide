@@ -1,0 +1,5 @@
+﻿{
+  "androidPhysicalApiBaseUrl": "http://192.168.31.209:5096",
+  "androidPhysicalAdminWebBaseUrl": "http://192.168.31.209:5280",
+  "notes": "Auto-generated on build. Same Wi-Fi as phone. Override IP: $env:TRAVELGUIDE_LAN_IP or -LanIp. Edit this file before deploy if needed."
+}

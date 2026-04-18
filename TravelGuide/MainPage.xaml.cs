@@ -195,7 +195,7 @@ public partial class MainPage : ContentPage
 
     private async void OnTouristLogoutClicked(object sender, EventArgs e)
     {
-        _touristAuthService.Logout();
+        await _touristAuthService.LogoutAsync();
         await RefreshTouristAuthStatusAsync();
     }
 }

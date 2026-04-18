@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Maui.Devices;
 
 namespace TravelGuide;
@@ -8,12 +9,19 @@ internal static class EndpointResolver
     private const string ApiBaseAndroidEmulator = "http://10.0.2.2:5096";
     private const string AdminBaseLoopback = "http://127.0.0.1:5280";
     private const string AdminBaseAndroidEmulator = "http://10.0.2.2:5280";
+    private const string DeviceEndpointsConfigAsset = "device-endpoints.json";
+    private static bool _androidPhysicalConfigLoaded;
+    private static string? _androidPhysicalApiBaseUrl;
+    private static string? _androidPhysicalAdminWebBaseUrl;
 
     /// <summary>
-    /// URL API mặc định khi chưa có Preferences — không đọc <c>api_base_url</c>.
-    /// Emulator: <c>10.0.2.2</c>; thiết bị thật: biến môi trường <c>TRAVELGUIDE_API_BASE_URL</c> (vd <c>http://192.168.1.10:5096</c>), nếu không có vẫn dùng 10.0.2.2 (sai trên máy thật → cần set env hoặc Preferences).
+    /// URL TravelGuide.API mặc định (khi chưa ghi <see cref="Microsoft.Maui.Storage.Preferences"/>):
+    /// - Android emulator: <c>10.0.2.2:5096</c>
+    /// - Android máy thật: biến môi trường <c>TRAVELGUIDE_API_BASE_URL</c>, rồi
+    ///   <c>Resources/Raw/device-endpoints.json</c> → <c>androidPhysicalApiBaseUrl</c>, cuối cùng <c>10.0.2.2</c> (sai trên máy thật nếu chưa cấu hình).
+    /// - Nền tảng khác: <c>127.0.0.1:5096</c>
     /// </summary>
-    internal static string GetDefaultApiBaseUrlForCurrentPlatform()
+    internal static string GetDefaultApiBaseUrl()
     {
         if (DeviceInfo.Platform != DevicePlatform.Android)
             return ApiBaseLoopback;
@@ -23,15 +31,18 @@ internal static class EndpointResolver
 
         var env = Environment.GetEnvironmentVariable("TRAVELGUIDE_API_BASE_URL")?.Trim();
         if (!string.IsNullOrWhiteSpace(env)
-            && Uri.TryCreate(env, UriKind.Absolute, out var u)
-            && (string.Equals(u.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(u.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
-            return u.ToString().TrimEnd('/');
+            && Uri.TryCreate(env, UriKind.Absolute, out var envUri)
+            && (string.Equals(envUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(envUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+            return envUri.ToString().TrimEnd('/');
 
-        return ApiBaseAndroidEmulator;
+        return GetAndroidPhysicalApiBaseUrlFromConfig() ?? ApiBaseAndroidEmulator;
     }
 
-    /// <summary>Điện thoại thật không thể dùng host emulator <c>10.0.2.2</c>; bỏ qua pref cũ để dùng env / mặc định.</summary>
+    /// <summary>Tên cũ — gọi <see cref="GetDefaultApiBaseUrl"/>.</summary>
+    internal static string GetDefaultApiBaseUrlForCurrentPlatform() => GetDefaultApiBaseUrl();
+
+    /// <summary>Điện thoại thật không thể dùng host emulator <c>10.0.2.2</c>; bỏ qua pref cũ để dùng env / file nhúng / mặc định.</summary>
     private static bool IsAndroidPhysicalWithEmulatorHost(Uri uri) =>
         DeviceInfo.Platform == DevicePlatform.Android
         && DeviceInfo.DeviceType == DeviceType.Physical
@@ -44,10 +55,9 @@ internal static class EndpointResolver
         return Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var uri) && IsAndroidPhysicalWithEmulatorHost(uri);
     }
 
+    /// <summary>Ưu tiên <c>tourist_api_base_url</c> / <c>api_base_url</c> (màn đăng nhập), sau đó mặc định theo nền tảng / env / file nhúng.</summary>
     internal static string ResolveApiBaseUrl()
     {
-        var defaultUrl = GetDefaultApiBaseUrlForCurrentPlatform();
-
         var tourist = Preferences.Get("tourist_api_base_url", "")?.Trim();
         if (Uri.TryCreate(tourist, UriKind.Absolute, out var touristUri) && !IsAndroidPhysicalWithEmulatorHost(touristUri))
             return touristUri.ToString().TrimEnd('/');
@@ -56,7 +66,7 @@ internal static class EndpointResolver
         if (Uri.TryCreate(api, UriKind.Absolute, out var apiUri) && !IsAndroidPhysicalWithEmulatorHost(apiUri))
             return apiUri.ToString().TrimEnd('/');
 
-        return defaultUrl;
+        return GetDefaultApiBaseUrl();
     }
 
     internal static (string Primary, string Secondary) ResolveAdminWebBaseUrls()
@@ -66,6 +76,18 @@ internal static class EndpointResolver
         {
             var url = NormalizeAdminHostForAndroid(cfgUri.ToString().TrimEnd('/'));
             return (url, url);
+        }
+
+        if (DeviceInfo.Platform == DevicePlatform.Android
+            && DeviceInfo.DeviceType != DeviceType.Virtual)
+        {
+            EnsureAndroidPhysicalEndpointsLoaded();
+            if (!string.IsNullOrWhiteSpace(_androidPhysicalAdminWebBaseUrl)
+                && Uri.TryCreate(_androidPhysicalAdminWebBaseUrl, UriKind.Absolute, out var physAdmin))
+            {
+                var u = physAdmin.ToString().TrimEnd('/');
+                return (u, u);
+            }
         }
 
         var apiBase = ResolveApiBaseUrl();
@@ -103,5 +125,49 @@ internal static class EndpointResolver
             return url;
         var builder = new UriBuilder(u) { Host = MapLoopbackToAndroidEmulatorHost(u.Host) };
         return builder.Uri.ToString().TrimEnd('/');
+    }
+
+    private static void EnsureAndroidPhysicalEndpointsLoaded()
+    {
+        if (_androidPhysicalConfigLoaded)
+            return;
+        _androidPhysicalConfigLoaded = true;
+
+        try
+        {
+            using var stream = FileSystem.OpenAppPackageFileAsync(DeviceEndpointsConfigAsset).GetAwaiter().GetResult();
+            using var reader = new StreamReader(stream);
+            var json = reader.ReadToEnd();
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("androidPhysicalApiBaseUrl", out var apiEl))
+            {
+                var raw = apiEl.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(raw)
+                    && Uri.TryCreate(raw, UriKind.Absolute, out var apiUri)
+                    && (string.Equals(apiUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(apiUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+                    _androidPhysicalApiBaseUrl = apiUri.ToString().TrimEnd('/');
+            }
+
+            if (doc.RootElement.TryGetProperty("androidPhysicalAdminWebBaseUrl", out var admEl))
+            {
+                var rawAdm = admEl.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(rawAdm)
+                    && Uri.TryCreate(rawAdm, UriKind.Absolute, out var admUri)
+                    && (string.Equals(admUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(admUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+                    _androidPhysicalAdminWebBaseUrl = admUri.ToString().TrimEnd('/');
+            }
+        }
+        catch
+        {
+            // giữ null
+        }
+    }
+
+    private static string? GetAndroidPhysicalApiBaseUrlFromConfig()
+    {
+        EnsureAndroidPhysicalEndpointsLoaded();
+        return _androidPhysicalApiBaseUrl;
     }
 }

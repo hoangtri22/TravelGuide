@@ -95,6 +95,15 @@ app.MapPost("/api/tourist/auth/login", async (TouristLoginRequest request, Touri
         return Results.Json(new { message = "Sai tài khoản hoặc mật khẩu." }, statusCode: 401);
 
     var token = authStore.CreateToken(user);
+    try
+    {
+        await db.RecordLoginSessionAsync(user.Id, token);
+    }
+    catch
+    {
+        // Bảng RefreshToken / quyền DB — vẫn trả token để app đăng nhập được
+    }
+
     return Results.Ok(new
     {
         token,
@@ -106,8 +115,21 @@ app.MapPost("/api/tourist/auth/login", async (TouristLoginRequest request, Touri
 
 app.MapGet("/api/tourist/auth/me", async (HttpContext context, AuthStore authStore, TouristDb db) =>
 {
-    var principal = AuthHelper.Authenticate(context, authStore);
+    var bearer = AuthHelper.GetBearerToken(context);
+    var principal = bearer is null ? null : authStore.GetPrincipal(bearer);
     if (principal is null) return Results.Unauthorized();
+    if (bearer is not null)
+    {
+        try
+        {
+            await db.TouchSessionByBearerTokenAsync(bearer);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
     var user = await db.GetUserByUsernameAsync(principal.Username);
     if (user is null) return Results.Unauthorized();
     return Results.Ok(new
@@ -117,6 +139,28 @@ app.MapGet("/api/tourist/auth/me", async (HttpContext context, AuthStore authSto
         user.DisplayName,
         user.AccountTier
     });
+});
+
+app.MapPost("/api/tourist/auth/logout", async (HttpContext context, AuthStore authStore, TouristDb db) =>
+{
+    var bearer = AuthHelper.GetBearerToken(context);
+    if (string.IsNullOrWhiteSpace(bearer))
+        return Results.Unauthorized();
+    var principal = authStore.GetPrincipal(bearer);
+    if (principal is null)
+        return Results.Unauthorized();
+    authStore.RemoveToken(bearer);
+    try
+    {
+        // Thu hồi mọi phiên SQL của user (mỗi lần đăng nhập cũ có thể còn dòng chưa revoked).
+        await db.RevokeAllSessionsForTouristAsync(principal.UserId);
+    }
+    catch
+    {
+        // vẫn xóa token bộ nhớ; DB có thể khác phiên bản bảng
+    }
+
+    return Results.Ok(new { message = "Đã đăng xuất." });
 });
 
 app.MapPost("/api/tourist/premium/redeem", async (HttpContext context, PremiumRedeemRequest body, AuthStore authStore, TouristDb db, IConfiguration configuration) =>

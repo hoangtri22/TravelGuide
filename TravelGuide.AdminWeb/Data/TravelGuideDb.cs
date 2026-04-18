@@ -1,5 +1,7 @@
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using TravelGuide.AdminWeb.Models;
 using TravelGuide.AdminWeb.Services;
@@ -1171,13 +1173,118 @@ public sealed class TravelGuideDb
         var favorites = await SafeTouristQuery(GetTouristFavoritesAsync);
         var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
         var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory);
         return new
         {
             users,
             refreshTokens,
             favorites,
             visitHistory,
-            payments
+            payments,
+            dashboard
+        };
+    }
+
+    /// <summary>Thống kê nhanh + dữ liệu LIVE/sparkline cho tab Dữ liệu du khách.</summary>
+    private static object BuildTouristDashboard(
+        List<TouristUserDto> users,
+        List<TouristRefreshTokenDto> refreshTokens,
+        List<TouristVisitHistoryDto> visitHistory)
+    {
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var windowStart = now.AddHours(-24);
+        // "Trực tuyến" = token còn hạn VÀ có tín hiệu gần đây (lịch sử xem / đăng nhập lại). Tránh hiển thị online sau khi đã tắt app
+        // nhưng token vẫn còn hạn hàng giờ.
+        var presenceCutoff = now.AddMinutes(-2);
+
+        var lastVisitByUser = visitHistory
+            .GroupBy(h => h.TouristUserId)
+            .ToDictionary(g => g.Key, g => g.Max(x => x.OccurredAtUtc));
+
+        static DateTime PresenceSignal(
+            int touristUserId,
+            List<TouristRefreshTokenDto> tokens,
+            IReadOnlyDictionary<int, DateTime> lastVisits,
+            DateTime utcNow)
+        {
+            var lastVisit = lastVisits.TryGetValue(touristUserId, out var lv) ? lv : DateTime.MinValue;
+            var newestValidTokenCreate = tokens
+                .Where(t => t.TouristUserId == touristUserId && t.RevokedAtUtc is null && t.ExpiresAtUtc > utcNow)
+                .Select(t => t.CreatedAtUtc)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+            return lastVisit > newestValidTokenCreate ? lastVisit : newestValidTokenCreate;
+        }
+
+        var validTokenUserIds = refreshTokens
+            .Where(t => t.RevokedAtUtc is null && t.ExpiresAtUtc > now)
+            .Select(t => t.TouristUserId)
+            .Distinct()
+            .ToList();
+
+        var onlineCount = validTokenUserIds.Count(uid =>
+            PresenceSignal(uid, refreshTokens, lastVisitByUser, now) >= presenceCutoff);
+
+        var nonRevokedUserIds = refreshTokens
+            .Where(t => t.RevokedAtUtc is null)
+            .Select(t => t.TouristUserId)
+            .ToHashSet();
+
+        var activatedCount = users.Count(u =>
+            nonRevokedUserIds.Contains(u.Id)
+            || string.Equals(u.AccountTier, "premium", StringComparison.OrdinalIgnoreCase));
+
+        var totalAccounts = users.Count;
+
+        var sessionsToday = visitHistory.Count(h => h.OccurredAtUtc >= today && h.OccurredAtUtc < today.AddDays(1));
+
+        var hourly = new int[24];
+        foreach (var h in visitHistory.Where(x => x.OccurredAtUtc >= windowStart))
+        {
+            var slot = (int)Math.Floor((h.OccurredAtUtc - windowStart).TotalHours);
+            if (slot is >= 0 and < 24)
+                hourly[slot]++;
+        }
+
+        var routes = new[] { "/home", "/destinations", "/bookings", "/explore", "/profile" };
+        var liveSessions = new List<object>();
+        var recentValid = refreshTokens
+            .Where(t => t.RevokedAtUtc is null && t.ExpiresAtUtc > now)
+            .GroupBy(t => t.TouristUserId)
+            .Select(g => g.OrderByDescending(t => t.CreatedAtUtc).First())
+            .Where(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now) >= presenceCutoff)
+            .OrderByDescending(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now))
+            .Take(6)
+            .ToList();
+
+        foreach (var t in recentValid)
+        {
+            var u = users.FirstOrDefault(x => x.Id == t.TouristUserId);
+            var uname = u?.Username ?? t.Username;
+            var disp = u?.DisplayName ?? uname;
+            var tierLabel = string.Equals(u?.AccountTier, "premium", StringComparison.OrdinalIgnoreCase) ? "Premium" : "Free";
+            var route = routes[Math.Abs(uname.GetHashCode()) % routes.Length];
+            var signal = PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now);
+            var mins = Math.Max(1, (int)(now - signal).TotalMinutes);
+            liveSessions.Add(new
+            {
+                username = uname,
+                displayName = disp,
+                tierLabel,
+                route,
+                minutesAgo = mins
+            });
+        }
+
+        return new
+        {
+            onlineCount,
+            totalAccounts,
+            activatedCount,
+            sessionsToday,
+            hourlyActivity = hourly,
+            liveSessions
         };
     }
 
@@ -1279,6 +1386,46 @@ public sealed class TravelGuideDb
         }
 
         return new CommentListResponseDto(rows, stats, page, pageSize, totalItems);
+    }
+
+    /// <summary>Bình luận hiển thị trên app (pending + approved), không cần đăng nhập — đồng bộ với <c>TravelGuide.API</c>.</summary>
+    public async Task<List<TouristCommentDto>> GetPublicCommentsByPoiAsync(int poiId, int take = 100)
+    {
+        var rows = new List<TouristCommentDto>();
+        if (poiId <= 0) return rows;
+        var top = Math.Clamp(take, 1, 500);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var listCmd = connection.CreateCommand();
+        listCmd.CommandText = $"""
+                                 SELECT Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
+                                 FROM TouristComment
+                                 WHERE PoiId = $poiId AND LOWER(LTRIM(RTRIM(Status))) IN ('pending', 'approved')
+                                 ORDER BY CreatedAtUtc DESC, Id DESC
+                                 OFFSET 0 ROWS FETCH NEXT {top} ROWS ONLY;
+                                 """;
+        listCmd.Parameters.AddWithValue("$poiId", poiId);
+
+        await using var reader = await listCmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new TouristCommentDto(
+                reader.GetInt64(0),
+                reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetInt32(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.GetDateTime(10),
+                reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                reader.GetDateTime(12)));
+        }
+
+        return rows;
     }
 
     public async Task<bool> UpdateCommentStatusAsync(long id, string? status, string? reason)
@@ -1564,8 +1711,20 @@ public sealed class TravelGuideDb
         }
     }
 
+    private static bool LooksLikeSqlServerConnection(string cs)
+    {
+        if (string.IsNullOrWhiteSpace(cs)) return false;
+        if (cs.Contains("localdb", StringComparison.OrdinalIgnoreCase)) return true;
+        if (cs.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase)) return true;
+        return cs.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+               && cs.Contains("Database=", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async Task<List<TouristUserDto>> GetTouristUsersAsync()
     {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristUsersSqlServerAsync();
+
         var result = new List<TouristUserDto>();
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
@@ -1586,6 +1745,30 @@ public sealed class TravelGuideDb
                 reader.GetString(3),
                 reader.GetDateTime(4),
                 reader.GetInt32(5)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristUserDto>> GetTouristUsersSqlServerAsync()
+    {
+        var result = new List<TouristUserDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 Id, Username, DisplayName, AccountTier, CreatedAtUtc
+                          FROM dbo.TouristUser
+                          ORDER BY Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristUserDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4)));
         }
         return result;
     }
@@ -1618,14 +1801,45 @@ public sealed class TravelGuideDb
 
     private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()
     {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristRefreshTokensSqlServerAsync();
+
         var result = new List<TouristRefreshTokenDto>();
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          SELECT TOP 100 r.Id, r.TouristUserId, u.Username, ISNULL(r.DeviceId, ''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
+                          SELECT r.Id, r.TouristUserId, u.Username, COALESCE(r.DeviceId, ''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
                           FROM RefreshToken r
                           INNER JOIN TouristUser u ON u.Id = r.TouristUserId
+                          ORDER BY r.Id DESC
+                          LIMIT 500;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristRefreshTokenDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                reader.GetDateTime(6)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensSqlServerAsync()
+    {
+        var result = new List<TouristRefreshTokenDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 r.Id, r.TouristUserId, u.Username, ISNULL(r.DeviceId, N''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
+                          FROM dbo.RefreshToken r
+                          INNER JOIN dbo.TouristUser u ON u.Id = r.TouristUserId
                           ORDER BY r.Id DESC;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
