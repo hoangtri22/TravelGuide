@@ -1,3 +1,4 @@
+using Microsoft.Maui.Devices;
 using Microsoft.Maui.Hosting;
 using Microsoft.Extensions.Logging;
 using LocalizationResourceManager.Maui;
@@ -12,12 +13,37 @@ namespace TravelGuide;
 /// </summary>
 public static class MauiProgram
 {
+#if DEBUG
+    /// <summary>
+    /// Điện thoại thật: ép URL API = máy dev (Chrome bạn gõ tay được, app thì cần chỗ này).
+    /// Để <paramref name="apiBase"/> rỗng để không đụng (emulator dùng 10.0.2.2 như cũ).
+    /// Đổi IP PC: sửa chuỗi khi gọi bên dưới (ipconfig → IPv4 Wi-Fi).
+    /// </summary>
+    private static void ApplyDebugAndroidPhysicalApiBase(string apiBase)
+    {
+        apiBase = (apiBase ?? "").Trim().TrimEnd('/');
+        if (apiBase.Length == 0) return;
+        if (DeviceInfo.Platform != DevicePlatform.Android || DeviceInfo.DeviceType != DeviceType.Physical)
+            return;
+
+        Environment.SetEnvironmentVariable("TRAVELGUIDE_API_BASE_URL", apiBase);
+        Preferences.Set("api_base_url", apiBase);
+        Preferences.Set("tourist_api_base_url", apiBase);
+    }
+#endif
+
     /// <summary>Tạo <see cref="MauiApp"/>, áp dụng culture đã lưu và trả về instance cho platform.</summary>
     public static MauiApp CreateMauiApp()
     {
         // ✅ Load ngôn ngữ đã lưu ngay khi app start
         AppLanguage.LoadSaved();
         MapboxTokenBootstrap.TryLoadFromBundledSecretFile();
+
+#if DEBUG
+        // Bước “dùng cùng base URL như Chrome”: điền IP máy chạy API (ví dụ đã mở được trên điện thoại).
+        // Emulator: đổi thành "" để không ghi đè.
+        ApplyDebugAndroidPhysicalApiBase("http://192.168.1.115:5096");
+#endif
 
         var builder = MauiApp.CreateBuilder();
 

@@ -475,6 +475,7 @@ async function loadTouristOverview() {
         <td>${x.id}</td>
         <td>${x.username}</td>
         <td>${x.displayName}</td>
+        <td>${Number(x.visitCount ?? 0).toLocaleString("vi-VN")}</td>
         <td>
           <select class="tourist-tier-select" data-tier-user-id="${x.id}">
             <option value="free" ${String(x.accountTier).toLowerCase() === "free" ? "selected" : ""}>free</option>

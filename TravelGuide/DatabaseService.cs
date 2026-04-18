@@ -18,7 +18,6 @@ public class DatabaseService
         private readonly SemaphoreSlim _syncLock = new(1, 1);
         private readonly string _sqlitePath;
         private const string PublicApiBaseLoopback = "http://127.0.0.1:5096";
-        private const string PublicApiBaseAndroid = "http://10.0.2.2:5096";
         private List<TouristPlace>? _cachedPlaces;
         private SQLiteAsyncConnection? _localDb;
         private DateTime _lastSyncUtc = DateTime.MinValue;
@@ -206,11 +205,15 @@ public class DatabaseService
         /// </summary>
         public string GetCurrentApiBaseUrl()
         {
-            var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android
-                ? PublicApiBaseAndroid
-                : PublicApiBaseLoopback;
+            var defaultUrl = EndpointResolver.GetDefaultApiBaseUrlForCurrentPlatform();
 
             var configured = Preferences.Get("api_base_url", defaultUrl)?.Trim();
+            if (EndpointResolver.ShouldDiscardAndroidPhysicalEmulatorApiPref(configured))
+            {
+                Preferences.Set("api_base_url", defaultUrl);
+                configured = defaultUrl;
+            }
+
             if (string.IsNullOrWhiteSpace(configured))
             {
                 Preferences.Set("api_base_url", defaultUrl);

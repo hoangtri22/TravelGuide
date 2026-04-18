@@ -5,3 +5,6 @@ obj/
 .vs/
 *.user
 TravelGuide/Resources/Raw/mapbox_token.secret.txt
+
+# APK build output — dùng sync-android-apk.ps1 hoặc publish local, không commit file nặng.
+TravelGuide.AdminWeb/WEB/apk/*.apk

@@ -8,8 +8,6 @@ public sealed class TouristAuthService
 {
     private readonly HttpClient _httpClient;
     private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(15);
-    private const string AuthBaseLoopback = "http://127.0.0.1:5096";
-    private const string AuthBaseAndroid = "http://10.0.2.2:5096";
     private const string TokenKey = "tourist_token";
     private const string UsernameKey = "tourist_username";
     private const string TierKey = "tourist_account_tier";
@@ -25,7 +23,7 @@ public sealed class TouristAuthService
         if (!ShouldForceAdminBase(resolved))
             return resolved;
 
-        var defaultUrl = DeviceInfo.Platform == DevicePlatform.Android ? AuthBaseAndroid : AuthBaseLoopback;
+        var defaultUrl = EndpointResolver.GetDefaultApiBaseUrlForCurrentPlatform();
         Preferences.Set("tourist_api_base_url", defaultUrl);
         Preferences.Set("api_base_url", defaultUrl);
         System.Diagnostics.Debug.WriteLine($"[AuthAPI] Reset invalid API URL '{resolved}' -> '{defaultUrl}'");

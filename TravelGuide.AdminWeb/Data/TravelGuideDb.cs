@@ -1571,9 +1571,10 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          SELECT Id, Username, DisplayName, AccountTier, CreatedAtUtc
-                          FROM TouristUser
-                          ORDER BY Id DESC;
+                          SELECT u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
+                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount
+                          FROM TouristUser u
+                          ORDER BY u.Id DESC;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -1583,7 +1584,8 @@ public sealed class TravelGuideDb
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.GetDateTime(4)));
+                reader.GetDateTime(4),
+                reader.GetInt32(5)));
         }
         return result;
     }
