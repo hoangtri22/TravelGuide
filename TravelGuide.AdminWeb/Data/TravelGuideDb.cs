@@ -1173,7 +1173,8 @@ public sealed class TravelGuideDb
         var favorites = await SafeTouristQuery(GetTouristFavoritesAsync);
         var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
         var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
-        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory);
+        var (activeLoginSessions, activeLoginAccounts) = await CountActiveTouristLoginStatsAsync();
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts);
         return new
         {
             users,
@@ -1189,7 +1190,9 @@ public sealed class TravelGuideDb
     private static object BuildTouristDashboard(
         List<TouristUserDto> users,
         List<TouristRefreshTokenDto> refreshTokens,
-        List<TouristVisitHistoryDto> visitHistory)
+        List<TouristVisitHistoryDto> visitHistory,
+        int activeLoginSessions,
+        int activeLoginAccounts)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
@@ -1255,7 +1258,7 @@ public sealed class TravelGuideDb
             .Select(g => g.OrderByDescending(t => t.CreatedAtUtc).First())
             .Where(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now) >= presenceCutoff)
             .OrderByDescending(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now))
-            .Take(6)
+            .Take(24)
             .ToList();
 
         foreach (var t in recentValid)
@@ -1284,7 +1287,9 @@ public sealed class TravelGuideDb
             activatedCount,
             sessionsToday,
             hourlyActivity = hourly,
-            liveSessions
+            liveSessions,
+            activeLoginSessions,
+            activeLoginAccounts
         };
     }
 
@@ -1730,10 +1735,13 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          SELECT Id, Username, DisplayName, AccountTier, CreatedAtUtc
-                          FROM TouristUser
-                          ORDER BY Id DESC;
+                          SELECT u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
+                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 IFNULL((SELECT COUNT(*) FROM RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > $nowUtc), 0) AS activeSessions
+                          FROM TouristUser u
+                          ORDER BY u.Id DESC;
                           """;
+        cmd.Parameters.AddWithValue("$nowUtc", DateTime.UtcNow);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1742,7 +1750,9 @@ public sealed class TravelGuideDb
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.GetDateTime(4)));
+                reader.GetDateTime(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6)));
         }
         return result;
     }
@@ -1754,9 +1764,11 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          SELECT TOP 500 Id, Username, DisplayName, AccountTier, CreatedAtUtc
-                          FROM dbo.TouristUser
-                          ORDER BY Id DESC;
+                          SELECT TOP 500 u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > SYSUTCDATETIME()), 0) AS activeSessions
+                          FROM dbo.TouristUser u
+                          ORDER BY u.Id DESC;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -1766,9 +1778,53 @@ public sealed class TravelGuideDb
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.GetDateTime(4)));
+                reader.GetDateTime(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6)));
         }
         return result;
+    }
+
+    /// <summary>Phiên RefreshToken còn hạn và chưa revoke — mỗi dòng ~ một máy/phiên đăng nhập cùng lúc.</summary>
+    private async Task<(int ActiveSessions, int DistinctAccounts)> CountActiveTouristLoginStatsAsync()
+    {
+        try
+        {
+            if (LooksLikeSqlServerConnection(_connectionString))
+                return await CountActiveTouristLoginStatsSqlServerAsync();
+
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                              SELECT
+                                (SELECT COUNT(*) FROM RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > $nowUtc),
+                                (SELECT COUNT(DISTINCT TouristUserId) FROM RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > $nowUtc);
+                              """;
+            cmd.Parameters.AddWithValue("$nowUtc", DateTime.UtcNow);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return (0, 0);
+            return (reader.GetInt32(0), reader.GetInt32(1));
+        }
+        catch
+        {
+            return (0, 0);
+        }
+    }
+
+    private async Task<(int ActiveSessions, int DistinctAccounts)> CountActiveTouristLoginStatsSqlServerAsync()
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT
+                            (SELECT COUNT(*) FROM dbo.RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME()),
+                            (SELECT COUNT(DISTINCT TouristUserId) FROM dbo.RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME());
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return (0, 0);
+        return (reader.GetInt32(0), reader.GetInt32(1));
     }
 
     /// <summary>Admin đổi tier cho tài khoản du khách (chỉ <c>free</c>/<c>premium</c>).</summary>

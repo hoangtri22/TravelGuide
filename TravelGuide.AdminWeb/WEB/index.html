@@ -6,8 +6,8 @@
   <title>Travel Guide — Cổng quản trị</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css?v=19">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <!-- Đăng nhập — bố cục theo Admin portal design / Login.tsx -->
@@ -279,120 +279,74 @@
         </table>
       </section>
 
-      <section id="touristTab" class="tab-content hidden tourist-tab">
-        <div class="tourist-page-head">
-          <p class="hint tourist-page-lead">Tổng hợp dữ liệu từ TouristUser, RefreshToken, Favorite, VisitHistory, PaymentTransaction.</p>
-          <button type="button" id="refreshTouristBtn" class="tourist-btn-ghost">Làm mới dữ liệu</button>
+      <section id="touristTab" class="card card-elevated tab-content hidden">
+        <h2 class="card-title">Dữ liệu du khách</h2>
+        <p class="hint">Tổng hợp dữ liệu từ TouristUser, RefreshToken, Favorite, VisitHistory, PaymentTransaction.</p>
+        <p class="hint" id="touristLoginStatsLine" style="margin-top:4px">Phiên đăng nhập còn hiệu lực (máy/phiên): — · Tài khoản đang có ít nhất một phiên: —</p>
+        <div class="actions-row">
+          <button type="button" id="refreshTouristBtn" class="secondary">Làm mới dữ liệu</button>
         </div>
 
-        <div class="tourist-stats-grid" aria-label="Thống kê du khách">
-          <article class="tourist-stat-card tourist-stat-online">
-            <div class="tourist-stat-label"><span class="tourist-pulse-dot" aria-hidden="true"></span> Đang trực tuyến</div>
-            <div class="tourist-stat-value" id="touristStatOnline">0</div>
-            <div class="tourist-stat-sub">theo hoạt động ~2 phút hoặc vừa đăng nhập</div>
-          </article>
-          <article class="tourist-stat-card">
-            <div class="tourist-stat-label">Tổng tài khoản</div>
-            <div class="tourist-stat-value" id="touristStatTotal">0</div>
-            <div class="tourist-stat-sub">đã đăng ký</div>
-          </article>
-          <article class="tourist-stat-card">
-            <div class="tourist-stat-label">Đã kích hoạt</div>
-            <div class="tourist-stat-value" id="touristStatActivated">0</div>
-            <div class="tourist-stat-sub" id="touristStatActivatedPct">—</div>
-          </article>
-          <article class="tourist-stat-card">
-            <div class="tourist-stat-label">Phiên hôm nay</div>
-            <div class="tourist-stat-value" id="touristStatSessions">0</div>
-            <div class="tourist-stat-sub">tổng phiên truy cập</div>
-          </article>
-        </div>
+        <nav class="tourist-toc" aria-label="Chuyển nhanh trong tab du khách">
+          <span class="tourist-toc-label">Đi tới</span>
+          <a href="#tourist-sec-accounts">Tài khoản</a>
+          <a href="#tourist-sec-tokens">Refresh token</a>
+          <a href="#tourist-sec-favorites">Favorite</a>
+          <a href="#tourist-sec-visits">Visit history</a>
+          <a href="#tourist-sec-payments">Payment</a>
+          <a href="#tourist-sec-qr-revenue">Doanh thu QR</a>
+          <a href="#tourist-sec-qr-logs">Lịch sử quét QR</a>
+          <a href="#tourist-sec-dashboard">Biểu đồ / phiên gần đây</a>
+        </nav>
 
-        <div class="tourist-live-panel card card-elevated">
-          <div class="tourist-live-head">
-            <span class="tourist-section-heading">Người dùng đang truy cập</span>
-            <span class="tourist-live-badge"><span class="tourist-pulse-dot" aria-hidden="true"></span> LIVE</span>
-          </div>
-          <div class="tourist-spark-wrap">
-            <p class="tourist-spark-hint">Lượt mở / tương tác POI theo giờ (24 giờ gần nhất)</p>
-            <div class="tourist-spark-track">
-              <div class="tourist-spark-grid" aria-hidden="true"></div>
-              <div class="tourist-spark-row" id="touristSparkline" role="img" aria-label="Biểu đồ hoạt động 24 giờ"></div>
-            </div>
-            <div class="tourist-spark-labels">
-              <span class="tourist-spark-label" id="touristSparkStart">—</span>
-              <span class="tourist-spark-label tourist-spark-label-mid" id="touristSparkMid">—</span>
-              <span class="tourist-spark-label tourist-spark-label-now"><span class="tourist-spark-now-dot" aria-hidden="true"></span>Bây giờ</span>
-            </div>
-          </div>
-          <p class="tourist-live-updated" id="touristUpdatedAt"></p>
-          <div class="tourist-session-list" id="touristSessionList"></div>
+        <h3 id="tourist-sec-accounts">Tài khoản du khách <span class="tourist-sec-meta" id="touristMetaUsers"></span></h3>
+        <div class="table-scroll tourist-user-table-wrap">
+          <table id="touristUserTable" class="tourist-user-table">
+            <thead><tr><th>ID</th><th>Username</th><th>DisplayName</th><th>Lượt truy cập</th><th>Phiên đăng nhập</th><th>Tier</th><th>Created</th><th>Hành động</th></tr></thead>
+            <tbody id="touristUserTbody"></tbody>
+          </table>
         </div>
+        <p class="hint tourist-below-hint">Cuộn xuống để xem <strong>thống kê &amp; biểu đồ</strong>, rồi <strong>Refresh token</strong>, <strong>Favorite</strong>, <strong>Visit history</strong>, <strong>Payment</strong> và <strong>QR</strong>.</p>
 
-        <div class="tourist-section-heading tourist-accounts-title">Tài khoản du khách</div>
-        <div class="tourist-accounts-card card card-elevated">
-          <div class="table-scroll">
-            <table class="tourist-accounts-table" id="touristUserTable">
-              <thead>
-                <tr>
-                  <th style="width:52px;">ID</th>
-                  <th>Username</th>
-                  <th>Displayname</th>
-                  <th>Tier</th>
-                  <th>Created</th>
-                  <th>Hành động</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </div>
-        <p class="tourist-footer-note" id="touristFooterNote"></p>
+        <h3 id="tourist-sec-dashboard" class="tourist-dash-section-title">Thống kê nhanh &amp; hoạt động gần đây</h3>
+        <div id="touristDashboardExtra" class="tourist-dashboard-extra" aria-label="Thống kê du khách"></div>
 
-        <h3 class="tourist-subsection-title">Refresh token (top 100)</h3>
-        <div class="card card-elevated tourist-sub-table">
+        <h3 id="tourist-sec-tokens">Refresh token <span class="tourist-sec-meta" id="touristMetaTokens"></span></h3>
         <table id="touristTokenTable">
           <thead><tr><th>ID</th><th>User</th><th>Device</th><th>Expires</th><th>Revoked</th></tr></thead>
-          <tbody></tbody>
+          <tbody id="touristTokenTbody"></tbody>
         </table>
-        </div>
 
-        <h3 class="tourist-subsection-title">Favorite (top 200)</h3>
-        <div class="card card-elevated tourist-sub-table">
+        <h3 id="tourist-sec-favorites">Favorite <span class="tourist-sec-meta" id="touristMetaFavorites"></span></h3>
         <table id="touristFavoriteTable">
           <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Created</th></tr></thead>
-          <tbody></tbody>
+          <tbody id="touristFavoriteTbody"></tbody>
         </table>
-        </div>
 
-        <h3 class="tourist-subsection-title">Visit history (top 300)</h3>
-        <div class="card card-elevated tourist-sub-table">
+        <h3 id="tourist-sec-visits">Visit history <span class="tourist-sec-meta" id="touristMetaVisits"></span></h3>
         <table id="touristHistoryTable">
           <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Event</th><th>Seconds</th><th>%</th><th>Occurred</th></tr></thead>
-          <tbody></tbody>
+          <tbody id="touristHistoryTbody"></tbody>
         </table>
-        </div>
 
-        <h3 class="tourist-subsection-title">Payment transaction (top 200)</h3>
-        <div class="card card-elevated tourist-sub-table">
+        <h3 id="tourist-sec-payments">Payment transaction <span class="tourist-sec-meta" id="touristMetaPayments"></span></h3>
         <table id="touristPaymentTable">
           <thead><tr><th>ID</th><th>User</th><th>Provider</th><th>Ref</th><th>Plan</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
-          <tbody></tbody>
+          <tbody id="touristPaymentTbody"></tbody>
         </table>
-        </div>
 
-        <h3 class="tourist-subsection-title">Doanh thu quét QR POI</h3>
+        <h3 id="tourist-sec-qr-revenue">Doanh thu quét QR POI</h3>
         <p class="hint" id="touristPoiScanRevenueSummary">Tổng: — · Số lượt quét: —</p>
-        <div class="table-scroll card card-elevated tourist-sub-table">
+        <div class="table-scroll">
           <table id="touristPoiScanRevenueTable">
             <thead><tr><th>POI</th><th>Tên</th><th>Doanh thu (VND)</th><th>Số lượt</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
 
-        <h3 class="tourist-subsection-title">Lịch sử quét QR POI (top 500)</h3>
+        <h3 id="tourist-sec-qr-logs">Lịch sử quét QR POI <span class="tourist-sec-meta" id="touristMetaQrLogs"></span></h3>
         <p class="hint">Ghi nhận khi du khách mở chi tiết địa điểm từ QR: loại sự kiện, thiết bị, doanh thu mô phỏng (nút xác nhận thanh toán).</p>
-        <div class="table-scroll card card-elevated tourist-sub-table">
+        <div class="table-scroll">
           <table id="touristPoiScanLogTable">
             <thead><tr><th>ID</th><th>User</th><th>POI</th><th>Tên POI</th><th>Loại</th><th>VND</th><th>Device ID</th><th>Thiết bị</th><th>Platform</th><th>Thời gian</th></tr></thead>
             <tbody></tbody>
@@ -401,6 +355,6 @@
       </section>
     </main>
   </section>
-  <script src="/app.js?v=20"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

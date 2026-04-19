@@ -10,8 +10,6 @@ public sealed class TouristAuthService
 {
     private readonly HttpClient _httpClient;
     private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(15);
-    private const string AuthBaseLoopback = "http://127.0.0.1:5096";
-    private const string AuthBaseAndroid = "http://10.0.2.2:5096";
     private const string TokenKey = "tourist_token";
     private const string UsernameKey = "tourist_username";
     private const string TierKey = "tourist_account_tier";

@@ -17,7 +17,8 @@ internal static class EndpointResolver
     /// <summary>
     /// URL TravelGuide.API mặc định (khi chưa ghi <see cref="Microsoft.Maui.Storage.Preferences"/>):
     /// - Android emulator: <c>10.0.2.2:5096</c>
-    /// - Android máy thật: <c>Resources/Raw/device-endpoints.json</c> → <c>androidPhysicalApiBaseUrl</c> (build script / chỉnh tay)
+    /// - Android máy thật: biến môi trường <c>TRAVELGUIDE_API_BASE_URL</c>, rồi
+    ///   <c>Resources/Raw/device-endpoints.json</c> → <c>androidPhysicalApiBaseUrl</c>, cuối cùng <c>10.0.2.2</c> (sai trên máy thật nếu chưa cấu hình).
     /// - Nền tảng khác: <c>127.0.0.1:5096</c>
     /// </summary>
     internal static string GetDefaultApiBaseUrl()
@@ -28,18 +29,41 @@ internal static class EndpointResolver
         if (DeviceInfo.DeviceType == DeviceType.Virtual)
             return ApiBaseAndroidEmulator;
 
+        var env = Environment.GetEnvironmentVariable("TRAVELGUIDE_API_BASE_URL")?.Trim();
+        if (!string.IsNullOrWhiteSpace(env)
+            && Uri.TryCreate(env, UriKind.Absolute, out var envUri)
+            && (string.Equals(envUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(envUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+            return envUri.ToString().TrimEnd('/');
+
         return GetAndroidPhysicalApiBaseUrlFromConfig() ?? ApiBaseAndroidEmulator;
     }
 
-    /// <summary>Ưu tiên <c>tourist_api_base_url</c> / <c>api_base_url</c> (màn đăng nhập), sau đó mặc định theo nền tảng/file nhúng.</summary>
+    /// <summary>Tên cũ — gọi <see cref="GetDefaultApiBaseUrl"/>.</summary>
+    internal static string GetDefaultApiBaseUrlForCurrentPlatform() => GetDefaultApiBaseUrl();
+
+    /// <summary>Điện thoại thật không thể dùng host emulator <c>10.0.2.2</c>; bỏ qua pref cũ để dùng env / file nhúng / mặc định.</summary>
+    private static bool IsAndroidPhysicalWithEmulatorHost(Uri uri) =>
+        DeviceInfo.Platform == DevicePlatform.Android
+        && DeviceInfo.DeviceType == DeviceType.Physical
+        && string.Equals(uri.Host, "10.0.2.2", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Chuỗi URL đã lưu là <c>10.0.2.2</c> trên máy thật → không dùng.</summary>
+    internal static bool ShouldDiscardAndroidPhysicalEmulatorApiPref(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        return Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var uri) && IsAndroidPhysicalWithEmulatorHost(uri);
+    }
+
+    /// <summary>Ưu tiên <c>tourist_api_base_url</c> / <c>api_base_url</c> (màn đăng nhập), sau đó mặc định theo nền tảng / env / file nhúng.</summary>
     internal static string ResolveApiBaseUrl()
     {
         var tourist = Preferences.Get("tourist_api_base_url", "")?.Trim();
-        if (Uri.TryCreate(tourist, UriKind.Absolute, out var touristUri))
+        if (Uri.TryCreate(tourist, UriKind.Absolute, out var touristUri) && !IsAndroidPhysicalWithEmulatorHost(touristUri))
             return touristUri.ToString().TrimEnd('/');
 
         var api = Preferences.Get("api_base_url", "")?.Trim();
-        if (Uri.TryCreate(api, UriKind.Absolute, out var apiUri))
+        if (Uri.TryCreate(api, UriKind.Absolute, out var apiUri) && !IsAndroidPhysicalWithEmulatorHost(apiUri))
             return apiUri.ToString().TrimEnd('/');
 
         return GetDefaultApiBaseUrl();
