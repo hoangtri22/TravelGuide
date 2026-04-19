@@ -78,7 +78,7 @@ public sealed class TouristDb
         var expires = DateTime.UtcNow.AddHours(48);
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
-        await RevokeAllSessionsForTouristCoreAsync(connection, touristUserId);
+        // Không thu hồi phiên cũ: mỗi lần đăng nhập = thêm một phiên (nhiều máy cùng user được đếm riêng).
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           INSERT INTO dbo.RefreshToken(TouristUserId, TokenHash, ExpiresAtUtc)

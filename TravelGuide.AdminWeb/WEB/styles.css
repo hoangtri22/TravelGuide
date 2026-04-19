@@ -750,6 +750,410 @@ th {
   margin-bottom: 12px;
 }
 
+/* Tab Dữ liệu du khách — thống kê dashboard (API /api/tourists/overview → dashboard) */
+.tourist-dashboard-extra {
+  margin: 12px 0 8px;
+  padding: 18px 18px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--gray-200);
+  background: linear-gradient(165deg, #f8fafc 0%, #fff 42%, #fafbfc 100%);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 04%);
+}
+
+.tourist-dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.tourist-dash-pill {
+  margin: 0;
+  padding: 14px 14px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  box-shadow: 0 1px 0 rgb(15 23 42 / 04%);
+  border-top: 3px solid var(--gray-300);
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.tourist-dash-pill--tone-sky { border-top-color: #38bdf8; }
+.tourist-dash-pill--tone-slate { border-top-color: #64748b; }
+.tourist-dash-pill--tone-emerald { border-top-color: #34d399; }
+.tourist-dash-pill--tone-amber { border-top-color: #fbbf24; }
+.tourist-dash-pill--tone-violet { border-top-color: #a78bfa; }
+.tourist-dash-pill--tone-rose { border-top-color: #fb7185; }
+
+.tourist-dash-pill .tourist-dash-num {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+.tourist-dash-pill .tourist-dash-label {
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-600);
+  line-height: 1.35;
+}
+
+.tourist-hourly-panel {
+  margin: 0 0 20px;
+  padding: 14px 14px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+}
+
+.tourist-hourly-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+
+.tourist-hourly-panel__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.tourist-hourly-panel__total {
+  font-size: 13px;
+  color: var(--gray-600);
+}
+
+.tourist-hourly-panel__total strong {
+  color: var(--gray-900);
+  font-weight: 700;
+}
+
+.tourist-hourly-empty-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--gray-600);
+}
+
+.tourist-hourly-chart {
+  border-radius: 8px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  padding: 10px 8px 6px;
+  min-height: 132px;
+}
+
+.tourist-hourly-chart--empty {
+  background:
+    linear-gradient(180deg, rgb(248 250 252) 0%, #fff 100%),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 7px,
+      rgb(241 245 249 / 90%) 7px,
+      rgb(241 245 249 / 90%) 8px
+    );
+}
+
+.tourist-hourly-bars {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 2px 3px;
+  align-items: end;
+  min-height: 108px;
+}
+
+.tourist-hour-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.tourist-hour-bar {
+  display: block;
+  width: 100%;
+  min-height: 4px;
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, #93c5fd 0%, #2563eb 100%);
+  height: var(--bar-h, 6px);
+}
+
+.tourist-hour-bar--empty {
+  height: 52px;
+  background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+  opacity: 0.55;
+}
+
+.tourist-hour-bar--value {
+  min-height: 5px;
+}
+
+.tourist-hour-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--gray-500);
+  line-height: 1;
+}
+
+.tourist-hourly-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  letter-spacing: 0.02em;
+}
+
+.tourist-dash-sessions {
+  margin: 0;
+  padding: 14px 14px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+}
+
+.tourist-dash-sessions__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.tourist-dash-sessions__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.tourist-live-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.tourist-empty-state {
+  padding: 18px 16px;
+  border-radius: 8px;
+  border: 1px dashed var(--gray-300);
+  background: #f8fafc;
+  text-align: center;
+}
+
+.tourist-empty-state__title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-800);
+}
+
+.tourist-empty-state__desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--gray-600);
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+.tourist-live-table {
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.tourist-live-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1.1fr) minmax(4rem, 0.45fr) minmax(5rem, 1fr) minmax(5.5rem, 0.55fr);
+  gap: 8px 12px;
+  padding: 10px 12px;
+  align-items: start;
+  border-bottom: 1px solid var(--gray-100);
+  background: #fff;
+}
+
+.tourist-live-row:last-child {
+  border-bottom: none;
+}
+
+.tourist-live-row--head {
+  background: var(--gray-50);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-600);
+  padding-block: 8px;
+}
+
+.tourist-live-cell--user {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tourist-live-username {
+  font-weight: 600;
+  color: var(--gray-900);
+  word-break: break-word;
+}
+
+.tourist-live-display {
+  font-size: 12px;
+  color: var(--gray-600);
+  word-break: break-word;
+}
+
+.tourist-live-tier {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: var(--gray-700);
+}
+
+.tourist-live-cell--route {
+  color: var(--gray-700);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.tourist-live-cell--time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--gray-700);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .tourist-live-row,
+  .tourist-live-row--head {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .tourist-live-row--head {
+    display: none;
+  }
+
+  .tourist-live-cell--time::before {
+    content: "Hoạt động: ";
+    font-weight: 600;
+    color: var(--gray-500);
+    font-size: 11px;
+  }
+
+  .tourist-live-cell--route::before {
+    content: "Route: ";
+    font-weight: 600;
+    color: var(--gray-500);
+    font-size: 11px;
+  }
+
+  .tourist-live-row:not(.tourist-live-row--head) .tourist-live-cell:nth-child(2)::before {
+    content: "Tier: ";
+    font-weight: 600;
+    color: var(--gray-500);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+}
+
+.tourist-below-hint {
+  margin: 16px 0 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: var(--gray-800);
+}
+
+.tourist-dash-section-title {
+  margin: 28px 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.tourist-user-table-wrap {
+  margin-bottom: 8px;
+}
+
+.tourist-user-table-wrap .tourist-user-table {
+  min-width: 880px;
+}
+
+.tourist-user-table .tourist-tier-select {
+  min-width: 5.5rem;
+  max-width: 8rem;
+}
+
+.tourist-toc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--gray-300);
+  background: #fafafa;
+  font-size: 13px;
+}
+
+.tourist-toc-label {
+  font-weight: 700;
+  color: var(--gray-600);
+  margin-right: 4px;
+}
+
+.tourist-toc a {
+  color: var(--blue-600);
+  font-weight: 600;
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tourist-toc a:hover {
+  background: #eff6ff;
+  text-decoration: underline;
+}
+
+.tourist-sec-meta {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--gray-500);
+}
+
+h3[id^="tourist-sec-"] {
+  scroll-margin-top: 88px;
+}
+
 .poi-actions .action-btns,
 .account-actions .action-btns {
   display: flex;

@@ -19,4 +19,6 @@ public sealed class AuthStore
     {
         return _tokens.TryGetValue(token, out var principal) ? principal : null;
     }
+
+    public void RemoveToken(string token) => _tokens.TryRemove(token, out _);
 }

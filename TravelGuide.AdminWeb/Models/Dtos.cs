@@ -69,7 +69,7 @@ public record PoiDto(
     decimal Price = 1000,
     string Tag = "Địa Điểm Du Lịch");
 
-public record TouristUserDto(int Id, string Username, string DisplayName, string AccountTier, DateTime CreatedAtUtc, int VisitCount);
+public record TouristUserDto(int Id, string Username, string DisplayName, string AccountTier, DateTime CreatedAtUtc, int VisitCount, int ActiveSessionCount);
 public record UpdateTouristTierRequest(string? AccountTier);
 public record TouristRefreshTokenDto(long Id, int TouristUserId, string Username, string DeviceId, DateTime ExpiresAtUtc, DateTime? RevokedAtUtc, DateTime CreatedAtUtc);
 public record TouristFavoriteDto(long Id, int TouristUserId, string Username, int PoiId, string PoiNameVi, DateTime CreatedAtUtc);

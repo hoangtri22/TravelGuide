@@ -24,6 +24,7 @@ builder.Services.Configure<PoiQrOptions>(builder.Configuration.GetSection(PoiQrO
 builder.Services.Configure<AndroidDownloadOptions>(builder.Configuration.GetSection(AndroidDownloadOptions.SectionName));
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
+    o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     o.SerializerOptions.PropertyNameCaseInsensitive = true;
 });
 builder.Services.AddEndpointsApiExplorer();
@@ -70,7 +71,20 @@ app.UseSwaggerUI(options =>
 app.UseDefaultFiles();
 var apkContentTypes = new FileExtensionContentTypeProvider();
 apkContentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
-app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = apkContentTypes });
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = apkContentTypes,
+    OnPrepareResponse = ctx =>
+    {
+        // Tránh trình duyệt giữ CSS/JS/HTML cũ khi đang dev — tab Dữ liệu du khách dễ “vỡ layout” nếu thiếu class mới.
+        if (!app.Environment.IsDevelopment()) return;
+        var name = ctx.File.Name;
+        if (name.EndsWith(".css", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    }
+});
 
 try
 {
