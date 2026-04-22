@@ -11,6 +11,9 @@
 		<UseMaui>true</UseMaui>
 		<UseMauiMaps>true</UseMauiMaps>
 		<SingleProject>true</SingleProject>
+		<ApplicationTitle>TravelGo</ApplicationTitle>
+		<ApplicationDisplayVersion>1.0.2</ApplicationDisplayVersion>
+		<ApplicationVersion>3</ApplicationVersion>
 
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
@@ -85,7 +88,7 @@
 	<!-- Tự động cập nhật endpoint cho Android máy thật từ IP LAN của PC host ở mỗi lần build trên Windows. -->
 	<Target Name="AutoUpdateAndroidPhysicalEndpoint"
 	        BeforeTargets="PrepareForBuild"
-	        Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+	        Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(DisableAutoEndpointUpdate)' != 'true'">
 		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\update-device-endpoints.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot; -ApiPort 5096"
 		      ConsoleToMSBuild="true" />
 	</Target>

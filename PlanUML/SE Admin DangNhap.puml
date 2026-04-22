@@ -1,0 +1,26 @@
+@startuml
+title SE Admin DangNhap
+actor Admin as A
+participant "TravelGuide.AdminWeb/WEB/app.js byId(\"loginForm\").addEventListener(\"submit\", ...)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/auth/login\")" as API
+database "TravelGuideDb.GetUserByUsernameAsync()" as DB
+participant "TravelGuide.AdminWeb.Auth.AuthStore.CreateToken(UserAccount)" as AUTH
+A -> FE : submit loginForm
+FE -> APIJS : await api(\"/api/auth/login\", { method: \"POST\", body: JSON.stringify({...}) })
+APIJS -> API : HTTP POST /api/auth/login
+API -> DB : await GetUserByUsernameAsync(loginUser.Username)
+alt success
+  API -> AUTH : authStore.CreateToken(user)
+  API --> FE : 200 JSON token + role + displayName
+  FE -> FE : sessionStorage.setItem(...)
+  FE -> FE : applyRoleChrome()
+  FE -> FE : await loadPois(); await loadAccounts(); await loadComments(); await loadTouristOverview()
+  note right of FE
+    Tab Heatmap chỉ tải khi chọn tab (refreshHeatmapTab), không chạy ngay sau login.
+  end note
+else 401/403
+  API --> FE : error JSON
+  FE -> FE : alert(message)
+end
+@enduml

@@ -9,17 +9,15 @@ internal static class EndpointResolver
     private const string ApiBaseAndroidEmulator = "http://10.0.2.2:5096";
     private const string AdminBaseLoopback = "http://127.0.0.1:5280";
     private const string AdminBaseAndroidEmulator = "http://10.0.2.2:5280";
-    private const string DeviceEndpointsConfigAsset = "device-endpoints.json";
+    private const string DeviceEndpointsConfigAsset = "device_endpoints.json";
     private static bool _androidPhysicalConfigLoaded;
     private static string? _androidPhysicalApiBaseUrl;
     private static string? _androidPhysicalAdminWebBaseUrl;
 
     /// <summary>
-    /// URL TravelGuide.API mặc định (khi chưa ghi <see cref="Microsoft.Maui.Storage.Preferences"/>):
-    /// - Android emulator: <c>10.0.2.2:5096</c>
-    /// - Android máy thật: biến môi trường <c>TRAVELGUIDE_API_BASE_URL</c>, rồi
-    ///   <c>Resources/Raw/device-endpoints.json</c> → <c>androidPhysicalApiBaseUrl</c>, cuối cùng <c>10.0.2.2</c> (sai trên máy thật nếu chưa cấu hình).
-    /// - Nền tảng khác: <c>127.0.0.1:5096</c>
+    /// URL TravelGuide.API mặc định khi chưa có URL trong Preferences (màn đăng nhập ghi đè khi đổi mạng).
+    /// Thứ tự ưu tiên thực tế khi dùng app: Preferences từ đăng nhập → env <c>TRAVELGUIDE_API_BASE_URL</c> →
+    /// <c>device_endpoints.json</c> (máy thật; tên file hợp lệ với Android Raw) → mặc định: Android emulator <c>10.0.2.2:5096</c>, máy thật/env/file như mô tả dưới, nền tảng khác <c>127.0.0.1:5096</c>.
     /// </summary>
     internal static string GetDefaultApiBaseUrl()
     {

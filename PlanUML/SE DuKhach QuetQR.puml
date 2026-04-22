@@ -1,0 +1,20 @@
+@startuml
+title SE DuKhach QuetQR
+actor "Du khách" as U
+participant "QrScannerPage.OnBarcodesDetected()" as DETECT
+participant "QrScannerPage.HandleQrPayloadAsync()" as HANDLE
+participant "QrScannerPage.TryParsePremiumClaim()" as CLAIM
+participant "QrScannerPage.TryResolvePlace()" as RESOLVE
+participant "QrScannerPage.HandlePremiumClaimFlowAsync()" as PREMIUM
+participant "QrScannerPage.HandlePoiAfterScanAsync()" as POI
+U -> DETECT : CameraBarcodeReaderView BarcodesDetected -> OnBarcodesDetected
+DETECT -> HANDLE : await HandleQrPayloadAsync(raw)
+HANDLE -> CLAIM : TryParsePremiumClaim(raw)
+alt có mã premium
+  HANDLE -> PREMIUM : await HandlePremiumClaimFlowAsync(claimCode)
+else payload POI
+  HANDLE -> RESOLVE : TryResolvePlace(raw, places)
+  RESOLVE --> HANDLE : TouristPlace?
+  HANDLE -> POI : await HandlePoiAfterScanAsync(place)
+end
+@enduml

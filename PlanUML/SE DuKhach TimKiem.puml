@@ -1,0 +1,27 @@
+@startuml
+title SE DuKhach TimKiem
+actor "Du khách" as U
+participant "HomePage.OnAppearing()" as ONAPP
+participant "HomePage.LoadPlacesAsync()" as LOAD
+participant "DatabaseService.GetPlacesAsync()" as DB
+participant "DatabaseService.RefreshFromApiOrFallbackAsync()" as REF
+participant "DatabaseService.TryGetFromApiAsync()" as TRY
+participant "TravelGuide.API Program.cs MapGet(\"/api/public/pois\")" as HTTP
+U -> ONAPP : Mở HomePage
+ONAPP -> LOAD : await LoadPlacesAsync()
+LOAD -> DB : await GetPlacesAsync()
+DB -> REF : await RefreshFromApiOrFallbackAsync(force: false)
+REF -> TRY : TryGetFromApiAsync()
+TRY -> HTTP : GET .../api/public/pois?lang=...
+HTTP --> TRY : JSON -> MapFromApi (private trong DatabaseService)
+TRY --> REF : (HttpOk, places)
+REF --> DB : _cachedPlaces
+DB --> LOAD : List<TouristPlace>
+LOAD -> LOAD : ApplyFilters()
+LOAD -> LOAD : ItemsSource = ...
+participant "HomePage" as HOME
+U -> HOME : OnSearchBarTextChanged(...)
+HOME -> HOME : ApplyFilters()
+U -> HOME : OnCategoryChipClicked(...)
+HOME -> HOME : ApplyFilters()
+@enduml

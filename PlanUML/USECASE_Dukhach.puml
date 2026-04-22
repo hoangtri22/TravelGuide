@@ -1,0 +1,42 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam monochrome true
+actor "Du khách" as U
+rectangle "APP TravelGuide" {
+  usecase "Đăng nhập / Đăng ký" as A1
+  usecase "Xem & tìm POI" as A2
+  usecase "Xem bản đồ Mapbox" as A3
+  usecase "Theo dõi geofence" as A4
+  usecase "Phát thuyết minh" as A5
+  usecase "TTS fallback" as A6
+  usecase "Phát audio URL" as A7
+  usecase "Quét QR" as A8
+  usecase "Mở khóa POI (free)" as A9
+  usecase "Kích hoạt Premium" as A10
+  usecase "Xem lịch sử quét" as A11
+}
+
+' Ep layout để gần giống sơ đồ mẫu
+A1 -[hidden]down- A2
+A2 -[hidden]down- A3
+A3 -[hidden]down- A8
+A8 -[hidden]down- A11
+A4 -[hidden]right- A5
+A5 -[hidden]right- A6
+A6 -[hidden]down- A7
+A8 -[hidden]right- A9
+A9 -[hidden]down- A10
+
+U --> A1
+U --> A2
+U --> A3
+U --> A8
+U --> A11
+A3 .> A4 : <<include>>
+A4 .> A5 : <<include>>
+A6 .> A5 : <<extend>>
+A7 .> A5 : <<extend>>
+A9 .> A8 : <<extend>>
+A10 .> A8 : <<extend>>
+@enduml

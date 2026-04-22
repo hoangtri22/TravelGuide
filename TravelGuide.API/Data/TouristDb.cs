@@ -442,6 +442,7 @@ public sealed class TouristDb
                             SELECT TOP (@take) PoiId, PoiNameVi, EventType, AmountVnd, CreatedAtUtc AS LastScannedAtUtc
                             FROM dbo.TouristPoiQrScanLog
                             WHERE TouristUserId = @uid
+                              AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> N'poi_gps_inside'
                             ORDER BY CreatedAtUtc DESC;
                             """;
         cmd.Parameters.AddWithValue("@uid", touristUserId);

@@ -40,17 +40,17 @@ public static class MauiProgram
         MapboxTokenBootstrap.TryLoadFromBundledSecretFile();
 
 #if DEBUG
-        // Bước “dùng cùng base URL như Chrome”: điền IP máy chạy API (ví dụ đã mở được trên điện thoại).
-        // Emulator: đổi thành "" để không ghi đè.
-        ApplyDebugAndroidPhysicalApiBase("http://192.168.1.115:5096");
+        // Để rỗng: không ép IP — đổi Wi‑Fi chỉ cần sửa URL trên màn đăng nhập / device_endpoints.json / biến TRAVELGUIDE_API_BASE_URL.
+        // Chỉ điền URL khi muốn ép máy thật DEBUG luôn trỏ một máy dev cố định (ví dụ http://192.168.x.x:5096).
+        ApplyDebugAndroidPhysicalApiBase("");
 #endif
-        // Chỉ ghi URL mặc định khi chưa cấu hình (để màn đăng nhập / device-endpoints.json không bị ghi đè mỗi lần mở app).
-        if (string.IsNullOrWhiteSpace(Preferences.Get("tourist_api_base_url", null)?.Trim()))
-        {
-            var defaultApi = EndpointResolver.GetDefaultApiBaseUrl();
+        var defaultApi = EndpointResolver.GetDefaultApiBaseUrl();
+        var currentTouristApi = Preferences.Get("tourist_api_base_url", "");
+        var currentApi = Preferences.Get("api_base_url", "");
+        if (string.IsNullOrWhiteSpace(currentTouristApi))
             Preferences.Set("tourist_api_base_url", defaultApi);
+        if (string.IsNullOrWhiteSpace(currentApi))
             Preferences.Set("api_base_url", defaultApi);
-        }
 
         var builder = MauiApp.CreateBuilder();
 

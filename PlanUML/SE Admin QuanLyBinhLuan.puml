@@ -1,0 +1,33 @@
+@startuml
+title SE Admin QuanLyBinhLuan
+actor Admin as A
+participant "TravelGuide.AdminWeb/WEB/app.js async function loadComments()" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/comments\")" as GET
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/comments/{id}/status\")" as STATUS
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/comments/{id}/reply\")" as REPLY
+participant "TravelGuide.AdminWeb/Program.cs MapDelete(\"/api/comments/{id}\")" as DEL
+database "TravelGuideDb.GetCommentsAsync()" as DBGET
+database "TravelGuideDb.UpdateCommentStatusAsync()" as DBST
+database "TravelGuideDb.ReplyCommentAsync()" as DBRP
+database "TravelGuideDb.DeleteCommentAsync()" as DBDL
+A -> FE : Tab bình luận / filter / phân trang
+FE -> APIJS : await api(`/api/comments?status=...&search=...&page=...`)
+APIJS -> GET : GET handler
+GET -> DBGET : await GetCommentsAsync(status, search, page, pageSize)
+GET --> FE : CommentListResponseDto
+alt đổi trạng thái
+  FE -> APIJS : await api(`/api/comments/${id}/status`, { method: \"PUT\", ... })
+  APIJS -> STATUS : MapPut
+  STATUS -> DBST : await UpdateCommentStatusAsync(id, status, reason)
+else trả lời
+  FE -> APIJS : await api(`/api/comments/${id}/reply`, { method: \"PUT\", ... })
+  APIJS -> REPLY : MapPut
+  REPLY -> DBRP : await ReplyCommentAsync(id, reply)
+else xóa
+  FE -> APIJS : await api(`/api/comments/${id}`, { method: \"DELETE\" })
+  APIJS -> DEL : MapDelete
+  DEL -> DBDL : await DeleteCommentAsync(id)
+end
+FE -> FE : await loadComments()
+@enduml

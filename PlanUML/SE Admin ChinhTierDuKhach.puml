@@ -1,0 +1,16 @@
+@startuml
+title SE Admin ChinhTierDuKhach
+actor Admin as A
+participant "TravelGuide.AdminWeb/WEB/app.js byId(\"touristUserTable\")?.addEventListener(\"click\", ...)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/tourists/{id}/tier\")" as API
+database "TravelGuideDb.UpdateTouristUserTierAsync()" as DB
+participant "TravelGuide.AdminWeb/WEB/app.js async function loadTouristOverview()" as REFRESH
+A -> FE : Click nút [data-save-tier-id]
+FE -> APIJS : await api(`/api/tourists/${userId}/tier`, { method: \"PUT\", body: JSON.stringify({ accountTier }) })
+APIJS -> API : PUT handler
+API -> DB : await UpdateTouristUserTierAsync(touristUserId, accountTier)
+DB --> API : bool
+API --> FE : 200 hoặc lỗi
+FE -> REFRESH : await loadTouristOverview()
+@enduml

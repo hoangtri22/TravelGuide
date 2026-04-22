@@ -1,0 +1,22 @@
+@startuml
+title SE DuKhach KichHoatPremium
+actor "Du khách" as U
+participant "QrScannerPage.HandlePremiumClaimFlowAsync()" as UI
+participant "TouristAuthService.GetMeAsync()" as ME
+participant "TouristAuthService.RedeemPremiumClaimAsync()" as SVC
+participant "TravelGuide.API Program.cs MapPost(\"/api/tourist/premium/redeem\")" as API
+database "TravelGuide.API.Data.TouristDb.RedeemPremiumClaimAsync(int userId, string claimCode)" as DB
+U -> UI : DisplayAlert xác nhận thanh toán mô phỏng
+UI -> ME : await GetMeAsync()
+UI -> SVC : await RedeemPremiumClaimAsync(claimCode, fee)
+note right of SVC
+  TravelGuide.TouristPricing.PremiumActivationVnd
+end note
+SVC -> API : POST body { claimCode, amountVnd } + Bearer
+API -> DB : await RedeemPremiumClaimAsync(principal.UserId, body.ClaimCode)
+DB --> API : (ok, message)
+API --> SVC : 200/400
+SVC -> SVC : Preferences.Set(TierKey, \"premium\") khi Ok
+SVC --> UI : (ok, message)
+UI -> UI : DisplayAlert + await GetMeAsync() + Navigation.PopAsync()
+@enduml

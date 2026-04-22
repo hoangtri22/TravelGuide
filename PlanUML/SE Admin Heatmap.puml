@@ -1,0 +1,29 @@
+@startuml
+title SE Admin Heatmap (tab admin — Leaflet heat layer)
+skinparam shadowing false
+skinparam monochrome true
+
+actor Admin as A
+participant "TravelGuide.AdminWeb/WEB/app.js async function refreshHeatmapTab()" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js ensureLeafletHeatLibs() (CDN: leaflet, leaflet.heat)" as CDN
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/pois\")" as POIS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/tourists/poi-scan-dashboard\")" as DASH
+database "TravelGuideDb.GetTouristPoiScanDashboardAsync()" as DB
+
+A -> FE : Chọn tab Heatmap / nút Làm mới bản đồ
+FE -> FE : if (!pois?.length) await loadPois()
+FE -> CDN : tải CSS/JS Leaflet + heat plugin (lần đầu)
+FE -> APIJS : await api(\"/api/tourists/poi-scan-dashboard\")
+APIJS -> DASH : GET (Bearer admin)
+DASH -> DB : dashboard (revenueByPoi, heatmapRecentWindowMinutes, heatmapQrDayUtc, …)
+DB --> DASH
+DASH --> FE : JSON
+FE -> FE : Ghép log ↔ POI quản trị (id hoặc tên VI)\nheatLayer + circleMarker popup
+FE --> A : Bản đồ + bảng GPS 15′ / QR ngày UTC
+
+note right of FE
+  Độ nhiệt map: max(QR tích lũy, GPS 15 phút + QR ngày UTC) — hàm heatmapPoiIntensity trong app.js.
+  Bảng chỉ hiện 2 cột thời điểm; QR tích lũy vẫn ảnh hưởng map.
+end note
+@enduml

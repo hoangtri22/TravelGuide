@@ -1,0 +1,33 @@
+@startuml
+title SE Admin QuanLyPOI
+actor Admin as A
+participant "TravelGuide.AdminWeb/WEB/app.js async function loadPois()" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/pois\")" as GET
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/pois\")" as POST
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}\")" as PUT
+participant "TravelGuide.AdminWeb/Program.cs MapDelete(\"/api/pois/{id}\")" as DEL
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/pois/{id}/qrcode\")" as QR
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}/approve\")" as APP
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}/reject\")" as REJ
+A -> FE : Tab POI / refresh
+FE -> APIJS : await api(\"/api/pois\")
+APIJS -> GET : GET /api/pois
+alt tạo POI
+  FE -> APIJS : await api(\"/api/pois\", { method: \"POST\", ... })
+  APIJS -> POST : MapPost handler
+  FE -> APIJS : await api(`/api/pois/${id}/qrcode`, { method: \"POST\" }) khi thiếu QR
+  APIJS -> QR : MapPost qrcode
+else sửa POI
+  FE -> APIJS : await api(`/api/pois/${id}`, { method: \"PUT\", ... })
+  APIJS -> PUT : MapPut handler
+else xóa POI
+  FE -> APIJS : await api(`/api/pois/${id}`, { method: \"DELETE\" })
+  APIJS -> DEL : MapDelete handler
+else duyệt / từ chối
+  FE -> APIJS : await api(`/api/pois/${id}/approve`, { method: \"PUT\" })
+  APIJS -> APP : MapPut approve
+  FE -> APIJS : await api(`/api/pois/${id}/reject`, { method: \"PUT\", body: ... })
+  APIJS -> REJ : MapPut reject
+end
+@enduml

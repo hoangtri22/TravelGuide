@@ -1,0 +1,54 @@
+@startuml
+title ACT Admin — luồng thực tế theo TravelGuide.AdminWeb (index.html + app.js + Program.cs)
+start
+:Mở WEB/index.html;
+
+partition "Chưa đăng nhập" {
+  if (Đăng ký chủ quán?) then (Có)
+    :registerForm → POST /api/auth/register\n(fetch, không Bearer);
+    :Thông báo + chuyển panel Đăng nhập;
+    stop
+  endif
+  :loginForm → POST /api/auth/login\n(fetch JSON);
+  if (200 + token?) then (Có)
+    :sessionStorage token/role/displayName;\nẩn #loginSection, hiện #appSection;
+    :applyRoleChrome();
+    :await loadPois();
+    if (role === admin?) then (Có)
+      :await loadAccounts();\nawait loadComments();\nawait loadTouristOverview();
+    endif
+    :await loadTranslation(pois[0].id) nếu có POI\n(chủ quán / admin đều có tab Đa ngôn ngữ);
+  else (Không)
+    :403 khóa / 401 thông báo;
+    stop
+  endif
+}
+
+partition "Đã đăng nhập — theo tab sidebar" {
+  if (Tab / hành động?) then (Quản lý địa điểm)
+    :Bảng POI từ GET /api/pois;\nExport → GET /api/export/extra_places.json;\nSửa → poi-create.html?id=…;
+    :Duyệt/từ chối → PUT /api/pois/{id}/approve|reject;\nXóa → DELETE /api/pois/{id};
+  elseif (Quản lí bình luận — admin)
+    :loadComments → GET /api/comments?…;\nTrạng thái → PUT …/status;\nTrả lời → PUT …/reply;\nXóa → DELETE …/comments/{id};
+    note right
+      SPA **không** gọi POST /api/comments (endpoint có trên server, dành tạo bình luận từ client khác nếu cần).
+    end note
+  elseif (Đa ngôn ngữ)
+    :loadTranslation → GET /api/translations/{id}?lang=…;\nLưu → PUT /api/translations/{id};\n**Tạo lại máy** → POST /api/translations/{id}/regenerate?lang=…;
+  elseif (Nguồn audio — admin/owner)
+    :renderAudioSources() từ mảng **pois**;\nUpload file → POST /api/upload/audio;\nLưu → PUT /api/pois/{id} (+ loadPois);
+  elseif (Tài khoản web — admin)
+    :GET /api/accounts;\nPOST /api/accounts;\nPUT lock, approve-registration, reject-registration;\nDELETE /api/accounts/{id};
+  elseif (Dữ liệu du khách — admin)
+    :GET /api/tourists/overview?visitHistoryChartWeekStart=…;\nGET /api/tourists/poi-scan-dashboard (KPI/bảng doanh thu quét);\nPUT /api/tourists/{id}/tier;
+    note right
+      **Không** tải danh sách bình luận trong tab này — bình luận là tab riêng.
+    end note
+  elseif (Heatmap — admin)
+    :refreshHeatmapTab:\nGET /api/tourists/poi-scan-dashboard (+ loadPois nếu rỗng);\nLeaflet + heatLayer (CDN);
+  endif
+}
+
+:Đăng xuất → xóa sessionStorage, reload;
+stop
+@enduml

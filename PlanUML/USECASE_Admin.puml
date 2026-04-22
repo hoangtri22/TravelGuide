@@ -1,0 +1,60 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam monochrome true
+actor Admin
+actor "Chủ quán\n(một số tab)" as Owner
+
+rectangle "Admin Web (TravelGuide.AdminWeb/WEB/index.html)" {
+  usecase "Đăng nhập (JWT + sessionStorage)" as U1
+  usecase "Đăng ký chủ quán\n(chờ admin duyệt)" as U0
+  usecase "Quản lý POI\n+ xuất extra_places.json" as U2
+  usecase "Duyệt POI" as U3
+  usecase "Từ chối POI" as U4
+  usecase "Sinh QR cho POI\nPOST /api/pois/{id}/qrcode" as U5
+  usecase "Form POI riêng\npoi-create.html" as U5b
+  usecase "Quản lý bản dịch\n+ tạo lại máy (regenerate)" as U6
+  usecase "Xuất extra_places.json" as U7
+  usecase "Quản lý tài khoản web\n+ duyệt đăng ký chủ quán" as U8
+  usecase "Duyệt / từ chối\nđăng ký chủ quán" as U9
+  usecase "Dữ liệu du khách\n(KPI, lịch sử, tier)" as U10
+  usecase "Quản lý bình luận\nPOI" as U11
+  usecase "Heatmap\n(admin)" as U12
+  usecase "Tab Nguồn audio\n+ map link POI" as U13
+}
+
+U0 -[hidden]down- U1
+U1 -[hidden]down- U2
+U2 -[hidden]down- U6
+U6 -[hidden]down- U7
+U7 -[hidden]down- U8
+U8 -[hidden]down- U10
+U4 -[hidden]down- U3
+U3 -[hidden]down- U5
+U5 -[hidden]down- U5b
+U5b -[hidden]down- U9
+U10 -[hidden]down- U11
+U11 -[hidden]down- U12
+U12 -[hidden]down- U13
+
+Admin --> U0
+Admin --> U1
+Admin --> U2
+Admin --> U6
+Admin --> U7
+Admin --> U8
+Admin --> U10
+Admin --> U11
+Admin --> U12
+Owner --> U1
+Owner --> U2
+Owner --> U6
+Owner --> U13
+
+U3 .> U2 : <<extend>>
+U4 .> U2 : <<extend>>
+U2 .> U5 : <<include>>
+U2 .> U5b : <<include>>
+U9 .> U8 : <<extend>>
+U12 ..> U10 : dùng chung\nGET poi-scan-dashboard
+@enduml

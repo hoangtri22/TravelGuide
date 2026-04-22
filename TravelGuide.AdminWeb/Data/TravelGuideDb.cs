@@ -1165,7 +1165,7 @@ public sealed class TravelGuideDb
     /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật và so sánh NameVi/DescVi.</summary>
     private sealed record PoiRow(int Id, string Status, int OwnerUserId, string NameVi, string DescVi);
 
-    public async Task<object> GetTouristOverviewAsync()
+    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null)
     {
         // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
         var users = await SafeTouristQuery(GetTouristUsersAsync);
@@ -1174,7 +1174,7 @@ public sealed class TravelGuideDb
         var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
         var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
         var (activeLoginSessions, activeLoginAccounts) = await CountActiveTouristLoginStatsAsync();
-        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts);
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart);
         return new
         {
             users,
@@ -1192,7 +1192,8 @@ public sealed class TravelGuideDb
         List<TouristRefreshTokenDto> refreshTokens,
         List<TouristVisitHistoryDto> visitHistory,
         int activeLoginSessions,
-        int activeLoginAccounts)
+        int activeLoginAccounts,
+        DateOnly? visitHistoryChartWeekStart)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
@@ -1212,12 +1213,20 @@ public sealed class TravelGuideDb
             DateTime utcNow)
         {
             var lastVisit = lastVisits.TryGetValue(touristUserId, out var lv) ? lv : DateTime.MinValue;
-            var newestValidTokenCreate = tokens
+            // TravelGuide.API gia hạn ExpiresAtUtc mỗi lần app gọi /me.
+            // Suy ra "last seen" = ExpiresAtUtc - 48h (TTL phiên), fallback về CreatedAtUtc.
+            var newestValidTokenSeen = tokens
                 .Where(t => t.TouristUserId == touristUserId && t.RevokedAtUtc is null && t.ExpiresAtUtc > utcNow)
-                .Select(t => t.CreatedAtUtc)
+                .Select(t =>
+                {
+                    var inferredSeen = t.ExpiresAtUtc.AddHours(-48);
+                    if (inferredSeen < t.CreatedAtUtc) inferredSeen = t.CreatedAtUtc;
+                    if (inferredSeen > utcNow) inferredSeen = utcNow;
+                    return inferredSeen;
+                })
                 .DefaultIfEmpty(DateTime.MinValue)
                 .Max();
-            return lastVisit > newestValidTokenCreate ? lastVisit : newestValidTokenCreate;
+            return lastVisit > newestValidTokenSeen ? lastVisit : newestValidTokenSeen;
         }
 
         var validTokenUserIds = refreshTokens
@@ -1287,11 +1296,146 @@ public sealed class TravelGuideDb
             activatedCount,
             sessionsToday,
             hourlyActivity = hourly,
+            visitHistoryTopPoisChart = BuildVisitHistoryTopPoisChart(visitHistory, now, visitHistoryChartWeekStart),
             liveSessions,
             activeLoginSessions,
             activeLoginAccounts
         };
     }
+
+    private static object BuildVisitHistoryTopPoisChart(
+        List<TouristVisitHistoryDto> visitHistory,
+        DateTime nowUtc,
+        DateOnly? weekStartDate,
+        int topN = 5,
+        int days = 7)
+    {
+        days = days <= 0 ? 7 : days;
+        var maxEndExclusive = nowUtc.Date.AddDays(1);
+
+        DateTime startDate;
+        DateTime endDateExclusive;
+        if (weekStartDate is { } ws)
+        {
+            var year = ws.Year;
+            var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var yearEndExclusive = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc).AddDays(1);
+            // Cho phép chọn đến 31/12 (tuần cuối năm có thể ngắn hơn 7 ngày sau khi cắt theo maxEndExclusive).
+            var lastStartInYear = new DateOnly(year, 12, 31);
+            var clamped = ws;
+            if (clamped < new DateOnly(year, 1, 1)) clamped = new DateOnly(year, 1, 1);
+            if (clamped > lastStartInYear) clamped = lastStartInYear;
+
+            startDate = DateTime.SpecifyKind(clamped.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+            endDateExclusive = startDate.AddDays(days);
+            if (startDate < yearStart) startDate = yearStart;
+            if (endDateExclusive > yearEndExclusive) endDateExclusive = yearEndExclusive;
+            if (endDateExclusive > maxEndExclusive) endDateExclusive = maxEndExclusive;
+            if (endDateExclusive <= startDate)
+            {
+                endDateExclusive = maxEndExclusive;
+                startDate = endDateExclusive.AddDays(-days);
+                if (startDate < yearStart) startDate = yearStart;
+                if (endDateExclusive > maxEndExclusive) endDateExclusive = maxEndExclusive;
+            }
+        }
+        else
+        {
+            endDateExclusive = maxEndExclusive;
+            startDate = endDateExclusive.AddDays(-days);
+        }
+
+        var spanDays = (int)(endDateExclusive - startDate).TotalDays;
+        if (spanDays <= 0) spanDays = days;
+        var dayLabels = Enumerable.Range(0, spanDays)
+            .Select(i => startDate.AddDays(i).ToString("dd/MM/yy"))
+            .ToList();
+
+        var scoped = visitHistory
+            .Where(v => v.OccurredAtUtc >= startDate && v.OccurredAtUtc < endDateExclusive)
+            .ToList();
+
+        static string NormalizePoiName(string? name, int poiId)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return $"POI {poiId}";
+            return name.Trim();
+        }
+
+        var topPois = scoped
+            .GroupBy(v => NormalizePoiName(v.PoiNameVi, v.PoiId), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                var poiNameVi = NormalizePoiName(first.PoiNameVi, first.PoiId);
+                return new
+                {
+                    PoiId = g.Min(x => x.PoiId), // giữ 1 id đại diện cho compatibility phía client
+                    PoiNameVi = poiNameVi,
+                    Total = g.Count()
+                };
+            })
+            .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.PoiNameVi)
+            .Take(topN <= 0 ? 5 : topN)
+            .ToList();
+
+        var shortNames = topPois.Select(p =>
+        {
+            var sn = p.PoiNameVi.Length > 26 ? p.PoiNameVi[..23] + "..." : p.PoiNameVi;
+            return (p.PoiId, sn);
+        }).ToList();
+        var duplicateNames = shortNames
+            .GroupBy(x => x.sn, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var series = new List<object>();
+        foreach (var poi in topPois)
+        {
+            var counts = Enumerable.Repeat(0, dayLabels.Count).ToArray();
+            foreach (var row in scoped.Where(v =>
+                string.Equals(
+                    NormalizePoiName(v.PoiNameVi, v.PoiId),
+                    poi.PoiNameVi,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                var idx = (int)(row.OccurredAtUtc.Date - startDate.Date).TotalDays;
+                if (idx >= 0 && idx < counts.Length)
+                    counts[idx]++;
+            }
+
+            var shortName = poi.PoiNameVi.Length > 26
+                ? poi.PoiNameVi[..23] + "..."
+                : poi.PoiNameVi;
+            if (duplicateNames.Contains(shortName))
+                shortName = $"{shortName} (#{poi.PoiId})";
+
+            series.Add(new
+            {
+                poiId = poi.PoiId,
+                poiNameVi = poi.PoiNameVi,
+                shortName,
+                total = poi.Total,
+                dailyCounts = counts
+            });
+        }
+
+        return new
+        {
+            labels = dayLabels,
+            series,
+            weekStartUtc = startDate.ToString("yyyy-MM-dd"),
+            weekEndUtc = endDateExclusive.AddDays(-1).ToString("yyyy-MM-dd"),
+            year = startDate.Year
+        };
+    }
+
+    /// <summary>EventType dùng cho bản ghi “đang trong vùng POI” từ app (GPS/geofence).</summary>
+    internal const string TouristPoiGpsInsideEventType = "poi_gps_inside";
+
+    /// <summary>Cửa sổ thời gian (phút) cho cột GPS trên heatmap admin (QR theo ngày UTC, không dùng hằng này).</summary>
+    internal const int PoiScanHeatmapRecentWindowMinutes = 15;
 
     /// <summary>Lịch sử quét QR POI + thống kê doanh thu (AmountVnd) cho admin.</summary>
     public async Task<object> GetTouristPoiScanDashboardAsync()
@@ -1307,7 +1451,9 @@ public sealed class TravelGuideDb
             logs,
             revenueByPoi,
             grandTotalVnd = grandTotal,
-            totalScans
+            totalScans,
+            heatmapRecentWindowMinutes = PoiScanHeatmapRecentWindowMinutes,
+            heatmapQrDayUtc = DateTime.UtcNow.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
         };
     }
 
@@ -1654,6 +1800,10 @@ public sealed class TravelGuideDb
     private async Task<List<PoiQrScanRevenueDto>> GetPoiQrScanRevenueByPoiAsync()
     {
         var result = new List<PoiQrScanRevenueDto>();
+        var sinceUtc = DateTime.UtcNow.AddMinutes(-PoiScanHeatmapRecentWindowMinutes);
+        var dayStartUtc = DateTime.UtcNow.Date;
+        var nextDayUtc = dayStartUtc.AddDays(1);
+        var gpsEt = TouristPoiGpsInsideEventType;
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
@@ -1661,11 +1811,17 @@ public sealed class TravelGuideDb
                           SELECT PoiId,
                                  MAX(PoiNameVi) AS PoiNameVi,
                                  SUM(AmountVnd) AS TotalVnd,
-                                 COUNT(*) AS ScanCount
+                                 SUM(CASE WHEN LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
+                                 SUM(CASE WHEN CreatedAtUtc >= $sinceUtc AND LOWER(TRIM(COALESCE(EventType, ''))) = LOWER($gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
+                                 SUM(CASE WHEN CreatedAtUtc >= $dayStartUtc AND CreatedAtUtc < $nextDayUtc AND LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
                           FROM TouristPoiQrScanLog
                           GROUP BY PoiId
                           ORDER BY TotalVnd DESC;
                           """;
+        cmd.Parameters.AddWithValue("$sinceUtc", sinceUtc);
+        cmd.Parameters.AddWithValue("$dayStartUtc", dayStartUtc);
+        cmd.Parameters.AddWithValue("$nextDayUtc", nextDayUtc);
+        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -1673,7 +1829,9 @@ public sealed class TravelGuideDb
                 reader.GetInt32(0),
                 reader.GetString(1),
                 Convert.ToDecimal(reader.GetDouble(2)),
-                reader.GetInt32(3)));
+                reader.GetInt32(3),
+                reader.GetInt32(4),
+                reader.GetInt32(5)));
         }
 
         return result;
@@ -1681,10 +1839,15 @@ public sealed class TravelGuideDb
 
     private async Task<int> GetPoiQrScanTotalCountAsync()
     {
+        var gpsEt = TouristPoiGpsInsideEventType;
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM TouristPoiQrScanLog;";
+        cmd.CommandText = """
+                            SELECT COUNT(*) FROM TouristPoiQrScanLog
+                            WHERE LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt);
+                            """;
+        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
         var raw = await cmd.ExecuteScalarAsync();
         if (raw is null || raw == DBNull.Value) return 0;
         return Convert.ToInt32(raw);
@@ -1940,16 +2103,44 @@ public sealed class TravelGuideDb
 
     private async Task<List<TouristVisitHistoryDto>> GetTouristVisitHistoryAsync()
     {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristVisitHistorySqlServerAsync();
+
         var result = new List<TouristVisitHistoryDto>();
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          SELECT TOP 300 h.Id, h.TouristUserId, u.Username, h.PoiId, p.NameVi, h.EventType, h.PlaybackSeconds, h.WatchedPercent, h.OccurredAtUtc
-                          FROM TouristVisitHistory h
-                          INNER JOIN TouristUser u ON u.Id = h.TouristUserId
-                          INNER JOIN Poi p ON p.Id = h.PoiId
-                          ORDER BY h.Id DESC;
+                          SELECT v.Id, v.TouristUserId, v.Username, v.PoiId, v.PoiNameVi, v.EventType, v.PlaybackSeconds, v.WatchedPercent, v.OccurredAtUtc
+                          FROM (
+                            SELECT h.Id AS Id,
+                                   h.TouristUserId,
+                                   u.Username,
+                                   h.PoiId,
+                                   p.NameVi AS PoiNameVi,
+                                   h.EventType,
+                                   h.PlaybackSeconds,
+                                   h.WatchedPercent,
+                                   h.OccurredAtUtc
+                            FROM TouristVisitHistory h
+                            INNER JOIN TouristUser u ON u.Id = h.TouristUserId
+                            INNER JOIN Poi p ON p.Id = h.PoiId
+                            UNION ALL
+                            SELECT (l.Id + 900000000000) AS Id,
+                                   l.TouristUserId,
+                                   u.Username,
+                                   l.PoiId,
+                                   COALESCE(NULLIF(TRIM(l.PoiNameVi), ''), COALESCE(p.NameVi, '')) AS PoiNameVi,
+                                   COALESCE(NULLIF(TRIM(l.EventType), ''), 'poi_qr_access') AS EventType,
+                                   0 AS PlaybackSeconds,
+                                   0.0 AS WatchedPercent,
+                                   l.CreatedAtUtc AS OccurredAtUtc
+                            FROM TouristPoiQrScanLog l
+                            INNER JOIN TouristUser u ON u.Id = l.TouristUserId
+                            LEFT JOIN Poi p ON p.Id = l.PoiId
+                          ) v
+                          ORDER BY v.OccurredAtUtc DESC, v.Id DESC
+                          LIMIT 300;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -1965,6 +2156,61 @@ public sealed class TravelGuideDb
                 Convert.ToDecimal(reader.GetDouble(7)),
                 reader.GetDateTime(8)));
         }
+        return result;
+    }
+
+    private async Task<List<TouristVisitHistoryDto>> GetTouristVisitHistorySqlServerAsync()
+    {
+        var result = new List<TouristVisitHistoryDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 300 v.Id, v.TouristUserId, v.Username, v.PoiId, v.PoiNameVi, v.EventType, v.PlaybackSeconds, v.WatchedPercent, v.OccurredAtUtc
+                          FROM (
+                            SELECT CAST(h.Id AS BIGINT) AS Id,
+                                   h.TouristUserId,
+                                   u.Username,
+                                   h.PoiId,
+                                   p.NameVi AS PoiNameVi,
+                                   h.EventType,
+                                   h.PlaybackSeconds,
+                                   h.WatchedPercent,
+                                   h.OccurredAtUtc
+                            FROM dbo.TouristVisitHistory h
+                            INNER JOIN dbo.TouristUser u ON u.Id = h.TouristUserId
+                            INNER JOIN dbo.Poi p ON p.Id = h.PoiId
+                            UNION ALL
+                            SELECT CAST(l.Id + 900000000000 AS BIGINT) AS Id,
+                                   l.TouristUserId,
+                                   u.Username,
+                                   l.PoiId,
+                                   ISNULL(NULLIF(LTRIM(RTRIM(l.PoiNameVi)), N''), ISNULL(p.NameVi, N'')) AS PoiNameVi,
+                                   ISNULL(NULLIF(LTRIM(RTRIM(l.EventType)), N''), N'poi_qr_access') AS EventType,
+                                   CAST(0 AS INT) AS PlaybackSeconds,
+                                   CAST(0 AS DECIMAL(5,2)) AS WatchedPercent,
+                                   l.CreatedAtUtc AS OccurredAtUtc
+                            FROM dbo.TouristPoiQrScanLog l
+                            INNER JOIN dbo.TouristUser u ON u.Id = l.TouristUserId
+                            LEFT JOIN dbo.Poi p ON p.Id = l.PoiId
+                          ) v
+                          ORDER BY v.OccurredAtUtc DESC, v.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristVisitHistoryDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetInt32(6),
+                reader.GetDecimal(7),
+                reader.GetDateTime(8)));
+        }
+
         return result;
     }
 

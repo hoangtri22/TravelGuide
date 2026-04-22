@@ -1,0 +1,24 @@
+@startuml
+title ACT Owner
+start
+:Mở WEB/index.html;
+:byId("loginForm").addEventListener("submit", ...);
+if (POST /api/auth/login OK?) then (Có)
+  :sessionStorage.setItem(...token/role...);
+  :applyRoleChrome() role=owner;
+  if (Chọn module?) then (Quản lý POI quán)
+    :loadPois() -> GET /api/pois (owner scope);
+    :poi-create.js submit -> PUT /api/pois/{id};
+    :api(`/api/pois/{id}/qrcode`, { method: "POST" });
+  elseif (Bản dịch)
+    :loadTranslation(id) -> GET /api/translations/{id};
+    :translationForm submit -> PUT /api/translations/{id};
+  else (Audio/Map)
+    :renderAudioSources();
+    :audio-save-btn click -> PUT /api/pois/{id} (audioUrl,mapLink);
+  endif
+else (Không)
+  :Thông báo lỗi / chờ duyệt / bị khóa;
+endif
+stop
+@enduml

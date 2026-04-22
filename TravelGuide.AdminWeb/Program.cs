@@ -295,7 +295,8 @@ app.MapGet("/api/public/tourist-comments/{poiId:int}", async (int poiId, TravelG
 
 app.MapGet("/download/android", (HttpContext context, IOptions<AndroidDownloadOptions> options, IWebHostEnvironment env) =>
 {
-    var apkUrl = (options.Value.ApkUrl ?? "").Trim();
+    var opts = options.Value;
+    var apkUrl = (opts.ApkUrl ?? "").Trim();
     if (apkUrl.Length == 0)
     {
         if (ResolveLocalAndroidApkPath(env) is not null)
@@ -312,7 +313,7 @@ app.MapGet("/download/android", (HttpContext context, IOptions<AndroidDownloadOp
     if (!apkUrl.StartsWith('/'))
         apkUrl = "/" + apkUrl;
 
-    var host = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}".TrimEnd('/');
+    var host = AndroidDownloadPublicBaseResolver.Resolve(context.Request, opts);
     return Results.Redirect(host + apkUrl);
 });
 
@@ -320,7 +321,7 @@ app.MapGet("/download/android/qr.png", async (HttpContext context, IOptions<Andr
 {
     var opts = options.Value;
     var path = AndroidDownloadService.NormalizeDownloadPath(opts.DownloadPath);
-    var host = $"{context.Request.Scheme}://{context.Request.Host}{context.Request.PathBase}".TrimEnd('/');
+    var host = AndroidDownloadPublicBaseResolver.Resolve(context.Request, opts);
     var payload = host + path;
     var size = opts.QrImageSizePx <= 0 ? 320 : opts.QrImageSizePx;
     var remote = PoiQrCodeGenerator.BuildRemoteQrImageUrl(payload, size);
@@ -337,7 +338,7 @@ app.MapGet("/api/download/android", (HttpContext http, IOptions<AndroidDownloadO
 {
     var o = options.Value;
     var path = AndroidDownloadService.NormalizeDownloadPath(o.DownloadPath);
-    var host = $"{http.Request.Scheme}://{http.Request.Host}{http.Request.PathBase}".TrimEnd('/');
+    var host = AndroidDownloadPublicBaseResolver.Resolve(http.Request, o);
     var downloadUrl = host + path;
     var apkUrl = (o.ApkUrl ?? "").Trim();
     if (apkUrl.Length == 0 && ResolveLocalAndroidApkPath(env) is not null)
@@ -614,12 +615,12 @@ app.MapGet("/api/export/extra_places.json", async (HttpContext context, TravelGu
     return Results.Json(places);
 });
 
-app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
+app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb db, AuthStore authStore, DateOnly? visitHistoryChartWeekStart) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
     if (principal.Role != "admin") return Results.Forbid();
-    var data = await db.GetTouristOverviewAsync();
+    var data = await db.GetTouristOverviewAsync(visitHistoryChartWeekStart);
     return Results.Ok(data);
 });
 

@@ -1,0 +1,131 @@
+@startuml
+title Tổng hợp chức năng TravelGuide — ánh xạ chức năng → file sequence
+skinparam shadowing false
+skinparam monochrome true
+
+legend right
+  | Ký hiệu |
+  | Mỗi ô chức năng liên kết tới file SE tương ứng trong PlanUML |
+endlegend
+
+package "Du khách (MAUI + Tourist API)" {
+  [Đăng ký] as F1
+  [Đăng nhập] as F2
+  [Đăng xuất] as F2b
+  [Trang chủ / tìm kiếm POI] as F3
+  [Đồng bộ POI chi tiết] as F3b
+  [Bản đồ + GPS] as F4
+  [Geofence] as F5
+  [Thuyết minh TTS / audio] as F6
+  [Quét QR / mở POI / Premium] as F7
+  [Lịch sử quét] as F8
+  [Đánh giá POI] as F9
+}
+
+package "Admin Web" {
+  [Đăng nhập] as A1
+  [Đăng ký chủ quán (portal)] as A0
+  [Quản lý POI] as A2
+  [Upload audio POI] as A2b
+  [Tab Nguồn audio + map link] as A2d
+  [Quản lý bản dịch] as A3
+  [Xuất JSON] as A4
+  [Quản lý tài khoản] as A5
+  [Dữ liệu / tier du khách] as A6
+  [Quản lý bình luận] as A7
+  [Heatmap admin] as A2c
+}
+
+package "Chủ quán" {
+  [Đăng ký chờ duyệt] as O1
+  [Đăng nhập] as O2
+  [POI / bản dịch / audio-map] as O3
+}
+
+package "Web công khai" {
+  [scan-poi (không app)] as W1
+  [qr-noapp] as W2
+  [Tải APK Android] as W3
+}
+
+package "File PlantUML (tham chieu)" {
+  artifact "SE DuKhach DangKy.puml" as P_F1
+  artifact "SE DuKhach DangNhap.puml" as P_F2
+  artifact "SE DuKhach DangXuat.puml" as P_F2b
+  artifact "SE DuKhach TimKiem.puml" as P_F3
+  artifact "SE DuKhach DongBoPOI_ChiTiet.puml" as P_F3b
+  artifact "SE DuKhach XemBanDo.puml" as P_F4
+  artifact "SE DuKhach GeofenceEngine.puml" as P_F5
+  artifact "SE DuKhach PhatThuyetMinh.puml" as P_F6
+  artifact "SE DuKhach QuetQR.puml" as P_F7a
+  artifact "SE DuKhach MoPOI.puml" as P_F7b
+  artifact "SE DuKhach KichHoatPremium.puml" as P_F7c
+  artifact "SE DuKhach XemLichSuQuet.puml" as P_F8
+  artifact "SE DuKhach DanhGiaPOI.puml" as P_F9
+  artifact "SE Admin DangNhap.puml" as P_A1
+  artifact "SE Admin DangKyChuQuanTrongPortal.puml" as P_A0
+  artifact "SE Admin QuanLyPOI.puml" as P_A2
+  artifact "SE Admin UploadAudio.puml" as P_A2b
+  artifact "SE Admin TabNguonAudio.puml" as P_A2d
+  artifact "SE Admin QuanLyBanDich.puml" as P_A3
+  artifact "SE Admin Xuatextra_places.puml" as P_A4
+  artifact "SE Admin QuanLyTaiKhoan.puml" as P_A5
+  artifact "SE Admin DuLieuDuKhach.puml" as P_A6a
+  artifact "SE Admin ChinhTierDuKhach.puml" as P_A6b
+  artifact "SE Admin QuanLyBinhLuan.puml" as P_A7
+  artifact "SE Admin Heatmap.puml" as P_A2c
+  artifact "SE Owner DangKyChoDuyet.puml" as P_O1
+  artifact "SE Owner DangNhap.puml" as P_O2
+  artifact "SE Owner QuanLyPOI.puml" as P_O3a
+  artifact "SE Owner QuanLyBanDich.puml" as P_O3b
+  artifact "SE Owner QuanLyAudioMapLink.puml" as P_O3c
+  artifact "SE Web ScanPoiFallback.puml" as P_W1
+  artifact "SE Web QrNoAppTungQuan.puml" as P_W2
+  artifact "SE Web DownloadAndroid.puml" as P_W3
+}
+
+F1 -down-> P_F1
+F2 -down-> P_F2
+F2b -down-> P_F2b
+F3 -down-> P_F3
+F3b -down-> P_F3b
+F4 -down-> P_F4
+F5 -down-> P_F5
+F6 -down-> P_F6
+F7 -down-> P_F7a
+F7 -down-> P_F7b
+F7 -down-> P_F7c
+F8 -down-> P_F8
+F9 -down-> P_F9
+
+A0 -down-> P_A0
+A1 -down-> P_A1
+A2 -down-> P_A2
+A2b -down-> P_A2b
+A2d -down-> P_A2d
+A2c -down-> P_A2c
+A3 -down-> P_A3
+A4 -down-> P_A4
+A5 -down-> P_A5
+A6 -down-> P_A6a
+A6 -down-> P_A6b
+A7 -down-> P_A7
+
+O1 -down-> P_O1
+O2 -down-> P_O2
+O3 -down-> P_O3a
+O3 -down-> P_O3b
+O3 -down-> P_O3c
+
+W1 -down-> P_W1
+W2 -down-> P_W2
+W3 -down-> P_W3
+
+note as N1
+  **Bổ sung / cập nhật (Admin Web):**
+  - SE Admin Heatmap.puml, SE Admin TabNguonAudio.puml, SE Admin DangKyChuQuanTrongPortal.puml
+  - ACT DuKhach.puml, ACT Admin.puml, ACT Owner.puml
+  - USECASE_Dukhach.puml, USECASE_Admin.puml, USECASE_ChuQuan.puml
+end note
+
+@enduml

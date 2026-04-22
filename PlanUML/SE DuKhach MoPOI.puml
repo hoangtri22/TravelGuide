@@ -1,0 +1,34 @@
+@startuml
+title SE DuKhach MoPOI
+actor "Du khách" as U
+participant "QrScannerPage.HandlePoiAfterScanAsync()" as HANDLE
+participant "TouristAuthService.GetMeAsync()" as ME
+participant "TouristAuthService.GetPoiAccessAsync()" as ACCESS
+participant "TravelGuide.API MapGet(\"/api/tourist/pois/{id}/access\")" as API1
+participant "TouristAuthService.ConfirmPoiPurchaseAsync()" as BUY
+participant "TravelGuide.API MapPost(\"/api/tourist/pois/{id}/purchase-confirm\")" as API2
+database "TravelGuide.API.Data.TouristDb.ConfirmPoiUnlockAsync(userId, poiId, amountVnd)" as DB
+participant "QrScannerPage.OpenPlaceDetailAsync()" as OPEN
+participant "TouristAuthService.LogPoiQrScanAsync()" as LOG
+participant "TravelGuide.API Program.cs MapPost(\"/api/tourist/pois/scan-log\")" as SCANLOG
+participant "PlaceDetailPage.LoadPlace()" as DETAIL
+U -> HANDLE : Sau quét / xác nhận thanh toán mô phỏng
+HANDLE -> ME : await GetMeAsync()
+alt chưa đăng nhập (luồng thường)
+  HANDLE --> U : DisplayAlert đăng nhập
+else đã đăng nhập
+  HANDLE -> ACCESS : await GetPoiAccessAsync(place.Id)
+  ACCESS -> API1 : GET .../access + Bearer
+  API1 --> ACCESS : HasAccess, RequiresPurchase, PriceVnd
+  alt RequiresPurchase + user xác nhận
+    HANDLE -> BUY : await ConfirmPoiPurchaseAsync(place.Id, price)
+    BUY -> API2 : POST purchase-confirm + amountVnd
+    API2 -> DB : ConfirmPoiUnlockAsync(principal.UserId, id, amount)
+  end
+  HANDLE -> OPEN : await OpenPlaceDetailAsync(place, amountVnd, eventType)
+  OPEN -> LOG : await LogPoiQrScanAsync(poiId, poiNameVi, eventType, amountVnd, deviceId, deviceModel, appPlatform)
+  LOG -> SCANLOG : HttpClient SendAsync POST /api/tourist/pois/scan-log
+  OPEN -> DETAIL : detailPage.LoadPlace(place)
+  OPEN -> OPEN : await Navigation.PushAsync(detailPage)
+end
+@enduml

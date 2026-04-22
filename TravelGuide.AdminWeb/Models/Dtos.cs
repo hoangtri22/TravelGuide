@@ -91,7 +91,10 @@ public record PoiQrScanLogDto(
     DateTime CreatedAtUtc);
 
 /// <summary>Tổng doanh thu (AmountVnd) theo POI từ log quét.</summary>
-public record PoiQrScanRevenueDto(int PoiId, string PoiNameVi, decimal TotalVnd, int ScanCount);
+/// <param name="ScanCount">Chỉ lượt mở POI qua QR / thanh toán (không tính <c>poi_gps_inside</c>).</param>
+/// <param name="RecentGpsHits">Lượt GPS trong vùng POI (event <c>poi_gps_inside</c>) trong cửa sổ phút gần nhất (heatmap).</param>
+/// <param name="QrScansTodayUtc">Lượt quét/mở POI (không GPS) tích lũy trong ngày lịch UTC hiện tại.</param>
+public record PoiQrScanRevenueDto(int PoiId, string PoiNameVi, decimal TotalVnd, int ScanCount, int RecentGpsHits, int QrScansTodayUtc);
 
 /// <summary>Yêu cầu lọc/phân trang bình luận cho màn quản trị.</summary>
 public record CommentQueryRequest(string? Status, string? Search, int Page = 1, int PageSize = 20);

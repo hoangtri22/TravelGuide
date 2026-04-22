@@ -1,0 +1,20 @@
+@startuml
+title SE DuKhach PhatThuyetMinh
+actor "Du khách" as U
+participant "GeofenceEngine.HandleInsidePoi()" as GEO
+participant "NarrationEngine.SpeakAsync()" as SPEAK
+participant "NarrationEngine.ProcessQueueAsync() // private" as Q
+participant "NarrationEngine.BuildNarrationText()" as TXT
+participant "NarrationEngine.BuildSpeechOptions()" as OPT
+participant "NarrationEngine.RunSpeechOnMainThreadAsync()" as RUN
+participant "TextToSpeech.Default.SpeakAsync()" as TTS
+GEO -> SPEAK : await _narrationEngine.SpeakAsync(poi)
+SPEAK -> SPEAK : _queue.Enqueue(place)
+SPEAK -> Q : _processTask = ProcessQueueAsync()
+Q -> TXT : BuildNarrationText(place)
+Q -> OPT : BuildSpeechOptions(_cachedLocales)
+Q -> RUN : RunSpeechOnMainThreadAsync(() => TTS...)
+RUN -> TTS : TextToSpeech.Default.SpeakAsync(text, opts, token)
+Q -> Q : Task.Delay(600) giữa các phần trong queue
+Q -> Q : OnStoppedPlaying?.Invoke() trong finally
+@enduml

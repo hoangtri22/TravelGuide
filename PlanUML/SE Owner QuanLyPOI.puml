@@ -1,0 +1,22 @@
+@startuml
+title SE Owner QuanLyPOI
+actor "Chủ quán" as O
+participant "TravelGuide.AdminWeb/WEB/app.js async function loadPois()" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/pois\")" as GET
+database "TravelGuideDb.GetPoisOwnedByUserAsync(ownerUserId)" as DB
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}\")" as PUT
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/pois/{id}/qrcode\")" as QR
+O -> FE : Tab POI
+FE -> APIJS : await api(\"/api/pois\")
+APIJS -> GET : GET handler
+GET -> DB : await GetPoisOwnedByUserAsync(principal.UserId)
+GET --> FE : danh sách POI của owner
+O -> FE : Chỉnh sửa / lưu
+FE -> APIJS : await api(`/api/pois/${id}`, { method: \"PUT\", ... })
+APIJS -> PUT : MapPut handler
+alt tạo QR
+  FE -> APIJS : await api(`/api/pois/${id}/qrcode`, { method: \"POST\" })
+  APIJS -> QR : MapPost qrcode
+end
+@enduml

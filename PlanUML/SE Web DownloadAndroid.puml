@@ -1,0 +1,19 @@
+@startuml
+title SE Web DownloadAndroid
+actor "Người dùng" as U
+participant "TravelGuide.AdminWeb/WEB/download-android.html" as HTML
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/download/android\")" as DL
+participant "TravelGuide.AdminWeb/Program.cs ResolveLocalAndroidApkPath()" as RES
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/apk/travelguide-latest.apk\")" as APK
+U -> HTML : Mở /download-android.html
+HTML --> U : <a href=\"/download/android\"> + <img src=\"/download/android/qr.png\">
+U -> DL : GET /download/android
+DL -> RES : ResolveLocalAndroidApkPath(env) khi ApkUrl rỗng
+alt ApkUrl là URL tuyệt đối
+  DL --> U : Results.Redirect(apkUrl)
+else có APK cục bộ WEB/apk/travelguide-latest.apk
+  DL --> U : Results.Redirect(host + \"/apk/travelguide-latest.apk\")
+end
+U -> APK : GET /apk/travelguide-latest.apk
+APK --> U : Results.File(..., application/vnd.android.package-archive)
+@enduml

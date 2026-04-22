@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
-<!-- MapPage: WebView Mapbox GL, banner POI gần, GPS -->
+<!-- MapPage: WebView Leaflet + OSM, banner POI gần, GPS -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:TravelGuide"
@@ -33,7 +33,9 @@
         </Border>
 
         <!-- Row 1: Map -->
-        <WebView x:Name="mapView" Grid.Row="1" Navigating="MapView_Navigating"/>
+        <WebView x:Name="mapView" Grid.Row="1"
+                 VerticalOptions="FillAndExpand" HorizontalOptions="FillAndExpand"
+                 Navigating="MapView_Navigating"/>
 
         <!-- Row 1: Loading Overlay -->
         <Grid x:Name="LoadingOverlay" Grid.Row="1" BackgroundColor="White" IsVisible="True" ZIndex="10">

@@ -17,7 +17,6 @@ public class DatabaseService
         private readonly TouristAuthService _touristAuthService;
         private readonly SemaphoreSlim _syncLock = new(1, 1);
         private readonly string _sqlitePath;
-        private const string PublicApiBaseLoopback = "http://127.0.0.1:5096";
         private List<TouristPlace>? _cachedPlaces;
         private SQLiteAsyncConnection? _localDb;
         private DateTime _lastSyncUtc = DateTime.MinValue;
@@ -199,36 +198,9 @@ public class DatabaseService
         }
 
         /// <summary>
-        /// URL gốc TravelGuide.API (HTTP) — <c>Preferences api_base_url</c> hoặc mặc định.
-        /// Android emulator: <c>10.0.2.2</c> = máy host; thiết bị thật: IP LAN máy chạy API (vd <c>http://192.168.1.10:5096</c>).
-        /// Chỉ POI <c>published</c> mới có trong <c>/api/public/pois</c>.
+        /// URL gốc TravelGuide.API — cùng logic với <see cref="TouristAuthService.GetCurrentApiBaseUrl"/> (Preferences / mặc định theo nền tảng).
         /// </summary>
-        public string GetCurrentApiBaseUrl()
-        {
-            var defaultUrl = EndpointResolver.GetDefaultApiBaseUrlForCurrentPlatform();
-
-            var configured = Preferences.Get("api_base_url", defaultUrl)?.Trim();
-            if (EndpointResolver.ShouldDiscardAndroidPhysicalEmulatorApiPref(configured))
-            {
-                Preferences.Set("api_base_url", defaultUrl);
-                configured = defaultUrl;
-            }
-
-            if (string.IsNullOrWhiteSpace(configured))
-            {
-                Preferences.Set("api_base_url", defaultUrl);
-                return defaultUrl;
-            }
-
-            if (ShouldForcePublicApiBase(configured))
-            {
-                Preferences.Set("api_base_url", defaultUrl);
-                System.Diagnostics.Debug.WriteLine($"[API] Reset api_base_url '{configured}' -> '{defaultUrl}'");
-                return defaultUrl;
-            }
-
-            return configured;
-        }
+        public string GetCurrentApiBaseUrl() => _touristAuthService.GetCurrentApiBaseUrl();
 
         /// <summary>Đồng bộ cache: API trước, nếu rỗng và chưa có cache thì đọc JSON nhúng.</summary>
         private async Task RefreshFromApiOrFallbackAsync(bool force)
@@ -365,15 +337,6 @@ public class DatabaseService
                 System.Diagnostics.Debug.WriteLine($"[API] Load POI failed: {ex.Message}");
                 return (false, new List<TouristPlace>());
             }
-        }
-
-        private static bool ShouldForcePublicApiBase(string url)
-        {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                return true;
-
-            // POI public đã chuyển qua TravelGuide.API; tránh trỏ nhầm sang AdminWeb.
-            return uri.Port is 5280 or 7145;
         }
 
         /// <summary>

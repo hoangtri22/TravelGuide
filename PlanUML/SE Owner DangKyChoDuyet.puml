@@ -1,0 +1,16 @@
+@startuml
+title SE Owner DangKyChoDuyet
+actor "Chủ quán" as O
+participant "TravelGuide.AdminWeb/WEB/app.js byId(\"registerForm\")?.addEventListener(\"submit\", ...)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/auth/register\")" as API
+database "TravelGuide.AdminWeb.Data.TravelGuideDb.CreateUserAsync(u, pw, display, \"owner\", registrationApproved: false)" as DB
+O -> FE : Submit registerForm
+FE -> FE : so khớp password / password2 (trong handler)
+FE -> APIJS : await api(\"/api/auth/register\", { method: \"POST\", body: ... })
+APIJS -> API : POST handler
+API -> DB : await CreateUserAsync(..., role: \"owner\", registrationApproved: false)
+DB --> API : bool
+API --> FE : 200 hoặc 400
+FE -> FE : byId(\"registerForm\").reset() / alert / điều hướng login
+@enduml

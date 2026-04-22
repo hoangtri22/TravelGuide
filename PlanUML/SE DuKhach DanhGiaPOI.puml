@@ -1,0 +1,31 @@
+@startuml
+title SE DuKhach DanhGiaPOI
+actor "Du khách" as U
+participant "PlaceDetailPage.OnSubmitReviewClicked()" as UI
+participant "TouristAuthService.GetMeAsync()" as ME
+participant "PlaceDetailPage.ParseRatingFromPicker()" as RATE
+participant "DatabaseService.AddPlaceReviewAsync()" as DB
+database "DatabaseService.GetLocalDbAsync() -> InsertAsync(TouristPlaceReview)" as SQLITE
+participant "TouristAuthService.SubmitPlaceReviewAsync()" as SUB
+participant "TravelGuide.API Program.cs MapPost(\"/api/tourist/comments\")" as SRV
+participant "PlaceDetailPage.RefreshReviewsAsync()" as REF
+participant "TouristAuthService.GetPlaceReviewsWithAdminReplyAsync()" as LOAD
+participant "TravelGuide.API Program.cs MapGet(\"/api/tourist/comments/{poiId}\")" as GETC
+participant "TouristAuthService.TryFetchCommentsFromAdminPublicAsync() // private" as PUB
+participant "TouristAuthService.MergeCommentRows() // private static" as MERGE
+U -> UI : Nút gửi đánh giá (Reviews tab)
+UI -> ME : await GetMeAsync()
+UI -> RATE : ParseRatingFromPicker()
+UI -> DB : await AddPlaceReviewAsync(poiId, username, rating, content)
+DB -> SQLITE : await db.InsertAsync(review)
+DB -> SUB : await SubmitPlaceReviewAsync(poiId, poiNameVi, rating, content)
+SUB -> SRV : POST JSON + Authorization Bearer
+SRV --> SUB : 200 / lỗi (catch trong AddPlaceReviewAsync không chặn UX)
+UI -> REF : await RefreshReviewsAsync()
+REF -> LOAD : await GetPlaceReviewsWithAdminReplyAsync(poiId)
+LOAD -> GETC : HttpClient GET /api/tourist/comments/{poiId}
+LOAD -> PUB : await TryFetchCommentsFromAdminPublicAsync(poiId, take)
+LOAD -> MERGE : MergeCommentRows(apiRows, adminRows)
+LOAD --> REF : IReadOnlyList<PlaceReviewWithAdminReply>
+REF -> REF : ReviewsCollection.ItemsSource = ...
+@enduml

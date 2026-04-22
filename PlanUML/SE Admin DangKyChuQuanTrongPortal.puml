@@ -1,0 +1,19 @@
+@startuml
+title SE Admin — Đăng ký chủ quán trên cổng (index.html)
+skinparam shadowing false
+skinparam monochrome true
+
+actor "Người đăng ký" as R
+participant "TravelGuide.AdminWeb/WEB/index.html registerForm" as FE
+participant "fetch POST /api/auth/register" as FETCH
+participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/auth/register\")" as API
+database "TravelGuideDb.CreateUserAsync(..., role: owner, registrationApproved: false)" as DB
+
+R -> FE : Tab Đăng ký chủ quán → submit
+FE -> FETCH : JSON { username, password, displayName }\n(không Bearer — công khai)
+FETCH -> API
+API -> DB : CreateUserAsync — owner, chưa duyệt đăng ký
+DB --> API
+API --> FE : 200 + message (hoặc lỗi validation)
+FE -> FE : setAuthPanel(\"login\"); gợi ý đăng nhập sau khi admin duyệt
+@enduml

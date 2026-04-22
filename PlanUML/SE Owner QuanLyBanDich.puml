@@ -1,0 +1,14 @@
+@startuml
+title SE Owner QuanLyBanDich
+actor "Chủ quán" as O
+participant "TravelGuide.AdminWeb/WEB/app.js async function loadTranslation(id)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/translations/{id}\")" as GET
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/translations/{id}\")" as PUT
+O -> FE : await loadTranslation(poiId)
+FE -> APIJS : await api(`/api/translations/${id}`)
+APIJS -> GET : GET handler
+O -> FE : byId(\"translationForm\").submit
+FE -> APIJS : await api(`/api/translations/${id}`, { method: \"PUT\", ... })
+APIJS -> PUT : MapPut handler
+@enduml

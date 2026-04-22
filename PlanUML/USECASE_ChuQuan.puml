@@ -1,0 +1,25 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam monochrome true
+actor "Chủ quán" as O
+rectangle "Owner Web" {
+  usecase "Đăng nhập token RAM" as O1
+  usecase "Quản lý POI của quán" as O2
+  usecase "Sinh QR cho POI" as O3
+  usecase "Quản lý bản dịch POI" as O4
+  usecase "Quản lý nguồn audio/map link" as O5
+}
+
+' Ep layout để gần giống sơ đồ mẫu
+O1 -[hidden]down- O2
+O2 -[hidden]down- O4
+O4 -[hidden]down- O5
+O2 -[hidden]right- O3
+
+O --> O1
+O --> O2
+O --> O4
+O --> O5
+O2 .> O3 : <<include>>
+@enduml

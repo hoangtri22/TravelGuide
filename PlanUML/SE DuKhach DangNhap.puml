@@ -1,0 +1,31 @@
+@startuml
+title SE DuKhach DangNhap
+actor "Du khách" as U
+participant "TouristLoginPage.OnLoginClicked()" as CLICK
+participant "TouristLoginPage.TryLoginAsync()" as UI
+participant "TouristAuthService.LoginAsync()" as SVC
+participant "TravelGuide.API Program.cs MapPost(\"/api/tourist/auth/login\")" as API
+database "TravelGuide.API.Data.TouristDb.GetUserByUsernameAsync()" as DB
+participant "TravelGuide.API.Services.PasswordTools.Hash()" as HASH
+participant "TravelGuide.API.Auth.AuthStore.CreateToken()" as AUTH
+participant "TravelGuide.API.Data.TouristDb.RecordLoginSessionAsync()" as SESS
+collections "SecureStorage.Default + Preferences" as STORE
+U -> CLICK : Nhấn đăng nhập
+CLICK -> UI : await TryLoginAsync(loginButton)
+UI -> UI : UsernameEntry.Text / PasswordEntry.Text (kiểm tra độ dài trong TryLoginAsync)
+UI -> SVC : LoginAsync(username, password)
+SVC -> API : POST /api/tourist/auth/login
+API -> DB : GetUserByUsernameAsync(username)
+API -> HASH : so khớp PasswordHash
+API -> AUTH : CreateToken(user)
+API -> SESS : RecordLoginSessionAsync(user.Id, token)
+API --> SVC : 200 token + username + accountTier hoặc 401
+alt success
+  SVC -> STORE : SecureStorage.SetAsync(TokenKey) + Preferences tier/username
+  SVC --> UI : (true, message)
+  UI -> UI : Shell.Current.GoToAsync(nameof(HomePage))
+else fail
+  SVC --> UI : (false, message)
+  UI -> UI : DisplayAlert(...)
+end
+@enduml

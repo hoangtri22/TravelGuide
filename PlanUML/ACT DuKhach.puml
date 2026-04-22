@@ -1,0 +1,33 @@
+@startuml
+title ACT DuKhach
+start
+:Mở app;
+if (Đã có token hợp lệ?) then (Không)
+  :TouristLoginPage.TryLoginAsync() / TouristRegisterPage.OnRegisterClicked();
+  if (Auth thành công?) then (Không)
+    :Hiển thị lỗi đăng nhập;
+    stop
+  endif
+endif
+:HomePage.OnAppearing() -> LoadPlacesAsync() -> DatabaseService.GetPlacesAsync();
+if (Chọn chức năng?) then (Map)
+  :MapPage.OnAppearing() -> LoadMap() + GpsBackgroundService.StartAsync();
+  :GeofenceEngine.ProcessLocationAsync(location);
+  if (Vào vùng POI?) then (Có)
+    :NarrationEngine.SpeakAsync(poi);
+  endif
+elseif (QR)
+  :QrScannerPage.OnBarcodesDetected() -> HandleQrPayloadAsync(raw);
+  if (Mã premium?) then (Có)
+    :HandlePremiumClaimFlowAsync() -> RedeemPremiumClaimAsync();
+  else
+    :HandlePoiAfterScanAsync(place);
+    if (requiresPurchase?) then (Có)
+      :ConfirmPoiPurchaseAsync(poiId, amountVnd);
+    endif
+  endif
+else (History/Audio)
+  :QrScanHistoryPage.ReloadAsync() -> GetMyScanHistoryAsync();
+endif
+stop
+@enduml

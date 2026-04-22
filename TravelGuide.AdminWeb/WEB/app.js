@@ -9,6 +9,8 @@ let touristOverview = null;
 let qrBackfillRunning = false;
 let qrBackfillAttempted = false;
 let commentSearchTimer = null;
+let visitHistoryLineChart = null;
+const visitHistoryLineHidden = new Set();
 const commentState = {
   status: "all",
   search: "",
@@ -65,7 +67,8 @@ const TAB_PAGE_TITLES = {
   translationTab: "Đa ngôn ngữ",
   audioTab: "Nguồn audio",
   accountTab: "Tài khoản web",
-  touristTab: "Dữ liệu du khách"
+  touristTab: "Dữ liệu du khách",
+  heatmapTab: "Heatmap"
 };
 
 /** Ẩn/hiện tab nội dung + trạng thái nút sidebar + subtitle + dải thống kê (chỉ tab POI) */
@@ -94,6 +97,8 @@ function switchTab(tabId) {
       sub.textContent = "Duyệt đăng ký chủ quán, khóa / xóa tài khoản web.";
     } else if (tabId === "touristTab") {
       sub.textContent = "Tài khoản và hoạt động du khách từ ứng dụng.";
+    } else if (tabId === "heatmapTab") {
+      sub.textContent = "";
     }
   }
   const strip = byId("statsStrip");
@@ -213,6 +218,671 @@ const fmtDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
 };
+
+const visitHistoryState = { sortKey: "id", sortDir: -1, page: 1, pageSize: 10, query: "", userFilter: "" };
+/** yyyy-MM-dd (UTC calendar) — null = 7 ngày gần nhất theo server */
+const visitHistoryChartState = { customWeekStart: null };
+
+/** Leaflet + heatmap tab (admin). */
+let heatmapLeafletPromise = null;
+let heatmapMap = null;
+let heatmapLayer = null;
+let heatmapMarkers = null;
+
+function heatmapPick(row, camel, pascal) {
+  if (!row || typeof row !== "object") return undefined;
+  if (Object.prototype.hasOwnProperty.call(row, camel)) return row[camel];
+  if (Object.prototype.hasOwnProperty.call(row, pascal)) return row[pascal];
+  return undefined;
+}
+
+function loadExternalCss(href) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("link");
+    el.rel = "stylesheet";
+    el.href = href;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error(`Không tải CSS: ${href}`));
+    document.head.appendChild(el);
+  });
+}
+
+function loadExternalScript(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.async = true;
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error(`Không tải script: ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+function ensureLeafletHeatLibs() {
+  if (typeof L !== "undefined" && typeof L.heatLayer === "function") return Promise.resolve();
+  if (heatmapLeafletPromise) return heatmapLeafletPromise;
+  heatmapLeafletPromise = (async () => {
+    await loadExternalCss("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css");
+    await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js");
+    await loadExternalScript("https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js");
+  })();
+  return heatmapLeafletPromise;
+}
+
+function poiCoordPick(p) {
+  const lat = Number(p?.latitude ?? p?.Latitude);
+  const lng = Number(p?.longitude ?? p?.Longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+/** Có dữ liệu trên bảng heatmap (QR tích lũy hoặc GPS 15′ hoặc QR trong ngày UTC). */
+function heatmapPoiHasActivity(meta) {
+  if (!meta) return false;
+  const scans = Number(meta.scans) || 0;
+  const g = Number(meta.recentGps) || 0;
+  const q = Number(meta.qrToday) || 0;
+  return scans > 0 || g > 0 || q > 0;
+}
+
+/** Trọng số nhiệt trên bản đồ: lớn nhất giữa QR tích lũy và (GPS gần đây + QR trong ngày). */
+function heatmapPoiIntensity(meta) {
+  if (!meta) return 0;
+  const scans = Number(meta.scans) || 0;
+  const live = (Number(meta.recentGps) || 0) + (Number(meta.qrToday) || 0);
+  return Math.max(1, scans, live);
+}
+
+/** Chuẩn hóa tên POI (VI) để ghép log ↔ danh sách quản trị khi PoiId lệch DB. */
+function heatmapNormalizeViName(s) {
+  return String(s ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+/** Map: tên đã chuẩn hóa → mảng POI (cùng tên có thể nhiều bản ghi). */
+function heatmapBuildPoiNameLookup(poisArr) {
+  const m = new Map();
+  if (!Array.isArray(poisArr)) return m;
+  for (const p of poisArr) {
+    const k = heatmapNormalizeViName(p?.nameVi ?? p?.NameVi);
+    if (!k) continue;
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(p);
+  }
+  return m;
+}
+
+/**
+ * Tìm POI trên bản đồ: ưu tiên Id; nếu log Id không có trong /api/pois thì thử đúng một POI trùng tên (VI).
+ * @returns {{ p: object|null, how: "id"|"name"|"none"|"ambiguous" }}
+ */
+function heatmapResolvePoiForMap(poisArr, nameLookup, pid, displayNameVi) {
+  const byId = poisArr.find((x) => Number(x?.id ?? x?.Id) === pid);
+  if (byId) return { p: byId, how: "id" };
+  const k = heatmapNormalizeViName(displayNameVi);
+  if (!k) return { p: null, how: "none" };
+  const hits = nameLookup.get(k);
+  if (!hits || hits.length === 0) return { p: null, how: "none" };
+  if (hits.length > 1) return { p: null, how: "ambiguous" };
+  return { p: hits[0], how: "name" };
+}
+
+/** Một dòng bảng heatmap sau khi gộp (nhiều PoiId / cùng tên → một địa điểm). */
+function heatmapBuildAggregatedTableRows(poisArr, nameLookup, revRows, qrTodayPick) {
+  const agg = new Map();
+  for (const row of revRows) {
+    const pid = Number(heatmapPick(row, "poiId", "PoiId"));
+    if (!pid) continue;
+    const scans = Number(heatmapPick(row, "scanCount", "ScanCount") ?? 0) || 0;
+    const gps = Number(heatmapPick(row, "recentGpsHits", "RecentGpsHits") ?? 0) || 0;
+    const qr = qrTodayPick(row);
+    if (scans <= 0 && gps <= 0 && qr <= 0) continue;
+
+    const logName = String(heatmapPick(row, "poiNameVi", "PoiNameVi") ?? "");
+    const { p } = heatmapResolvePoiForMap(poisArr, nameLookup, pid, logName);
+    const key = p ? `a:${Number(p.id ?? p.Id)}` : `n:${heatmapNormalizeViName(logName)}`;
+    const label = p ? String(p?.nameVi ?? p?.NameVi ?? logName).trim() || logName : logName;
+
+    const cur = agg.get(key);
+    if (!cur) {
+      agg.set(key, { label, scans, gps, qr });
+    } else {
+      cur.scans += scans;
+      cur.gps += gps;
+      cur.qr += qr;
+    }
+  }
+  return [...agg.values()];
+}
+
+async function refreshHeatmapTab() {
+  const summaryEl = byId("heatmapSummary");
+  const tbody = byId("heatmapPoiTbody");
+  if (!summaryEl || !tbody) return;
+  if (normalizedRole() !== "admin") return;
+
+  summaryEl.textContent = "Đang tải…";
+  tbody.innerHTML = "";
+
+  await ensureLeafletHeatLibs();
+  if (typeof L === "undefined" || typeof L.heatLayer !== "function") {
+    summaryEl.textContent = "Không tải được thư viện bản đồ.";
+    return;
+  }
+
+  let dashboard;
+  try {
+    if (!Array.isArray(pois) || pois.length === 0) await loadPois();
+    dashboard = await api("/api/tourists/poi-scan-dashboard");
+  } catch (err) {
+    summaryEl.textContent = err?.message || String(err);
+    return;
+  }
+
+  const revRows = dashboard?.revenueByPoi ?? dashboard?.RevenueByPoi ?? [];
+  const totalScans = Number(dashboard?.totalScans ?? dashboard?.TotalScans ?? 0) || 0;
+  const grand = Number(dashboard?.grandTotalVnd ?? dashboard?.GrandTotalVnd ?? 0) || 0;
+  const heatWin =
+    Number(dashboard?.heatmapRecentWindowMinutes ?? dashboard?.HeatmapRecentWindowMinutes ?? 15) || 15;
+  const qrDayUtc =
+    String(dashboard?.heatmapQrDayUtc ?? dashboard?.HeatmapQrDayUtc ?? "").trim() ||
+    new Date().toISOString().slice(0, 10);
+
+  const heatmapQrTodayPick = (row) => {
+    const v = heatmapPick(row, "qrScansTodayUtc", "QrScansTodayUtc");
+    if (v !== undefined && v !== null) return Number(v) || 0;
+    return Number(heatmapPick(row, "recentQrScans", "RecentQrScans") ?? 0) || 0;
+  };
+
+  const scanByPoi = new Map();
+  for (const row of revRows) {
+    const pid = Number(heatmapPick(row, "poiId", "PoiId"));
+    if (!pid) continue;
+    scanByPoi.set(pid, {
+      name: String(heatmapPick(row, "poiNameVi", "PoiNameVi") ?? ""),
+      scans: Number(heatmapPick(row, "scanCount", "ScanCount") ?? 0) || 0,
+      vnd: Number(heatmapPick(row, "totalVnd", "TotalVnd") ?? 0) || 0,
+      recentGps: Number(heatmapPick(row, "recentGpsHits", "RecentGpsHits") ?? 0) || 0,
+      qrToday: heatmapQrTodayPick(row)
+    });
+  }
+
+  const nameLookup = heatmapBuildPoiNameLookup(pois);
+  /** Ghép nhiều PoiId trong log → cùng một POI quản trị: cộng trọng số nhiệt. */
+  const plate = new Map();
+  let maxIntensity = 1;
+  let cntId = 0;
+  let cntName = 0;
+  let cntNone = 0;
+  let cntAmbiguous = 0;
+  let cntNoCoord = 0;
+  for (const row of revRows) {
+    const pid = Number(heatmapPick(row, "poiId", "PoiId"));
+    if (!pid) continue;
+    const meta = scanByPoi.get(pid);
+    if (!heatmapPoiHasActivity(meta)) continue;
+    const displayName = String(heatmapPick(row, "poiNameVi", "PoiNameVi") ?? meta?.name ?? "");
+    const { p, how } = heatmapResolvePoiForMap(pois, nameLookup, pid, displayName);
+    if (how === "id") cntId += 1;
+    else if (how === "name") cntName += 1;
+    else if (how === "ambiguous") cntAmbiguous += 1;
+    else cntNone += 1;
+    if (!p) continue;
+    const c = poiCoordPick(p);
+    if (!c) {
+      cntNoCoord += 1;
+      continue;
+    }
+    const w = heatmapPoiIntensity(meta);
+    const adminId = Number(p?.id ?? p?.Id);
+    if (!Number.isFinite(adminId) || adminId <= 0) continue;
+    const nm = String(p?.nameVi ?? p?.NameVi ?? displayName ?? "");
+    const prevCell = plate.get(adminId);
+    if (!prevCell) {
+      plate.set(adminId, {
+        lat: c.lat,
+        lng: c.lng,
+        w,
+        scans: Number(meta.scans) || 0,
+        recentGps: Number(meta.recentGps) || 0,
+        qrToday: Number(meta.qrToday) || 0,
+        vnd: Number(meta.vnd) || 0,
+        name: nm
+      });
+    } else {
+      prevCell.w += w;
+      prevCell.scans += Number(meta.scans) || 0;
+      prevCell.recentGps += Number(meta.recentGps) || 0;
+      prevCell.qrToday += Number(meta.qrToday) || 0;
+      prevCell.vnd += Number(meta.vnd) || 0;
+    }
+    maxIntensity = Math.max(maxIntensity, plate.get(adminId).w);
+  }
+  const heatPoints = [...plate.values()].map((v) => [v.lat, v.lng, v.w]);
+
+  const hintParts = [];
+  if (cntName > 0) hintParts.push(`${cntName} điểm ghép theo tên (PoiId log ≠ quản trị)`);
+  if (cntAmbiguous > 0) hintParts.push(`${cntAmbiguous} dòng bỏ qua: trùng tên nhiều POI — sửa Id trong log hoặc đổi tên POI`);
+  if (cntNone > 0) hintParts.push(`${cntNone} dòng không có POI khớp Id/tên`);
+  if (cntNoCoord > 0) hintParts.push(`${cntNoCoord} POI thiếu lat/lng hợp lệ`);
+  const hintMissing = hintParts.length ? ` (${hintParts.join("; ")}.)` : "";
+
+  summaryEl.textContent =
+    heatPoints.length === 0
+      ? `Tổng ${totalScans} lượt quét/mở POI (QR) — chưa vẽ được điểm nào.${hintMissing || " Kiểm tra /api/pois có lat/lng và tên trùng log."} Doanh thu: ${grand.toLocaleString("vi-VN")}đ. Bảng: GPS ${heatWin}′ · QR ngày UTC ${qrDayUtc}.`
+      : `${heatPoints.length} điểm trên bản đồ (độ nóng = max QR tích lũy, GPS ${heatWin}′+QR ngày; ${cntId} theo Id${cntName ? `, ${cntName} theo tên` : ""}). Tổng ${totalScans} lượt QR (log) · ${grand.toLocaleString("vi-VN")}đ.${hintMissing}`;
+
+  const mapEl = byId("heatmapMap");
+  if (!mapEl) return;
+
+  if (!heatmapMap) {
+    heatmapMap = L.map(mapEl, { scrollWheelZoom: true }).setView([16.05, 108.2], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(heatmapMap);
+  }
+
+  if (heatmapLayer) {
+    heatmapMap.removeLayer(heatmapLayer);
+    heatmapLayer = null;
+  }
+  if (heatmapMarkers) {
+    heatmapMap.removeLayer(heatmapMarkers);
+    heatmapMarkers = null;
+  }
+
+  if (heatPoints.length > 0) {
+    heatmapLayer = L.heatLayer(heatPoints, {
+      radius: 32,
+      blur: 28,
+      maxZoom: 17,
+      max: maxIntensity,
+      gradient: { 0.4: "blue", 0.55: "cyan", 0.7: "lime", 0.85: "yellow", 1: "red" }
+    }).addTo(heatmapMap);
+
+    heatmapMarkers = L.layerGroup();
+    for (const v of plate.values()) {
+      const nameVi = String(v.name || "");
+      const m = L.circleMarker([v.lat, v.lng], {
+        radius: 6 + Math.min(14, Math.sqrt(v.w) * 1.6),
+        stroke: true,
+        weight: 1,
+        color: "rgba(15,23,42,0.45)",
+        fillColor: "#0d9488",
+        fillOpacity: 0.35
+      });
+      m.bindPopup(
+        `<strong>${escCell(nameVi)}</strong><br><span class="hint">(Có thể gộp nhiều PoiId trong log về cùng POI)</span><br>Lượt quét QR (tích lũy, cộng): <b>${v.scans.toLocaleString("vi-VN")}</b><br>GPS ${heatWin}′: <b>${v.recentGps.toLocaleString("vi-VN")}</b> · QR ngày UTC ${escCell(qrDayUtc)}: <b>${v.qrToday.toLocaleString("vi-VN")}</b><br>Độ nhiệt bản đồ: <b>${v.w.toLocaleString("vi-VN")}</b><br>Doanh thu (cộng): ${v.vnd.toLocaleString("vi-VN")}đ`
+      );
+      m.addTo(heatmapMarkers);
+    }
+    heatmapMarkers.addTo(heatmapMap);
+
+    const latlngs = heatPoints.map(([la, lo]) => L.latLng(la, lo));
+    try {
+      heatmapMap.fitBounds(L.latLngBounds(latlngs), { padding: [36, 36], maxZoom: 14 });
+    } catch { /* ignore */ }
+  } else {
+    heatmapMap.setView([16.05, 108.2], 6);
+  }
+
+  requestAnimationFrame(() => {
+    try {
+      heatmapMap?.invalidateSize();
+    } catch { /* ignore */ }
+  });
+
+  const tableRows = heatmapBuildAggregatedTableRows(pois, nameLookup, revRows, heatmapQrTodayPick);
+  const sorted = [...tableRows].sort((a, b) => {
+    if (b.gps !== a.gps) return b.gps - a.gps;
+    if (b.qr !== a.qr) return b.qr - a.qr;
+    return b.scans - a.scans;
+  });
+  tbody.innerHTML = "";
+  if (sorted.length === 0) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 3;
+    td.className = "hint";
+    td.textContent = "Chưa có dòng thống kê theo POI trong log.";
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const r of sorted) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${escCell(r.label)}</td><td>${r.gps.toLocaleString("vi-VN")}</td><td>${r.qr.toLocaleString("vi-VN")}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function visitHistoryUserClass(username) {
+  const u = String(username || "").trim().toLowerCase();
+  if (u === "phwnii") return "vh-user-phwnii";
+  if (u === "test") return "vh-user-test";
+  return "vh-user-generic";
+}
+
+function buildVisitHistoryRows(historyRows) {
+  const arr = Array.isArray(historyRows) ? historyRows : [];
+  return arr.map((x) => {
+    const id = String(touristPick(x, "id", "Id") ?? "");
+    const user = String(touristPick(x, "username", "Username") ?? "");
+    const poiId = touristPick(x, "poiId", "PoiId");
+    const poiName = String(touristPick(x, "poiNameVi", "PoiNameVi") ?? "");
+    const event = String(touristPick(x, "eventType", "EventType") ?? "");
+    const seconds = Number(touristPick(x, "playbackSeconds", "PlaybackSeconds") ?? 0) || 0;
+    const pct = Number(touristPick(x, "watchedPercent", "WatchedPercent") ?? 0) || 0;
+    const occurredRaw = touristPick(x, "occurredAtUtc", "OccurredAtUtc");
+    const ts = occurredRaw ? new Date(occurredRaw).getTime() : 0;
+    return {
+      id,
+      user,
+      poi: `${poiId} — ${poiName}`,
+      event,
+      seconds,
+      pct,
+      occurred: fmtDate(occurredRaw),
+      ts: Number.isFinite(ts) ? ts : 0
+    };
+  });
+}
+
+function ensureVisitHistoryEventsBound() {
+  const root = byId("tourist-sec-visits");
+  if (!root || root.dataset.vhBound === "1") return;
+  root.dataset.vhBound = "1";
+
+  byId("vhSearch")?.addEventListener("input", (e) => {
+    visitHistoryState.query = String(e.target?.value || "");
+    visitHistoryState.page = 1;
+    renderVisitHistoryExplorer(window.__tgVisitHistoryRows || []);
+  });
+  byId("vhUserFilter")?.addEventListener("change", (e) => {
+    visitHistoryState.userFilter = String(e.target?.value || "");
+    visitHistoryState.page = 1;
+    renderVisitHistoryExplorer(window.__tgVisitHistoryRows || []);
+  });
+  byId("vhPageSize")?.addEventListener("change", (e) => {
+    visitHistoryState.pageSize = Math.max(1, Number(e.target?.value || 10));
+    visitHistoryState.page = 1;
+    renderVisitHistoryExplorer(window.__tgVisitHistoryRows || []);
+  });
+  byId("vhTable")?.querySelectorAll("th[data-vh-sort]")?.forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.getAttribute("data-vh-sort");
+      if (!key) return;
+      if (visitHistoryState.sortKey === key) visitHistoryState.sortDir *= -1;
+      else {
+        visitHistoryState.sortKey = key;
+        visitHistoryState.sortDir = (key === "id" || key === "occurred") ? -1 : 1;
+      }
+      visitHistoryState.page = 1;
+      renderVisitHistoryExplorer(window.__tgVisitHistoryRows || []);
+    });
+  });
+}
+
+function renderVisitHistoryExplorer(historyRows) {
+  window.__tgVisitHistoryRows = historyRows;
+  ensureVisitHistoryEventsBound();
+  const rows = buildVisitHistoryRows(historyRows);
+
+  const users = [...new Set(rows.map((r) => r.user).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const userSelect = byId("vhUserFilter");
+  if (userSelect) {
+    const selected = visitHistoryState.userFilter;
+    userSelect.innerHTML = `<option value="">Tất cả user</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
+    userSelect.value = users.includes(selected) ? selected : "";
+    visitHistoryState.userFilter = userSelect.value;
+  }
+
+  const q = visitHistoryState.query.trim().toLowerCase();
+  let filtered = rows.filter((r) => {
+    const matchQ = !q || r.id.toLowerCase().includes(q) || r.user.toLowerCase().includes(q) || r.poi.toLowerCase().includes(q) || r.event.toLowerCase().includes(q);
+    const matchU = !visitHistoryState.userFilter || r.user === visitHistoryState.userFilter;
+    return matchQ && matchU;
+  });
+
+  filtered.sort((a, b) => {
+    const key = visitHistoryState.sortKey;
+    const dir = visitHistoryState.sortDir;
+    if (key === "occurred") return (a.ts - b.ts) * dir;
+    if (key === "seconds" || key === "pct") return ((a[key] || 0) - (b[key] || 0)) * dir;
+    if (key === "id") return a.id.localeCompare(b.id, undefined, { numeric: true }) * dir;
+    return String(a[key] || "").localeCompare(String(b[key] || "")) * dir;
+  });
+
+  const total = filtered.length;
+  const pageSize = Math.max(1, Number(visitHistoryState.pageSize || 10));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (visitHistoryState.page > pages) visitHistoryState.page = 1;
+  const start = (visitHistoryState.page - 1) * pageSize;
+  const view = filtered.slice(start, start + pageSize);
+
+  const result = byId("vhResultCount");
+  if (result) result.textContent = `${total} kết quả`;
+
+  const tbody = byId("vhTbody");
+  if (tbody) {
+    tbody.innerHTML = view.length
+      ? view.map((r) => `
+        <tr>
+          <td class="vh-id">${escCell(r.id)}</td>
+          <td><span class="vh-user-badge ${visitHistoryUserClass(r.user)}">${escCell(r.user)}</span></td>
+          <td class="vh-poi">${escCell(r.poi)}</td>
+          <td><span class="vh-event-pill">${escCell(r.event)}</span></td>
+          <td class="vh-num">${r.seconds}</td>
+          <td class="vh-num">${r.pct}</td>
+          <td class="vh-occurred">${escCell(r.occurred)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="7" class="vh-no-data">Không có dữ liệu</td></tr>`;
+  }
+
+  const pageInfo = byId("vhPageInfo");
+  if (pageInfo) {
+    const from = total === 0 ? 0 : start + 1;
+    const to = Math.min(start + pageSize, total);
+    pageInfo.textContent = `Hiển thị ${from}–${to} / ${total} dòng`;
+  }
+
+  const pageBtns = byId("vhPageBtns");
+  if (pageBtns) {
+    let html = `<button ${visitHistoryState.page === 1 ? "disabled" : ""} data-vh-page="${visitHistoryState.page - 1}">‹</button>`;
+    for (let p = 1; p <= pages; p++) {
+      if (pages <= 6 || p === 1 || p === pages || Math.abs(p - visitHistoryState.page) <= 1) {
+        html += `<button class="${p === visitHistoryState.page ? "active" : ""}" data-vh-page="${p}">${p}</button>`;
+      } else if (Math.abs(p - visitHistoryState.page) === 2) {
+        html += `<button disabled class="vh-ellipsis">…</button>`;
+      }
+    }
+    html += `<button ${visitHistoryState.page === pages ? "disabled" : ""} data-vh-page="${visitHistoryState.page + 1}">›</button>`;
+    pageBtns.innerHTML = html;
+    pageBtns.querySelectorAll("button[data-vh-page]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        visitHistoryState.page = Number(btn.getAttribute("data-vh-page") || 1);
+        renderVisitHistoryExplorer(window.__tgVisitHistoryRows || []);
+      });
+    });
+  }
+
+  byId("vhTable")?.querySelectorAll("th[data-vh-sort]")?.forEach((th) => {
+    const k = th.getAttribute("data-vh-sort");
+    const icon = th.querySelector(".vh-sort-icon");
+    if (!icon) return;
+    if (k === visitHistoryState.sortKey) {
+      th.classList.add("sorted");
+      icon.textContent = visitHistoryState.sortDir === 1 ? "↑" : "↓";
+    } else {
+      th.classList.remove("sorted");
+      icon.textContent = "↕";
+    }
+  });
+}
+
+const refreshTokenState = { sortKey: "id", sortDir: -1, page: 1, pageSize: 10, query: "", userFilter: "" };
+
+function buildRefreshTokenRows(tokens) {
+  const arr = Array.isArray(tokens) ? tokens : [];
+  const now = Date.now();
+  return arr.map((x) => {
+    const id = String(touristPick(x, "id", "Id") ?? "");
+    const user = String(touristPick(x, "username", "Username") ?? "");
+    const device = String(touristPick(x, "deviceId", "DeviceId") || "");
+    const expiresRaw = touristPick(x, "expiresAtUtc", "ExpiresAtUtc");
+    const revokedRaw = touristPick(x, "revokedAtUtc", "RevokedAtUtc");
+    const expiresTs = expiresRaw ? new Date(expiresRaw).getTime() : 0;
+    const revokedTs = revokedRaw ? new Date(revokedRaw).getTime() : 0;
+    const status = revokedRaw ? "revoked" : (expiresTs > now ? "active" : "expired");
+    return {
+      id,
+      user,
+      device: device || "—",
+      status,
+      statusLabel: status === "active" ? "Đang hiệu lực" : (status === "revoked" ? "Đã revoke" : "Hết hạn"),
+      expires: fmtDate(expiresRaw),
+      revoked: revokedRaw ? fmtDate(revokedRaw) : "—",
+      expiresTs: Number.isFinite(expiresTs) ? expiresTs : 0,
+      revokedTs: Number.isFinite(revokedTs) ? revokedTs : 0
+    };
+  });
+}
+
+function ensureRefreshTokenEventsBound() {
+  const root = byId("tourist-sec-tokens");
+  if (!root || root.dataset.rtBound === "1") return;
+  root.dataset.rtBound = "1";
+
+  byId("rtSearch")?.addEventListener("input", (e) => {
+    refreshTokenState.query = String(e.target?.value || "");
+    refreshTokenState.page = 1;
+    renderRefreshTokenExplorer(window.__tgRefreshTokenRows || []);
+  });
+  byId("rtUserFilter")?.addEventListener("change", (e) => {
+    refreshTokenState.userFilter = String(e.target?.value || "");
+    refreshTokenState.page = 1;
+    renderRefreshTokenExplorer(window.__tgRefreshTokenRows || []);
+  });
+  byId("rtPageSize")?.addEventListener("change", (e) => {
+    refreshTokenState.pageSize = Math.max(1, Number(e.target?.value || 10));
+    refreshTokenState.page = 1;
+    renderRefreshTokenExplorer(window.__tgRefreshTokenRows || []);
+  });
+  byId("rtTable")?.querySelectorAll("th[data-rt-sort]")?.forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.getAttribute("data-rt-sort");
+      if (!key) return;
+      if (refreshTokenState.sortKey === key) refreshTokenState.sortDir *= -1;
+      else {
+        refreshTokenState.sortKey = key;
+        refreshTokenState.sortDir = (key === "id" || key === "expires" || key === "revoked") ? -1 : 1;
+      }
+      refreshTokenState.page = 1;
+      renderRefreshTokenExplorer(window.__tgRefreshTokenRows || []);
+    });
+  });
+}
+
+function renderRefreshTokenExplorer(tokens) {
+  window.__tgRefreshTokenRows = tokens;
+  ensureRefreshTokenEventsBound();
+  const rows = buildRefreshTokenRows(tokens);
+
+  const users = [...new Set(rows.map((r) => r.user).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const userSelect = byId("rtUserFilter");
+  if (userSelect) {
+    const selected = refreshTokenState.userFilter;
+    userSelect.innerHTML = `<option value="">Tất cả user</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
+    userSelect.value = users.includes(selected) ? selected : "";
+    refreshTokenState.userFilter = userSelect.value;
+  }
+
+  const q = refreshTokenState.query.trim().toLowerCase();
+  let filtered = rows.filter((r) => {
+    const matchQ = !q || r.id.toLowerCase().includes(q) || r.user.toLowerCase().includes(q) || r.device.toLowerCase().includes(q);
+    const matchU = !refreshTokenState.userFilter || r.user === refreshTokenState.userFilter;
+    return matchQ && matchU;
+  });
+
+  filtered.sort((a, b) => {
+    const key = refreshTokenState.sortKey;
+    const dir = refreshTokenState.sortDir;
+    if (key === "expires") return (a.expiresTs - b.expiresTs) * dir;
+    if (key === "revoked") return (a.revokedTs - b.revokedTs) * dir;
+    if (key === "id") return a.id.localeCompare(b.id, undefined, { numeric: true }) * dir;
+    return String(a[key] || "").localeCompare(String(b[key] || "")) * dir;
+  });
+
+  const total = filtered.length;
+  const pageSize = Math.max(1, Number(refreshTokenState.pageSize || 10));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (refreshTokenState.page > pages) refreshTokenState.page = 1;
+  const start = (refreshTokenState.page - 1) * pageSize;
+  const view = filtered.slice(start, start + pageSize);
+
+  const result = byId("rtResultCount");
+  if (result) result.textContent = `${total} kết quả`;
+
+  const tbody = byId("rtTbody");
+  if (tbody) {
+    tbody.innerHTML = view.length
+      ? view.map((r) => `
+        <tr>
+          <td class="vh-id">${escCell(r.id)}</td>
+          <td><span class="vh-user-badge ${visitHistoryUserClass(r.user)}">${escCell(r.user)}</span></td>
+          <td class="vh-poi">${escCell(r.device)}</td>
+          <td class="vh-occurred">${escCell(r.expires)}</td>
+          <td class="vh-occurred">${escCell(r.revoked)}</td>
+        </tr>`).join("")
+      : `<tr><td colspan="5" class="vh-no-data">Không có dữ liệu</td></tr>`;
+  }
+
+  const pageInfo = byId("rtPageInfo");
+  if (pageInfo) {
+    const from = total === 0 ? 0 : start + 1;
+    const to = Math.min(start + pageSize, total);
+    pageInfo.textContent = `Hiển thị ${from}–${to} / ${total} dòng`;
+  }
+
+  const pageBtns = byId("rtPageBtns");
+  if (pageBtns) {
+    let html = `<button ${refreshTokenState.page === 1 ? "disabled" : ""} data-rt-page="${refreshTokenState.page - 1}">‹</button>`;
+    for (let p = 1; p <= pages; p++) {
+      if (pages <= 6 || p === 1 || p === pages || Math.abs(p - refreshTokenState.page) <= 1) {
+        html += `<button class="${p === refreshTokenState.page ? "active" : ""}" data-rt-page="${p}">${p}</button>`;
+      } else if (Math.abs(p - refreshTokenState.page) === 2) {
+        html += `<button disabled class="vh-ellipsis">…</button>`;
+      }
+    }
+    html += `<button ${refreshTokenState.page === pages ? "disabled" : ""} data-rt-page="${refreshTokenState.page + 1}">›</button>`;
+    pageBtns.innerHTML = html;
+    pageBtns.querySelectorAll("button[data-rt-page]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        refreshTokenState.page = Number(btn.getAttribute("data-rt-page") || 1);
+        renderRefreshTokenExplorer(window.__tgRefreshTokenRows || []);
+      });
+    });
+  }
+
+  byId("rtTable")?.querySelectorAll("th[data-rt-sort]")?.forEach((th) => {
+    const k = th.getAttribute("data-rt-sort");
+    const icon = th.querySelector(".vh-sort-icon");
+    if (!icon) return;
+    if (k === refreshTokenState.sortKey) {
+      th.classList.add("sorted");
+      icon.textContent = refreshTokenState.sortDir === 1 ? "↑" : "↓";
+    } else {
+      th.classList.remove("sorted");
+      icon.textContent = "↕";
+    }
+  });
+}
 
 /** GET /api/pois — render bảng + select bản dịch */
 async function loadPois() {
@@ -357,37 +1027,120 @@ function touristArray(parent, camel, pascal) {
   return Array.isArray(b) ? b : [];
 }
 
-/** Histogram 24 ô (VisitHistory) từ API dashboard.hourlyActivity. */
-function touristHourlyBarsHtml(hourly, totalEvents24h) {
-  const arr = Array.isArray(hourly) && hourly.length === 24
-    ? hourly.map((x) => Number(x) || 0)
-    : Array.from({ length: 24 }, (_, i) => Number(hourly?.[i]) || 0);
-  const sum24 = typeof totalEvents24h === "number" ? totalEvents24h : arr.reduce((a, b) => a + b, 0);
-  const max = Math.max(1, ...arr);
-  const empty = sum24 === 0;
-  const cells = arr.map((v, i) => {
-    const px = empty ? 0 : Math.round((v / max) * 92) + (v > 0 ? 8 : 5);
-    const title = `Ô ${i + 1}/24: ${v.toLocaleString("vi-VN")} sự kiện (24 giờ gần nhất; trái = xa hơn, phải = gần hiện tại)`;
-    if (empty) {
-      return `<div class="tourist-hour-cell" title="${escCell(title)}"><span class="tourist-hour-bar tourist-hour-bar--empty" aria-hidden="true"></span><span class="tourist-hour-label">${i + 1}</span></div>`;
+function renderVisitHistoryTopPoisLineChart(dashboard) {
+  const card = byId("vhLineCard");
+  const legendRoot = byId("vhLineLegend");
+  const canvas = byId("vhLineChart");
+  const hint = byId("vhLineRangeHint");
+  if (!card || !legendRoot || !canvas) return;
+  const chartData = dashboard?.visitHistoryTopPoisChart ?? dashboard?.VisitHistoryTopPoisChart;
+  const w0 = chartData?.weekStartUtc ?? chartData?.WeekStartUtc;
+  const w1 = chartData?.weekEndUtc ?? chartData?.WeekEndUtc;
+  if (hint && w0 && w1) {
+    hint.textContent = `Top 5 POI — ${w0} → ${w1} (UTC, 7 ngày)`;
+  } else if (hint) {
+    hint.textContent = "Top 5 POI — 7 ngày (mặc định: 7 ngày gần nhất, UTC)";
+  }
+  const labels = Array.isArray(chartData?.labels) ? chartData.labels : [];
+  const rawSeries = Array.isArray(chartData?.series) ? chartData.series : [];
+  const series = rawSeries
+    .map((s) => {
+      const dailyCounts = Array.isArray(s?.dailyCounts) ? s.dailyCounts.map(n => Number(n || 0)) : [];
+      const weeklyTotal = dailyCounts.reduce((sum, n) => sum + n, 0);
+      return { ...s, dailyCounts, weeklyTotal };
+    })
+    .sort((a, b) => {
+      if (b.weeklyTotal !== a.weeklyTotal) return b.weeklyTotal - a.weeklyTotal;
+      return String(a?.shortName || a?.poiNameVi || "").localeCompare(String(b?.shortName || b?.poiNameVi || ""));
+    })
+    .slice(0, 5);
+  if (!labels.length || !series.length || typeof Chart === "undefined") {
+    card.classList.add("hidden");
+    if (visitHistoryLineChart) {
+      visitHistoryLineChart.destroy();
+      visitHistoryLineChart = null;
     }
-    return `<div class="tourist-hour-cell" title="${escCell(title)}"><span class="tourist-hour-bar tourist-hour-bar--value" style="--bar-h:${px}px" aria-hidden="true"></span><span class="tourist-hour-label">${i + 1}</span></div>`;
-  }).join("");
-  const emptyHint = empty
-    ? `<p class="tourist-hourly-empty-hint">Chưa có VisitHistory trong cửa sổ 24 giờ. Các cột xám là 24 mốc giờ (trái = xa hơn, phải = hiện tại).</p>`
-    : "";
-  return `
-  <section class="tourist-hourly-panel" aria-label="Biểu đồ VisitHistory 24 giờ">
-    <div class="tourist-hourly-panel__head">
-      <h4 class="tourist-hourly-panel__title">Hoạt động VisitHistory theo giờ</h4>
-      <span class="tourist-hourly-panel__total">Tổng: <strong>${sum24.toLocaleString("vi-VN")}</strong> sự kiện</span>
-    </div>
-    ${emptyHint}
-    <div class="tourist-hourly-chart${empty ? " tourist-hourly-chart--empty" : ""}" role="img" aria-label="24 cột theo giờ">
-      <div class="tourist-hourly-bars">${cells}</div>
-    </div>
-    <div class="tourist-hourly-axis" aria-hidden="true"><span>−24h</span><span>Hiện tại →</span></div>
-  </section>`;
+    return;
+  }
+  card.classList.remove("hidden");
+
+  const palette = ["#1a4fd6", "#e67e22", "#27ae60", "#8e44ad", "#e74c3c"];
+  const datasets = series.map((s, idx) => {
+    const color = palette[idx % palette.length];
+    const y = Array.isArray(s?.dailyCounts) ? s.dailyCounts : [];
+    const key = `poi-${Number(s?.poiId || idx)}`;
+    return {
+      key,
+      label: String(s?.shortName || s?.poiNameVi || `POI ${idx + 1}`),
+      data: y,
+      borderColor: color,
+      backgroundColor: `${color}22`,
+      pointBackgroundColor: color,
+      borderWidth: 2.5,
+      pointRadius: 3.5,
+      pointHoverRadius: 5,
+      tension: 0.35,
+      fill: false,
+      hidden: visitHistoryLineHidden.has(key)
+    };
+  });
+
+  legendRoot.innerHTML = "";
+  datasets.forEach((ds, idx) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = `vh-line-legend-item${ds.hidden ? " hidden" : ""}`;
+    item.innerHTML = `<span class="vh-line-legend-dot" style="background:${ds.borderColor}"></span>${escCell(ds.label)}`;
+    item.addEventListener("click", () => {
+      const key = ds.key;
+      if (visitHistoryLineHidden.has(key)) visitHistoryLineHidden.delete(key);
+      else visitHistoryLineHidden.add(key);
+      if (visitHistoryLineChart?.data?.datasets?.[idx]) {
+        visitHistoryLineChart.data.datasets[idx].hidden = visitHistoryLineHidden.has(key);
+        visitHistoryLineChart.update();
+      }
+      item.classList.toggle("hidden", visitHistoryLineHidden.has(key));
+    });
+    legendRoot.appendChild(item);
+  });
+
+  if (visitHistoryLineChart) {
+    visitHistoryLineChart.destroy();
+    visitHistoryLineChart = null;
+  }
+  visitHistoryLineChart = new Chart(canvas.getContext("2d"), {
+    type: "line",
+    data: { labels, datasets: datasets.map(({ key, ...rest }) => rest) },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y} lượt`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(226,221,214,0.35)" },
+          ticks: { color: "#a09d98", font: { size: 12 } }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "#e2ddd6" },
+          ticks: {
+            color: "#a09d98",
+            font: { size: 11 },
+            precision: 0,
+            callback: (v) => `${v} lượt`
+          }
+        }
+      }
+    }
+  });
 }
 
 function touristLiveSessionsHtml(live) {
@@ -544,18 +1297,82 @@ async function loadComments() {
   renderComments(data);
 }
 
+function syncVisitHistoryChartYearSelect() {
+  const sel = byId("vhChartYear");
+  if (!sel) return;
+  const y = new Date().getUTCFullYear();
+  const minY = y - 5;
+  const prev = sel.value;
+  const opts = [];
+  for (let yy = minY; yy <= y; yy++) opts.push(`<option value="${yy}">${yy}</option>`);
+  sel.innerHTML = opts.join("");
+  if (prev && Number(prev) >= minY && Number(prev) <= y) sel.value = prev;
+  else sel.value = String(y);
+}
+
+function syncVisitHistoryChartDateInputBounds() {
+  const yearSel = byId("vhChartYear");
+  const dateIn = byId("vhChartWeekStart");
+  if (!yearSel || !dateIn) return;
+  const year = Number(yearSel.value || new Date().getUTCFullYear());
+  const jan1 = `${year}-01-01`;
+  const dec31 = `${year}-12-31`;
+  const now = new Date();
+  const uy = now.getUTCFullYear();
+  const um = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const ud = String(now.getUTCDate()).padStart(2, "0");
+  const todayUtcStr = `${uy}-${um}-${ud}`;
+  /** Ngày bắt đầu tối đa: cuối năm dương lịch, và không sau hôm nay UTC (tuần gần hiện tại có thể < 7 ngày). */
+  let maxStart = dec31;
+  if (year === uy) maxStart = todayUtcStr < dec31 ? todayUtcStr : dec31;
+  else if (year > uy) maxStart = jan1;
+  if (maxStart < jan1) maxStart = jan1;
+  dateIn.min = jan1;
+  dateIn.max = maxStart;
+  if (dateIn.value && (dateIn.value < dateIn.min || dateIn.value > dateIn.max)) {
+    dateIn.value = dateIn.value < dateIn.min ? dateIn.min : dateIn.max;
+  }
+}
+
+function ensureVisitHistoryChartControlsBound() {
+  const root = byId("tourist-sec-visits");
+  if (!root || root.dataset.vhChartBound === "1") return;
+  root.dataset.vhChartBound = "1";
+  syncVisitHistoryChartYearSelect();
+  syncVisitHistoryChartDateInputBounds();
+  byId("vhChartYear")?.addEventListener("change", () => {
+    syncVisitHistoryChartDateInputBounds();
+  });
+  byId("vhChartApply")?.addEventListener("click", () => {
+    const v = byId("vhChartWeekStart")?.value?.trim();
+    if (!v) {
+      alert("Chọn ngày bắt đầu (tối đa 7 ngày; gần hôm nay có thể ít hơn, theo UTC).");
+      return;
+    }
+    visitHistoryChartState.customWeekStart = v;
+    loadTouristOverview().catch((err) => alert(err?.message || String(err)));
+  });
+  byId("vhChartReset")?.addEventListener("click", () => {
+    visitHistoryChartState.customWeekStart = null;
+    const d = byId("vhChartWeekStart");
+    if (d) d.value = "";
+    loadTouristOverview().catch((err) => alert(err?.message || String(err)));
+  });
+}
+
 async function loadTouristOverview() {
   if (normalizedRole() !== "admin") return;
-  const [oRes, sRes] = await Promise.allSettled([
-    api("/api/tourists/overview"),
-    api("/api/tourists/poi-scan-dashboard")
+  const params = new URLSearchParams();
+  if (visitHistoryChartState.customWeekStart)
+    params.set("visitHistoryChartWeekStart", visitHistoryChartState.customWeekStart);
+  const overviewUrl = params.toString() ? `/api/tourists/overview?${params.toString()}` : "/api/tourists/overview";
+  const [oRes] = await Promise.allSettled([
+    api(overviewUrl)
   ]);
   if (oRes.status === "rejected") throw oRes.reason;
   touristOverview = oRes.value;
-  const scanDash = sRes.status === "fulfilled"
-    ? sRes.value
-    : { logs: [], revenueByPoi: [], grandTotalVnd: 0, totalScans: 0 };
 
+  const hisArr = touristArray(touristOverview, "visitHistory", "VisitHistory");
   const dash = touristOverview.dashboard ?? touristOverview.Dashboard ?? {};
   const statsLine = byId("touristLoginStatsLine");
   if (statsLine) {
@@ -573,9 +1390,6 @@ async function loadTouristOverview() {
     const sessToday = Number(touristPick(dash, "sessionsToday", "SessionsToday") ?? 0).toLocaleString("vi-VN");
     const actSess = Number(touristPick(dash, "activeLoginSessions", "ActiveLoginSessions") ?? 0).toLocaleString("vi-VN");
     const actAcc = Number(touristPick(dash, "activeLoginAccounts", "ActiveLoginAccounts") ?? 0).toLocaleString("vi-VN");
-    let hourly = dash.hourlyActivity ?? dash.HourlyActivity;
-    if (!Array.isArray(hourly)) hourly = [];
-    const sum24 = hourly.reduce((a, b) => a + (Number(b) || 0), 0);
     let live = dash.liveSessions ?? dash.LiveSessions;
     if (!Array.isArray(live)) live = [];
     const pill = (num, label, modClass = "") =>
@@ -586,10 +1400,7 @@ async function loadTouristOverview() {
         ${pill(totalAcc, "Tài khoản", "tourist-dash-pill--tone-slate")}
         ${pill(activated, "Đã kích hoạt / Premium", "tourist-dash-pill--tone-emerald")}
         ${pill(sessToday, "Visit history (hôm nay)", "tourist-dash-pill--tone-amber")}
-        ${pill(actSess, "Phiên refresh token còn hạn", "tourist-dash-pill--tone-violet")}
-        ${pill(actAcc, "Tài khoản có ≥1 phiên đó", "tourist-dash-pill--tone-rose")}
       </div>
-      ${touristHourlyBarsHtml(hourly, sum24)}
       <section class="tourist-dash-sessions" aria-labelledby="tourist-live-heading">
         <div class="tourist-dash-sessions__head">
           <h4 id="tourist-live-heading" class="tourist-live-title">Phiên gần đây</h4>
@@ -599,12 +1410,21 @@ async function loadTouristOverview() {
       </section>
     `;
   }
+  const chartMeta = dash?.visitHistoryTopPoisChart ?? dash?.VisitHistoryTopPoisChart;
+  const chartYear = chartMeta?.year ?? chartMeta?.Year;
+  ensureVisitHistoryChartControlsBound();
+  syncVisitHistoryChartYearSelect();
+  if (chartYear != null && chartYear !== "") {
+    const ys = byId("vhChartYear");
+    if (ys && [...ys.options].some((o) => o.value === String(chartYear))) ys.value = String(chartYear);
+  }
+  syncVisitHistoryChartDateInputBounds();
+  const wk = byId("vhChartWeekStart");
+  if (wk && visitHistoryChartState.customWeekStart) wk.value = visitHistoryChartState.customWeekStart;
+  renderVisitHistoryTopPoisLineChart(dash);
 
   const usersArr = touristArray(touristOverview, "users", "Users");
   const tokArr = touristArray(touristOverview, "refreshTokens", "RefreshTokens");
-  const favArr = touristArray(touristOverview, "favorites", "Favorites");
-  const hisArr = touristArray(touristOverview, "visitHistory", "VisitHistory");
-  const payArr = touristArray(touristOverview, "payments", "Payments");
 
   const setMeta = (id, text) => {
     const el = byId(id);
@@ -612,9 +1432,7 @@ async function loadTouristOverview() {
   };
   setMeta("touristMetaUsers", usersArr.length ? `(hiển thị ${usersArr.length})` : "(0)");
   setMeta("touristMetaTokens", `(hiển thị ${tokArr.length} / tối đa 500)`);
-  setMeta("touristMetaFavorites", `(hiển thị ${favArr.length} / tối đa 200)`);
   setMeta("touristMetaVisits", `(hiển thị ${hisArr.length} / tối đa 300)`);
-  setMeta("touristMetaPayments", `(hiển thị ${payArr.length} / tối đa 200)`);
 
   const userBody = byId("touristUserTbody") || byId("touristUserTable")?.querySelector("tbody");
   if (userBody) {
@@ -644,83 +1462,10 @@ async function loadTouristOverview() {
       : touristEmptyRow(8, "Chưa có tài khoản du khách.");
   }
 
-  const tokenBody = byId("touristTokenTbody") || byId("touristTokenTable")?.querySelector("tbody");
-  if (tokenBody) {
-    tokenBody.innerHTML = tokArr.length
-      ? tokArr.map((x) => {
-          const id = touristPick(x, "id", "Id");
-          return `<tr><td>${id}</td><td>${escCell(touristPick(x, "username", "Username"))}</td><td>${escCell(touristPick(x, "deviceId", "DeviceId") || "")}</td><td>${fmtDate(touristPick(x, "expiresAtUtc", "ExpiresAtUtc"))}</td><td>${fmtDate(touristPick(x, "revokedAtUtc", "RevokedAtUtc"))}</td></tr>`;
-        }).join("")
-      : touristEmptyRow(5, "Chưa có bản ghi RefreshToken (hoặc chưa có phiên trong phạm vi truy vấn).");
-  }
+  renderRefreshTokenExplorer(tokArr);
 
-  const favBody = byId("touristFavoriteTbody") || byId("touristFavoriteTable")?.querySelector("tbody");
-  if (favBody) {
-    favBody.innerHTML = favArr.length
-      ? favArr.map((x) => {
-          const pid = touristPick(x, "poiId", "PoiId");
-          return `<tr><td>${touristPick(x, "id", "Id")}</td><td>${escCell(touristPick(x, "username", "Username"))}</td><td>${pid} — ${escCell(touristPick(x, "poiNameVi", "PoiNameVi"))}</td><td>${fmtDate(touristPick(x, "createdAtUtc", "CreatedAtUtc"))}</td></tr>`;
-        }).join("")
-      : touristEmptyRow(4, "Chưa có favorite.");
-  }
+  renderVisitHistoryExplorer(hisArr);
 
-  const hisBody = byId("touristHistoryTbody") || byId("touristHistoryTable")?.querySelector("tbody");
-  if (hisBody) {
-    hisBody.innerHTML = hisArr.length
-      ? hisArr.map((x) => {
-          const pid = touristPick(x, "poiId", "PoiId");
-          return `<tr><td>${touristPick(x, "id", "Id")}</td><td>${escCell(touristPick(x, "username", "Username"))}</td><td>${pid} — ${escCell(touristPick(x, "poiNameVi", "PoiNameVi"))}</td><td>${escCell(touristPick(x, "eventType", "EventType"))}</td><td>${touristPick(x, "playbackSeconds", "PlaybackSeconds")}</td><td>${touristPick(x, "watchedPercent", "WatchedPercent")}</td><td>${fmtDate(touristPick(x, "occurredAtUtc", "OccurredAtUtc"))}</td></tr>`;
-        }).join("")
-      : touristEmptyRow(7, "Chưa có VisitHistory (ứng dụng chưa ghi lịch sử xem).");
-  }
-
-  const payBody = byId("touristPaymentTbody") || byId("touristPaymentTable")?.querySelector("tbody");
-  if (payBody) {
-    payBody.innerHTML = payArr.length
-      ? payArr.map((x) => `
-      <tr><td>${touristPick(x, "id", "Id")}</td><td>${escCell(touristPick(x, "username", "Username"))}</td><td>${escCell(touristPick(x, "provider", "Provider"))}</td><td>${escCell(touristPick(x, "providerRef", "ProviderRef"))}</td><td>${escCell(touristPick(x, "planCode", "PlanCode"))}</td><td>${Number(touristPick(x, "amount", "Amount") || 0).toLocaleString("vi-VN")} ${escCell(touristPick(x, "currency", "Currency"))}</td><td>${escCell(touristPick(x, "status", "Status"))}</td><td>${fmtDate(touristPick(x, "createdAtUtc", "CreatedAtUtc"))}</td></tr>
-    `).join("")
-      : touristEmptyRow(8, "Chưa có giao dịch thanh toán.");
-  }
-
-  const revSummary = byId("touristPoiScanRevenueSummary");
-  if (revSummary) {
-    const gt = Number(touristPick(scanDash, "grandTotalVnd", "GrandTotalVnd") ?? 0);
-    const tc = Number(touristPick(scanDash, "totalScans", "TotalScans") ?? 0);
-    revSummary.textContent = `Tổng doanh thu (VND, từ quét QR): ${gt.toLocaleString("vi-VN")} · Số lượt quét: ${tc.toLocaleString("vi-VN")}`;
-  }
-  const revBody = byId("touristPoiScanRevenueTable")?.querySelector("tbody");
-  if (revBody) {
-    const rows = touristArray(scanDash, "revenueByPoi", "RevenueByPoi");
-    revBody.innerHTML = rows.length
-      ? rows.map(x => `
-        <tr><td>${touristPick(x, "poiId", "PoiId")}</td><td>${escCell(touristPick(x, "poiNameVi", "PoiNameVi"))}</td><td>${Number(touristPick(x, "totalVnd", "TotalVnd") || 0).toLocaleString("vi-VN")}</td><td>${touristPick(x, "scanCount", "ScanCount")}</td></tr>
-      `).join("")
-      : `<tr><td colspan="4" class="hint">Chưa có dữ liệu quét QR.</td></tr>`;
-  }
-  const scanBody = byId("touristPoiScanLogTable")?.querySelector("tbody");
-  if (scanBody) {
-    const logs = touristArray(scanDash, "logs", "Logs");
-    scanBody.innerHTML = logs.length
-      ? logs.map(x => `
-        <tr>
-          <td>${touristPick(x, "id", "Id")}</td>
-          <td>${escCell(touristPick(x, "username", "Username"))}</td>
-          <td>${touristPick(x, "poiId", "PoiId")}</td>
-          <td>${escCell(touristPick(x, "poiNameVi", "PoiNameVi"))}</td>
-          <td>${escCell(touristPick(x, "eventType", "EventType"))}</td>
-          <td>${Number(touristPick(x, "amountVnd", "AmountVnd") || 0).toLocaleString("vi-VN")}</td>
-          <td title="${escCell(touristPick(x, "deviceId", "DeviceId"))}">${escCell(touristPick(x, "deviceId", "DeviceId"))}</td>
-          <td title="${escCell(touristPick(x, "deviceModel", "DeviceModel"))}">${escCell(touristPick(x, "deviceModel", "DeviceModel"))}</td>
-          <td>${escCell(touristPick(x, "appPlatform", "AppPlatform"))}</td>
-          <td>${fmtDate(touristPick(x, "createdAtUtc", "CreatedAtUtc"))}</td>
-        </tr>
-      `).join("")
-      : `<tr><td colspan="10" class="hint">Chưa có lịch sử quét.</td></tr>`;
-  }
-
-  const logList = touristArray(scanDash, "logs", "Logs");
-  setMeta("touristMetaQrLogs", `(hiển thị ${logList.length} / tối đa 500)`);
 }
 
 async function loadTranslation(id) {
@@ -852,7 +1597,31 @@ document.querySelectorAll(".tab").forEach(btn => {
         alert(err?.message || String(err));
       });
     }
+    if (btn.dataset.tab === "heatmapTab" && normalizedRole() === "admin") {
+      refreshHeatmapTab()
+        .then(() => {
+          setTimeout(() => {
+            try {
+              heatmapMap?.invalidateSize();
+            } catch { /* ignore */ }
+          }, 220);
+        })
+        .catch((err) => alert(err?.message || String(err)));
+    }
   });
+});
+
+byId("heatmapRefreshBtn")?.addEventListener("click", () => {
+  if (normalizedRole() !== "admin") return;
+  refreshHeatmapTab()
+    .then(() => {
+      setTimeout(() => {
+        try {
+          heatmapMap?.invalidateSize();
+        } catch { /* ignore */ }
+      }, 220);
+    })
+    .catch((err) => alert(err?.message || String(err)));
 });
 
 byId("audioTableWrap")?.addEventListener("click", async (e) => {

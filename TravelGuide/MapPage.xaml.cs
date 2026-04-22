@@ -1,6 +1,10 @@
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Maui.Devices.Sensors;
 using System.Globalization;
+#if ANDROID
+using Android.OS;
+using Android.Webkit;
+#endif
 using System.Text;
 using System.Text.Json;
 using TravelGuide.Models;
@@ -9,7 +13,7 @@ namespace TravelGuide;
 
 /// <summary>
 /// Trang bản đồ WebView: hiển thị POI, vị trí user, highlight POI đang trong geofence,
-/// và bridge <c>app://</c> để TTS / định vị. Luôn dùng Mapbox GL (token: Preferences, env, hoặc file Raw).
+/// và bridge HTTPS <see cref="MapJsBridgeRoot"/> (Android không tin cậy <c>app://</c> cho Navigating). Bản đồ: Leaflet + OSM.
 /// </summary>
 public partial class MapPage : ContentPage
 {
@@ -20,6 +24,11 @@ public partial class MapPage : ContentPage
 
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
+
+    /// <summary>HTTPS + host .invalid: Android WebView thường không gọi <see cref="MapView_Navigating"/> với <c>app://</c> → overlay "Đang tải bản đồ" kẹt vĩnh viễn.</summary>
+    private const string MapJsBridgeRoot = "https://tg.invalid";
+
+    private CancellationTokenSource? _mapLoadingFallbackCts;
 
     /// <summary>Chọn chuỗi theo ngôn ngữ UI hiện tại (<see cref="AppLanguage"/>).</summary>
     private static string T(string vi, string en, string ja, string ko, string zh) =>
@@ -37,6 +46,19 @@ public partial class MapPage : ContentPage
     public MapPage(DatabaseService dbService, NarrationEngine narrationEngine, GpsBackgroundService gpsService, GeofenceEngine geofenceEngine)
     {
         InitializeComponent();
+#if ANDROID
+        mapView.HandlerChanged += (_, _) =>
+        {
+            if (mapView.Handler?.PlatformView is not Android.Webkit.WebView awv)
+                return;
+            var s = awv.Settings;
+            s.JavaScriptEnabled = true;
+            s.DomStorageEnabled = true;
+            s.DatabaseEnabled = true;
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Lollipop)
+                s.MixedContentMode = MixedContentHandling.AlwaysAllow;
+        };
+#endif
         _dbService = dbService;
         _narrationEngine = narrationEngine;
         _gpsService = gpsService;
@@ -79,6 +101,7 @@ public partial class MapPage : ContentPage
         _geofenceEngine.OnPoiEntered -= OnPoiEntered;
         _geofenceEngine.OnPoiTriggered -= OnPoiTriggered;
         _geofenceEngine.OnPoiExited -= OnPoiExited;
+        CancelMapLoadingFallback();
     }
 
     /// <summary>Callback <see cref="GeofenceEngine.OnPoiEntered"/>: banner + highlight marker.</summary>
@@ -139,58 +162,159 @@ public partial class MapPage : ContentPage
         if (_nearestPlace != null) await _narrationEngine.SpeakExclusiveAsync(_nearestPlace);
     }
 
-    /// <summary>Xử lý custom URL từ JavaScript: lỗi, TTS từ popup, nút định vị, map đã load.</summary>
+    /// <summary>Xử lý URL từ JS (<see cref="MapJsBridgeRoot"/>). Hỗ trợ cũ <c>app://</c> nếu còn sót.</summary>
     private async void MapView_Navigating(object sender, WebNavigatingEventArgs e)
     {
-        if (!e.Url.StartsWith("app://")) return;
+        if (!TryMapBridgeUri(e.Url, out var u))
+            return;
         e.Cancel = true;
 
-        if (e.Url.Contains("error"))
+        var path = u.AbsolutePath.Trim('/').ToLowerInvariant();
+        switch (path)
         {
-            string errorMsg = Uri.UnescapeDataString(e.Url.Replace("app://error?msg=", ""));
-            LoadingOverlay.IsVisible = false;
-            LblGpsStatus.Text = $"JS ERR: {errorMsg[..Math.Min(errorMsg.Length, 60)]}";
-        }
-        else if (e.Url.Contains("speak"))
-        {
-            var parsed = ParseSpeakUrl(e.Url);
-            var places = await _dbService.GetPlacesAsync();
-            TouristPlace? matched = null;
-            if (parsed.PoiId > 0)
-                matched = places.FirstOrDefault(p => p.Id == parsed.PoiId);
-
-            if (matched is null && !string.IsNullOrWhiteSpace(parsed.RawText))
+            case "error":
             {
-                var raw = parsed.RawText;
-                matched = places.FirstOrDefault(p =>
-                    raw.StartsWith(p.Name, StringComparison.OrdinalIgnoreCase) ||
-                    raw.Contains(p.Name, StringComparison.OrdinalIgnoreCase));
+                var errorMsg = Uri.UnescapeDataString(QueryFirst(u, "msg") ?? "");
+                CancelMapLoadingFallback();
+                LoadingOverlay.IsVisible = false;
+                LblGpsStatus.Text = $"JS ERR: {errorMsg[..Math.Min(errorMsg.Length, 60)]}";
+                break;
+            }
+            case "speak":
+            {
+                var parsed = ParseSpeakUrl(u);
+                var places = await _dbService.GetPlacesAsync();
+                TouristPlace? matched = null;
+                if (parsed.PoiId > 0)
+                    matched = places.FirstOrDefault(p => p.Id == parsed.PoiId);
+
+                if (matched is null && !string.IsNullOrWhiteSpace(parsed.RawText))
+                {
+                    var raw = parsed.RawText;
+                    matched = places.FirstOrDefault(p =>
+                        raw.StartsWith(p.Name, StringComparison.OrdinalIgnoreCase) ||
+                        raw.Contains(p.Name, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (matched != null)
+                    await _narrationEngine.SpeakExclusiveAsync(matched);
+                break;
+            }
+            case "locate":
+                await GetUserLocationAsync();
+                break;
+            case "loaded":
+                CancelMapLoadingFallback();
+                LoadingOverlay.IsVisible = false;
+                UpdateGpsStatus(T("Đã tải bản đồ", "Map ready", "地図を読み込みました", "지도 로드 완료", "地图已加载"), "#4CAF50");
+                break;
+            case "scan":
+            {
+                var poiId = ParseScanPoiId(u);
+                if (poiId <= 0) return;
+                await Shell.Current.GoToAsync($"{nameof(QrScannerPage)}?payload={Uri.EscapeDataString(poiId.ToString())}");
+                break;
+            }
+            case "open":
+            {
+                var poiId = ParseOpenPoiId(u);
+                if (poiId <= 0) return;
+                await OpenPlaceDetailFromMapAsync(poiId);
+                break;
+            }
+        }
+    }
+
+    private static bool TryMapBridgeUri(string rawUrl, out Uri uri)
+    {
+        uri = null!;
+        if (string.IsNullOrWhiteSpace(rawUrl))
+            return false;
+
+        if (rawUrl.StartsWith($"{MapJsBridgeRoot}/", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(rawUrl, MapJsBridgeRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var u))
+                return false;
+            if (!string.Equals(u.Host, "tg.invalid", StringComparison.OrdinalIgnoreCase))
+                return false;
+            uri = u;
+            return true;
+        }
+
+        if (!rawUrl.StartsWith("app://", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var tail = rawUrl.AsSpan("app://".Length).TrimStart('/');
+        var rebuilt = $"{MapJsBridgeRoot}/{tail}";
+        if (!Uri.TryCreate(rebuilt, UriKind.Absolute, out var u2))
+            return false;
+        if (!string.Equals(u2.Host, "tg.invalid", StringComparison.OrdinalIgnoreCase))
+            return false;
+        uri = u2;
+        return true;
+    }
+
+    private static string? QueryFirst(Uri uri, string name)
+    {
+        var q = uri.Query;
+        if (string.IsNullOrEmpty(q) || q[0] != '?')
+            return null;
+        foreach (var part in q.AsSpan(1).ToString().Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0)
+                continue;
+            if (!part[..eq].Equals(name, StringComparison.OrdinalIgnoreCase))
+                continue;
+            return Uri.UnescapeDataString(part[(eq + 1)..]);
+        }
+
+        return null;
+    }
+
+    private void CancelMapLoadingFallback()
+    {
+        try
+        {
+            _mapLoadingFallbackCts?.Cancel();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        _mapLoadingFallbackCts?.Dispose();
+        _mapLoadingFallbackCts = null;
+    }
+
+    /// <summary>Nếu bridge không về (mạng/WebView), ẩn overlay để user không kẹt vĩnh viễn.</summary>
+    private void ArmMapLoadingFallback()
+    {
+        CancelMapLoadingFallback();
+        _mapLoadingFallbackCts = new CancellationTokenSource();
+        var token = _mapLoadingFallbackCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(22000, token).ConfigureAwait(false);
+            }
+            catch (System.OperationCanceledException)
+            {
+                return;
             }
 
-            if (matched != null)
-                await _narrationEngine.SpeakExclusiveAsync(matched);
-        }
-        else if (e.Url.Contains("locate"))
-        {
-            await GetUserLocationAsync();
-        }
-        else if (e.Url.Contains("loaded"))
-        {
-            LoadingOverlay.IsVisible = false;
-            UpdateGpsStatus(T("Đã tải bản đồ", "Map ready", "地図を読み込みました", "지도 로드 완료", "地图已加载"), "#4CAF50");
-        }
-        else if (e.Url.Contains("scan"))
-        {
-            var poiId = ParseScanPoiId(e.Url);
-            if (poiId <= 0) return;
-            await Shell.Current.GoToAsync($"{nameof(QrScannerPage)}?payload={Uri.EscapeDataString(poiId.ToString())}");
-        }
-        else if (e.Url.Contains("open"))
-        {
-            var poiId = ParseOpenPoiId(e.Url);
-            if (poiId <= 0) return;
-            await OpenPlaceDetailFromMapAsync(poiId);
-        }
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (!LoadingOverlay.IsVisible)
+                    return;
+                LoadingOverlay.IsVisible = false;
+                UpdateGpsStatus(
+                    T("Bản đồ tải lâu — thử mạng hoặc bấm 🔄", "Map slow — check network or tap 🔄", "地図が遅い — 通信か🔄", "지도 지연 — 네트워크 또는 🔄", "地图较慢 — 检查网络或点🔄"),
+                    "#FF9800");
+            });
+        }, token);
     }
 
     /// <summary>Lấy GPS một lần (nút trên map), cập nhật marker và banner gần POI.</summary>
@@ -248,19 +372,9 @@ public partial class MapPage : ContentPage
         GpsIndicator.Fill = new SolidColorBrush(Color.FromArgb(colorHex));
     }
 
-    /// <summary>Tải HTML map: hiển thị tất cả POI đã đồng bộ (trước đây chỉ trong 1km nên dễ không thấy điểm).</summary>
+    /// <summary>Tải HTML map (Leaflet + OSM): hiển thị tất cả POI đã đồng bộ.</summary>
     async void LoadMap()
     {
-        var mapboxToken = MapboxConfig.GetAccessToken();
-        if (string.IsNullOrWhiteSpace(mapboxToken))
-        {
-            LoadingOverlay.IsVisible = false;
-            UpdateGpsStatus(
-                T("Thiếu Mapbox token", "Missing Mapbox token", "Mapboxトークンがありません", "Mapbox 토큰이 없습니다", "缺少 Mapbox Token"),
-                "#EF5350");
-            return;
-        }
-
         Location userLocation;
         try
         {
@@ -289,7 +403,11 @@ public partial class MapPage : ContentPage
 
         if (mapView != null)
         {
-            mapView.Source = new HtmlWebViewSource { Html = BuildMapHtml(userLocation, sb.ToString(), mapboxToken) };
+            mapView.Source = new HtmlWebViewSource
+            {
+                Html = BuildLeafletHtml(userLocation, sb.ToString(), JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()))
+            };
+            ArmMapLoadingFallback();
         }
     }
 
@@ -307,42 +425,24 @@ public partial class MapPage : ContentPage
         sb.AppendLine($"addPlace({jId},{jLng},{jLat},{jName},{jDesc},{jColor},{jQr},{jTag});");
     }
 
-    private static (int PoiId, string RawText) ParseSpeakUrl(string url)
+    private static (int PoiId, string RawText) ParseSpeakUrl(Uri u)
     {
-        const string byIdPrefix = "app://speak?id=";
-        const string byTextPrefix = "app://speak?text=";
-        if (url.StartsWith(byIdPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var raw = Uri.UnescapeDataString(url[byIdPrefix.Length..]);
-            return int.TryParse(raw, out var id) ? (id, "") : (0, "");
-        }
+        var idStr = QueryFirst(u, "id");
+        if (!string.IsNullOrEmpty(idStr) && int.TryParse(idStr, out var id))
+            return (id, "");
 
-        if (url.StartsWith(byTextPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            var rawText = Uri.UnescapeDataString(url[byTextPrefix.Length..]);
-            return (0, rawText);
-        }
-
-        return (0, "");
+        return (0, QueryFirst(u, "text") ?? "");
     }
 
-    private static int ParseScanPoiId(string url)
+    private static int ParseScanPoiId(Uri u)
     {
-        const string prefix = "app://scan?id=";
-        if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return 0;
-
-        var raw = Uri.UnescapeDataString(url[prefix.Length..]);
+        var raw = QueryFirst(u, "id");
         return int.TryParse(raw, out var id) ? id : 0;
     }
 
-    private static int ParseOpenPoiId(string url)
+    private static int ParseOpenPoiId(Uri u)
     {
-        const string prefix = "app://open?id=";
-        if (!url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            return 0;
-
-        var raw = Uri.UnescapeDataString(url[prefix.Length..]);
+        var raw = QueryFirst(u, "id");
         return int.TryParse(raw, out var id) ? id : 0;
     }
 
@@ -364,66 +464,60 @@ public partial class MapPage : ContentPage
         await navigation.PushAsync(detailPage);
     }
 
-    /// <summary>Sinh HTML Mapbox GL (token rỗng thì Mapbox báo lỗi cấu hình — không dùng OSM/Leaflet).</summary>
-    private string BuildMapHtml(Location center, string markersJs, string accessToken) =>
-        BuildMapboxHtml(
-            center,
-            markersJs,
-            JsonSerializer.Serialize(accessToken),
-            JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()));
-
     private static string GetAdminWebBaseUrlForQr() =>
         EndpointResolver.ResolveAdminWebBaseUrls().Primary;
 
-    /// <summary>HTML Mapbox GL JS: style vector, marker tùy màu, API <c>addPlace</c>/<c>updateLocation</c>/<c>highlight</c>.</summary>
-    private string BuildMapboxHtml(Location center, string markersJs, string accessTokenJson, string adminWebBaseJson) => $@"
+    /// <summary>HTML Leaflet + OpenStreetMap; giữ API JS <c>addPlace</c>/<c>updateLocation</c>/<c>highlightMarker</c>/<c>clearHighlight</c>/<c>markVisitedMarker</c>.</summary>
+    private string BuildLeafletHtml(Location center, string markersJs, string adminWebBaseJson)
+    {
+        // Leaflet qua MauiAsset (appassets) trên Android WebView thường không chạy được (MIME/loader) → luôn dùng HTTPS CDN.
+        const string leafletCss = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+        const string leafletJs = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+        return $@"
 <!DOCTYPE html><html><head>
   <meta charset='utf-8'><meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no'>
-  <link href='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css' rel='stylesheet' />
-  <style>body{{margin:0;padding:0;}} #map{{position:absolute;top:0;bottom:0;width:100%;}} #locateBtn{{position:absolute;top:16px;right:16px;z-index:1;background:#1E88E5;color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:bold;font-size:14px;}}</style>
+  <link rel='stylesheet' href='{leafletCss}' />
+  <style>
+    /* WebView Android: không set height 100% cho html/body thì #map absolute thường cao 0 → bản đồ trắng */
+    html, body {{ margin:0; padding:0; width:100%; height:100%; overflow:hidden; }}
+    #map {{ position:absolute; left:0; top:0; right:0; bottom:0; width:100%; height:100%; min-height:100%; }}
+    #locateBtn{{position:absolute;top:16px;right:16px;z-index:1000;background:#1E88E5;color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:bold;font-size:14px;}}
+    .leaflet-div-icon.poi-pin{{background:transparent!important;border:none!important;}}
+  </style>
 </head><body>
   <div id='map'></div>
   <button id='locateBtn' type='button'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
-  <script src='https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js'></script>
+  <script>const MAP_BRIDGE='{MapJsBridgeRoot}';</script>
+  <script src='{leafletJs}' onerror=""window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Leaflet script load failed');""></script>
   <script>
-    window.onerror=function(msg,src,line,col,err){{window.location.href='app://error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
-    mapboxgl.accessToken = {accessTokenJson};
-    if(!mapboxgl.accessToken){{
-      window.location.href='app://error?msg='+encodeURIComponent('Missing Mapbox access token');
-    }}
+    window.onerror=function(msg,src,line,col,err){{window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
+    if (typeof L==='undefined') {{ window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Leaflet L undefined'); }}
     const adminWebBase = {adminWebBaseJson};
     let mapLoaded = false;
     function notifyLoadedOnce(){{
       if (mapLoaded) return;
       mapLoaded = true;
       clearTimeout(mapLoadTimeout);
-      setTimeout(() => window.location.href='app://loaded', 50);
+      setTimeout(() => window.location.href=MAP_BRIDGE+'/loaded', 50);
     }}
     const mapLoadTimeout = setTimeout(() => {{
-      // Chỉ báo timeout khi map thực sự chưa usable.
-      if (!mapLoaded && !(map && map.loaded && map.loaded())) {{
-        window.location.href='app://error?msg='+encodeURIComponent('Map load timeout');
-      }}
-    }}, 30000);
-    const map = new mapboxgl.Map({{
-      container: 'map',
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: [{F(center.Longitude)},{F(center.Latitude)}],
-      zoom: 15
+      if (!mapLoaded) window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Map load timeout');
+    }}, 60000);
+    const map = L.map('map', {{ zoomControl: true }}).setView([{F(center.Latitude)},{F(center.Longitude)}], 15);
+    L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+      maxZoom: 19,
+      attribution: '&copy; <a href=""https://www.openstreetmap.org/copyright"">OpenStreetMap</a>'
+    }}).addTo(map);
+    map.whenReady(() => {{
+      notifyLoadedOnce();
+      setTimeout(function() {{ try {{ map.invalidateSize(true); }} catch(e) {{}} }}, 200);
+      setTimeout(function() {{ try {{ map.invalidateSize(true); }} catch(e) {{}} }}, 900);
     }});
-    map.on('load', notifyLoadedOnce);
-    map.on('idle', notifyLoadedOnce);
-    map.on('render', () => {{
-      if (!mapLoaded && map.isStyleLoaded && map.isStyleLoaded()) notifyLoadedOnce();
-    }});
-    map.on('error', (evt) => {{
-      const err = evt && evt.error ? (evt.error.message || String(evt.error)) : 'Mapbox runtime error';
-      window.location.href='app://error?msg='+encodeURIComponent(err);
-    }});
+    window.addEventListener('resize', function() {{ try {{ map.invalidateSize(false); }} catch(e) {{}} }});
     var userMarker = null, markerMap = {{}}, markerByCoord = {{}};
-    function speakById(id){{ window.location.href='app://speak?id='+encodeURIComponent(String(id)); }}
-    function scanById(id){{ window.location.href='app://scan?id='+encodeURIComponent(String(id)); }}
-    function openById(id){{ window.location.href='app://open?id='+encodeURIComponent(String(id)); }}
+    function speakById(id){{ window.location.href=MAP_BRIDGE+'/speak?id='+encodeURIComponent(String(id)); }}
+    function scanById(id){{ window.location.href=MAP_BRIDGE+'/scan?id='+encodeURIComponent(String(id)); }}
+    function openById(id){{ window.location.href=MAP_BRIDGE+'/open?id='+encodeURIComponent(String(id)); }}
     function fallbackQrById(id){{
       return 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(String(id));
     }}
@@ -463,19 +557,24 @@ public partial class MapPage : ContentPage
       el.style.cssText = 'width:16px;height:16px;flex:0 0 16px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);background:'+color+';';
       wrap.appendChild(note);
       wrap.appendChild(el);
-      const safeName = String(name || '');
-      const safeDesc = String(desc || '');
-      const m = new mapboxgl.Marker({{ element: wrap, anchor: 'bottom' }}).setLngLat([lng,lat]).addTo(map);
+      const icon = L.divIcon({{
+        html: wrap,
+        className: 'poi-pin',
+        iconSize: [190, 36],
+        iconAnchor: [95, 36]
+      }});
+      const m = L.marker([lat, lng], {{ icon: icon }}).addTo(map);
       wrap.addEventListener('click', () => openById(id));
       markerMap[markerId] = {{ marker: m, el: el, defaultColor: color, isVisited: color === '#4CAF50' }};
       markerByCoord[coordKey] = markerId;
     }}
     function updateLocation(lng,lat){{
-      if (userMarker) userMarker.remove();
+      if (userMarker) {{ map.removeLayer(userMarker); userMarker = null; }}
       const uel = document.createElement('div');
       uel.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#1E88E5;border:3px solid #fff;box-shadow:0 0 0 2px rgba(30,136,229,.35);';
-      userMarker = new mapboxgl.Marker({{ element: uel }}).setLngLat([lng,lat]).addTo(map);
-      map.flyTo({{ center: [lng, lat], zoom: 16 }});
+      const uicon = L.divIcon({{ html: uel, className: '', iconSize: [20, 20], iconAnchor: [10, 10] }});
+      userMarker = L.marker([lat, lng], {{ icon: uicon, zIndexOffset: 1000 }}).addTo(map);
+      map.flyTo([lat, lng], 16);
     }}
     function highlightMarker(lng,lat){{
       Object.keys(markerMap).forEach(id => {{
@@ -506,9 +605,10 @@ public partial class MapPage : ContentPage
       markerMap[markerId].el.style.width = '16px';
       markerMap[markerId].el.style.height = '16px';
     }}
-    document.getElementById('locateBtn').addEventListener('click', () => window.location.href='app://locate');
+    document.getElementById('locateBtn').addEventListener('click', () => window.location.href=MAP_BRIDGE+'/locate');
     {markersJs}
-    setTimeout(() => window.location.href='app://locate', 1500);
+    setTimeout(() => window.location.href=MAP_BRIDGE+'/locate', 1500);
   </script>
 </body></html>";
+    }
 }

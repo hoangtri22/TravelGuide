@@ -1,0 +1,14 @@
+@startuml
+title SE Owner QuanLyAudioMapLink
+actor "Chủ quán" as O
+participant "TravelGuide.AdminWeb/WEB/app.js function renderAudioSources()" as RENDER
+participant "TravelGuide.AdminWeb/WEB/app.js byId(\"audioTableWrap\")?.addEventListener(\"click\", ...)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}\")" as PUT
+O -> RENDER : dataset.tab === \"audioTab\" -> renderAudioSources()
+RENDER --> O : bảng audioUrl / mapLink từ mảng pois[]
+O -> FE : Lưu từng dòng (handler trong app.js)
+FE -> APIJS : await api(`/api/pois/${id}`, { method: \"PUT\", body: JSON.stringify({ ... audioUrl, mapLink ... }) })
+APIJS -> PUT : MapPut handler
+FE -> FE : await loadPois(); renderAudioSources()
+@enduml

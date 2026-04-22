@@ -1,0 +1,42 @@
+@startuml
+title SE DuKhach DongBoPOI_ChiTiet
+actor "Hệ thống / người dùng" as U
+participant "DatabaseService.GetPlacesAsync()" as GET
+participant "DatabaseService.SeedDataAsync()" as SEED
+participant "DatabaseService.RefreshFromApiOrFallbackAsync() // private" as REF
+participant "SemaphoreSlim.WaitAsync(_syncLock)" as LOCK
+participant "DatabaseService.TryGetFromApiAsync() // private" as TRY
+participant "TravelGuide.API Program.cs MapGet(\"/api/public/pois\")" as HTTP
+participant "DatabaseService.MapFromApi(ApiPoi) // private static" as MAP
+participant "DatabaseService.EnsureClientTranslationsForCurrentLanguageAsync() // private" as TR
+participant "DatabaseService.MyMemoryTranslateAsync() // private static" as MEM
+participant "DatabaseService.ReplaceLocalDbAsync() // private" as REP
+participant "DatabaseService.LoadFromLocalDbAsync() // private" as LOCAL
+participant "DatabaseService.LoadLocalFallbackAsync() // private static" as FALL
+participant "FileSystem.OpenAppPackageFileAsync(\"extra_places.json\")" as PKG
+U -> GET : await GetPlacesAsync() hoặc
+U -> SEED : await SeedDataAsync() -> RefreshFromApiOrFallbackAsync(force: true)
+GET -> REF : await RefreshFromApiOrFallbackAsync(force: false)
+REF -> LOCK : await _syncLock.WaitAsync()
+REF -> TRY : TryGetFromApiAsync()
+TRY -> HTTP : HttpClient GET .../api/public/pois?lang=
+alt HTTP OK và có POI
+  TRY -> MAP : apiPois.Select(MapFromApi).ToList()
+  REF -> TR : await EnsureClientTranslationsForCurrentLanguageAsync(fromApi)
+  TR -> MEM : await MyMemoryTranslateAsync(_httpClient, text, lang) (theo vòng lặp POI)
+  REF -> REP : await ReplaceLocalDbAsync(fromApi)
+else API lỗi hoặc rỗng
+  REF -> LOCAL : await LoadFromLocalDbAsync()
+  alt SQLite còn dữ liệu
+    REF -> TR : EnsureClientTranslations...
+    REF -> REP : ReplaceLocalDbAsync
+  else không có local
+    REF -> FALL : await LoadLocalFallbackAsync()
+    FALL -> PKG : await FileSystem.OpenAppPackageFileAsync(\"extra_places.json\")
+    REF -> TR : EnsureClientTranslations...
+    REF -> REP : ReplaceLocalDbAsync
+  end
+end
+REF -> REF : _cachedPlaces = ... ; _lastSyncUtc = UtcNow
+REF -> LOCK : _syncLock.Release()
+@enduml

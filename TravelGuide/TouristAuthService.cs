@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net;
+using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Microsoft.Maui.Devices;
 using TravelGuide.Models;
@@ -22,7 +24,7 @@ public sealed class TouristAuthService
     public string GetCurrentApiBaseUrl()
     {
         var resolved = EndpointResolver.ResolveApiBaseUrl().TrimEnd('/');
-        if (!ShouldForceAdminBase(resolved))
+        if (!ShouldForceAdminBase(resolved) && !ShouldResetStaleLanBase(resolved))
             return resolved;
 
         var defaultUrl = EndpointResolver.GetDefaultApiBaseUrl();
@@ -37,7 +39,7 @@ public sealed class TouristAuthService
         normalizedUrl = string.Empty;
         error = string.Empty;
 
-        var input = (rawUrl ?? string.Empty).Trim();
+        var input = NormalizeApiBaseUrlInput((rawUrl ?? string.Empty).Trim());
         if (string.IsNullOrWhiteSpace(input))
         {
             error = "Vui lòng nhập API URL.";
@@ -565,6 +567,64 @@ public sealed class TouristAuthService
 
         // Login endpoint hiện nằm ở TravelGuide.API (5096/7149), không nằm ở AdminWeb (5280/7145).
         return uri.Port is 5280 or 7145;
+    }
+
+    /// <summary>
+    /// Khi bỏ UI nhập API, pref cũ (vd 192.168.1.115) có thể tồn tại dù đã đổi mạng/IP.
+    /// Nếu URL hiện tại là private LAN và khác default hiện tại, reset về default để tránh kẹt kết nối cũ.
+    /// </summary>
+    private static bool ShouldResetStaleLanBase(string resolved)
+    {
+        if (!Uri.TryCreate(resolved, UriKind.Absolute, out var cur))
+            return true;
+
+        if (!IsPrivateLanHost(cur.Host))
+            return false;
+
+        var def = EndpointResolver.GetDefaultApiBaseUrl().TrimEnd('/');
+        if (!Uri.TryCreate(def, UriKind.Absolute, out var defUri))
+            return false;
+
+        return !string.Equals(cur.Host, defUri.Host, StringComparison.OrdinalIgnoreCase)
+               || cur.Port != defUri.Port
+               || !string.Equals(cur.Scheme, defUri.Scheme, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPrivateLanHost(string host)
+    {
+        if (!IPAddress.TryParse(host, out var ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            return false;
+        var b = ip.GetAddressBytes();
+        if (b[0] == 10) return true;
+        if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+        if (b[0] == 192 && b[1] == 168) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Người dùng đôi khi paste bị dính chuỗi LAN cũ ngay sau tunnel URL (vd: ...trycloudflare.com192.168.1.115:5096).
+    /// Ưu tiên tách lấy tunnel URL hợp lệ đầu tiên để tránh kết nối sai host.
+    /// </summary>
+    private static string NormalizeApiBaseUrlInput(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return input;
+
+        var patterns = new[]
+        {
+            @"https?://[a-zA-Z0-9.-]+\.trycloudflare\.com",
+            @"https?://[a-zA-Z0-9.-]+\.ngrok-free\.app",
+            @"https?://[a-zA-Z0-9.-]+\.ngrok\.io"
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var m = Regex.Match(input, pattern, RegexOptions.IgnoreCase);
+            if (m.Success)
+                return m.Value;
+        }
+
+        return input;
     }
 
     private sealed class TouristLoginResponse
