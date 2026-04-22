@@ -1,19 +1,57 @@
 @startuml
-title SE Web DownloadAndroid
-actor "Người dùng" as U
-participant "TravelGuide.AdminWeb/WEB/download-android.html" as HTML
-participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/download/android\")" as DL
-participant "TravelGuide.AdminWeb/Program.cs ResolveLocalAndroidApkPath()" as RES
-participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/apk/travelguide-latest.apk\")" as APK
-U -> HTML : Mở /download-android.html
-HTML --> U : <a href=\"/download/android\"> + <img src=\"/download/android/qr.png\">
-U -> DL : GET /download/android
-DL -> RES : ResolveLocalAndroidApkPath(env) khi ApkUrl rỗng
-alt ApkUrl là URL tuyệt đối
-  DL --> U : Results.Redirect(apkUrl)
-else có APK cục bộ WEB/apk/travelguide-latest.apk
-  DL --> U : Results.Redirect(host + \"/apk/travelguide-latest.apk\")
+title Tải APK Android (trang download-android.html + endpoint AdminWeb)
+skinparam shadowing false
+skinparam monochrome true
+
+actor "Người dùng / điện thoại" as U
+participant "TravelGuide.AdminWeb/WEB/download-android.html" as PAGE
+participant "GET /download/android/qr.png\nProgram.cs" as QR
+participant "HttpClient → dịch vụ ảnh QR từ xa\n(PoiQrCodeGenerator.BuildRemoteQrImageUrl)" as REMOTE
+participant "GET /download/android\nProgram.cs + AndroidDownloadOptions" as DL
+participant "ResolveLocalAndroidApkPath(env)\nWEB/apk/travelguide-latest.apk" as LOCAL
+participant "GET /apk/travelguide-latest.apk\nProgram.cs" as APK
+participant "GET /api/download/android\n(JSON: downloadUrl, apkUrl, qrUrl)" as META
+
+group Trang hướng dẫn tải
+  U -> PAGE : Mở /download-android.html
+  PAGE --> U : Nút href=/download/android\nimg src=/download/android/qr.png
 end
-U -> APK : GET /apk/travelguide-latest.apk
-APK --> U : Results.File(..., application/vnd.android.package-archive)
+
+group QR (ảnh PNG, domain hiện tại)
+  U -> QR : GET /download/android/qr.png
+  QR -> QR : host = AndroidDownloadPublicBaseResolver\npayload = host + DownloadPath (mặc định /download/android)
+  QR -> REMOTE : GET ảnh PNG (kích thước QrImageSizePx)
+  REMOTE --> QR : bytes PNG
+  QR --> U : image/png
+end
+
+group Luồng tải APK (bấm nút hoặc QR mở /download/android)
+  U -> DL : GET /download/android
+  DL -> DL : ApkUrl từ cấu hình;\nnếu rỗng → thử file cục bộ
+  DL -> LOCAL : ResolveLocalAndroidApkPath (khi ApkUrl rỗng)
+  alt không xác định được URL APK
+    DL --> U : 404 Chưa cấu hình…
+  else ApkUrl bắt đầu http:// hoặc https://
+    DL --> U : Redirect 302 ra ngoài (CDN / Drive…)
+  else còn lại (đường dẫn tương đối, thường /apk/…)
+    DL --> U : Redirect 302 → host + apkUrl
+    opt trình duyệt theo redirect nội bộ
+      U -> APK : GET /apk/travelguide-latest.apk
+      alt file tồn tại
+        APK --> U : application/vnd.android.package-archive
+      else không có file
+        APK --> U : 404
+      end
+    end
+  end
+end
+
+group Tùy chọn — metadata cho client khác (app / script)
+  U -> META : GET /api/download/android
+  META --> U : JSON { downloadUrl, apkUrl, qrUrl }
+end
+
+note bottom of DL
+  **Cấu hình** appsettings → section **AndroidDownload**:\nApkUrl (tùy chọn), PublicBaseUrl, DownloadPath, QrImageSizePx.\nKhởi động app: có thể gọi AndroidDownloadService.TryGenerateQrAsync\nđể lưu PNG tĩnh vào WEB/qrcodes (trang HTML vẫn dùng /download/android/qr.png động).
+end note
 @enduml
