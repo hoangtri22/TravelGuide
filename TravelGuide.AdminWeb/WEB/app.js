@@ -6,8 +6,6 @@ let token = "";
 let currentRole = "";
 let pois = [];
 let touristOverview = null;
-let qrBackfillRunning = false;
-let qrBackfillAttempted = false;
 let commentSearchTimer = null;
 let visitHistoryLineChart = null;
 const visitHistoryLineHidden = new Set();
@@ -168,6 +166,18 @@ function renderAudioSources() {
     tdAct.className = "audio-actions-cell";
     const actionsWrap = document.createElement("div");
     actionsWrap.className = "audio-actions";
+    const langSelect = document.createElement("select");
+    langSelect.className = "audio-lang-select";
+    langSelect.dataset.poiId = String(p.id);
+    langSelect.innerHTML = `
+      <option value="">Ngôn ngữ</option>
+      <option value="vi">VI</option>
+      <option value="en">EN</option>
+      <option value="ja">JA</option>
+      <option value="ko">KO</option>
+      <option value="zh">ZH</option>`;
+    actionsWrap.appendChild(langSelect);
+
     const inFile = document.createElement("input");
     inFile.type = "file";
     inFile.className = "audio-file-input";
@@ -215,8 +225,14 @@ function setAuthPanel(mode) {
 
 const fmtDate = (v) => {
   if (!v) return "";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
+  const raw = String(v).trim();
+  const hasZone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(raw);
+  // DateTime từ .NET/SQL đôi khi không có timezone suffix; coi như UTC để đổi đúng sang giờ VN.
+  const normalized = hasZone ? raw : `${raw}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime())
+    ? raw
+    : d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 };
 
 const visitHistoryState = { sortKey: "id", sortDir: -1, page: 1, pageSize: 10, query: "", userFilter: "" };
@@ -357,6 +373,15 @@ function heatmapBuildAggregatedTableRows(poisArr, nameLookup, revRows, qrTodayPi
       cur.qr += qr;
     }
   }
+  // Luôn hiển thị toàn bộ POI trên bảng heatmap (POI chưa có activity => 0/0/0).
+  for (const p of poisArr) {
+    const adminId = Number(p?.id ?? p?.Id);
+    if (!Number.isFinite(adminId) || adminId <= 0) continue;
+    const key = `a:${adminId}`;
+    if (agg.has(key)) continue;
+    const label = String(p?.nameVi ?? p?.NameVi ?? "").trim();
+    agg.set(key, { label, scans: 0, gps: 0, qr: 0 });
+  }
   return [...agg.values()];
 }
 
@@ -463,6 +488,27 @@ async function refreshHeatmapTab() {
     }
     maxIntensity = Math.max(maxIntensity, plate.get(adminId).w);
   }
+
+  // Bổ sung POI chưa có log để map/tab luôn hiện đủ tất cả địa điểm.
+  for (const p of pois) {
+    const adminId = Number(p?.id ?? p?.Id);
+    if (!Number.isFinite(adminId) || adminId <= 0) continue;
+    if (plate.has(adminId)) continue;
+    const c = poiCoordPick(p);
+    if (!c) continue;
+    const nm = String(p?.nameVi ?? p?.NameVi ?? "").trim();
+    plate.set(adminId, {
+      lat: c.lat,
+      lng: c.lng,
+      w: 1,
+      scans: 0,
+      recentGps: 0,
+      qrToday: 0,
+      vnd: 0,
+      name: nm
+    });
+    maxIntensity = Math.max(maxIntensity, 1);
+  }
   const heatPoints = [...plate.values()].map((v) => [v.lat, v.lng, v.w]);
 
   const hintParts = [];
@@ -472,10 +518,8 @@ async function refreshHeatmapTab() {
   if (cntNoCoord > 0) hintParts.push(`${cntNoCoord} POI thiếu lat/lng hợp lệ`);
   const hintMissing = hintParts.length ? ` (${hintParts.join("; ")}.)` : "";
 
-  summaryEl.textContent =
-    heatPoints.length === 0
-      ? `Tổng ${totalScans} lượt quét/mở POI (QR) — chưa vẽ được điểm nào.${hintMissing || " Kiểm tra /api/pois có lat/lng và tên trùng log."} Doanh thu: ${grand.toLocaleString("vi-VN")}đ. Bảng: GPS ${heatWin}′ · QR ngày UTC ${qrDayUtc}.`
-      : `${heatPoints.length} điểm trên bản đồ (độ nóng = max QR tích lũy, GPS ${heatWin}′+QR ngày; ${cntId} theo Id${cntName ? `, ${cntName} theo tên` : ""}). Tổng ${totalScans} lượt QR (log) · ${grand.toLocaleString("vi-VN")}đ.${hintMissing}`;
+  // Ẩn dòng summary dài phía trên heatmap theo yêu cầu UI hiện tại.
+  summaryEl.textContent = "";
 
   const mapEl = byId("heatmapMap");
   if (!mapEl) return;
@@ -548,7 +592,7 @@ async function refreshHeatmapTab() {
   if (sorted.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
+    td.colSpan = 2;
     td.className = "hint";
     td.textContent = "Chưa có dòng thống kê theo POI trong log.";
     tr.appendChild(td);
@@ -557,7 +601,7 @@ async function refreshHeatmapTab() {
   }
   for (const r of sorted) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escCell(r.label)}</td><td>${r.gps.toLocaleString("vi-VN")}</td><td>${r.qr.toLocaleString("vi-VN")}</td>`;
+    tr.innerHTML = `<td>${escCell(r.label)}</td><td>${r.gps.toLocaleString("vi-VN")}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -634,7 +678,7 @@ function renderVisitHistoryExplorer(historyRows) {
   ensureVisitHistoryEventsBound();
   const rows = buildVisitHistoryRows(historyRows);
 
-  const users = [...new Set(rows.map((r) => r.user).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const users = [...new Set(rows.map((r) => r.device).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const userSelect = byId("vhUserFilter");
   if (userSelect) {
     const selected = visitHistoryState.userFilter;
@@ -743,7 +787,7 @@ function buildRefreshTokenRows(tokens) {
     return {
       id,
       user,
-      device: device || "—",
+      device: device || user || "—",
       status,
       statusLabel: status === "active" ? "Đang hiệu lực" : (status === "revoked" ? "Đã revoke" : "Hết hạn"),
       expires: fmtDate(expiresRaw),
@@ -798,7 +842,7 @@ function renderRefreshTokenExplorer(tokens) {
   const userSelect = byId("rtUserFilter");
   if (userSelect) {
     const selected = refreshTokenState.userFilter;
-    userSelect.innerHTML = `<option value="">Tất cả user</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
+    userSelect.innerHTML = `<option value="">Tất cả device</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
     userSelect.value = users.includes(selected) ? selected : "";
     refreshTokenState.userFilter = userSelect.value;
   }
@@ -806,7 +850,7 @@ function renderRefreshTokenExplorer(tokens) {
   const q = refreshTokenState.query.trim().toLowerCase();
   let filtered = rows.filter((r) => {
     const matchQ = !q || r.id.toLowerCase().includes(q) || r.user.toLowerCase().includes(q) || r.device.toLowerCase().includes(q);
-    const matchU = !refreshTokenState.userFilter || r.user === refreshTokenState.userFilter;
+    const matchU = !refreshTokenState.userFilter || r.device === refreshTokenState.userFilter;
     return matchQ && matchU;
   });
 
@@ -835,12 +879,11 @@ function renderRefreshTokenExplorer(tokens) {
       ? view.map((r) => `
         <tr>
           <td class="vh-id">${escCell(r.id)}</td>
-          <td><span class="vh-user-badge ${visitHistoryUserClass(r.user)}">${escCell(r.user)}</span></td>
           <td class="vh-poi">${escCell(r.device)}</td>
           <td class="vh-occurred">${escCell(r.expires)}</td>
           <td class="vh-occurred">${escCell(r.revoked)}</td>
         </tr>`).join("")
-      : `<tr><td colspan="5" class="vh-no-data">Không có dữ liệu</td></tr>`;
+      : `<tr><td colspan="4" class="vh-no-data">Không có dữ liệu</td></tr>`;
   }
 
   const pageInfo = byId("rtPageInfo");
@@ -887,29 +930,6 @@ function renderRefreshTokenExplorer(tokens) {
 /** GET /api/pois — render bảng + select bản dịch */
 async function loadPois() {
   pois = await api("/api/pois");
-  if (!qrBackfillAttempted) {
-    qrBackfillAttempted = true;
-    const missingQrIds = pois
-      .filter(p => !String(p.qrImagePath || "").trim())
-      .map(p => Number(p.id))
-      .filter(id => Number.isFinite(id) && id > 0);
-    if (missingQrIds.length > 0 && !qrBackfillRunning) {
-      qrBackfillRunning = true;
-      let hasAnyUpdated = false;
-      for (const id of missingQrIds) {
-        try {
-          const res = await api(`/api/pois/${id}/qrcode`, { method: "POST" });
-          if (String(res?.qrImagePath || "").trim()) hasAnyUpdated = true;
-        } catch {
-          // Bỏ qua từng POI lỗi để vẫn xử lý các POI còn lại.
-        }
-      }
-      qrBackfillRunning = false;
-      if (hasAnyUpdated) {
-        pois = await api("/api/pois");
-      }
-    }
-  }
   byId("statPoi").textContent = String(pois.length);
   byId("statAudio").textContent = String(pois.filter(p => (p.audioUrl || "").trim() !== "").length);
   byId("statTranslation").textContent = String(pois.filter(p =>
@@ -930,14 +950,6 @@ async function loadPois() {
         ? `<button type="button" class="secondary" data-approve="${p.id}">Duyệt</button>
            <button type="button" class="secondary danger" data-reject="${p.id}">Từ chối</button>`
         : "";
-    const qrRaw = (p.qrImagePath || "").trim();
-    let qrCell = "—";
-    if (qrRaw) {
-      const showImg = /^https?:\/\//i.test(qrRaw) || qrRaw.startsWith("/");
-      qrCell = showImg
-        ? `<img class="poi-qr-thumb" src="${qrRaw.replace(/"/g, "&quot;")}" alt="" loading="lazy" />`
-        : `<span class="poi-qr-path">${qrRaw.replace(/</g, "&lt;")}</span>`;
-    }
     tr.innerHTML = `
       <td>${p.id}</td>
       <td>${p.nameVi}</td>
@@ -945,7 +957,6 @@ async function loadPois() {
       <td>${Number(p.price || 0).toLocaleString("vi-VN")}</td>
       <td>${p.priority ?? 0}</td>
       <td title="${(statusLabel + rejectHint).replaceAll('"', "'")}">${statusLabel}</td>
-      <td class="poi-qr-cell">${qrCell}</td>
       <td>${p.audioUrl || ""}</td>
       <td>${p.latitude}, ${p.longitude}</td>
       <td class="poi-actions"><div class="action-btns">
@@ -1630,6 +1641,11 @@ byId("audioTableWrap")?.addEventListener("click", async (e) => {
     const id = Number(uploadBtn.dataset.poiId);
     const row = uploadBtn.closest("tr");
     if (!id || !row) return;
+    const lang = row.querySelector(".audio-lang-select")?.value?.trim() || "";
+    if (!lang) {
+      alert("Vui lòng chọn ngôn ngữ trước khi upload audio.");
+      return;
+    }
     const input = row.querySelector(".audio-file-input");
     const file = input?.files?.[0];
     if (!file) {
@@ -1647,7 +1663,7 @@ byId("audioTableWrap")?.addEventListener("click", async (e) => {
 
       const inAudio = row.querySelector(".audio-src-input");
       if (inAudio) inAudio.value = audioUrl;
-      alert(`Upload thành công: ${audioUrl}\nBấm 'Lưu' để cập nhật vào POI.`);
+      alert(`Upload audio (${lang.toUpperCase()}) thành công: ${audioUrl}\nBấm 'Lưu' để cập nhật vào POI.`);
     } catch (err) {
       alert(`Upload audio thất bại: ${err?.message || String(err)}`);
     } finally {

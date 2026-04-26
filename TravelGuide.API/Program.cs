@@ -113,6 +113,32 @@ app.MapPost("/api/tourist/auth/login", async (TouristLoginRequest request, Touri
     });
 });
 
+app.MapPost("/api/tourist/auth/device-login", async (TouristDeviceLoginRequest request, TouristDb db, AuthStore authStore) =>
+{
+    var deviceId = (request.DeviceId ?? string.Empty).Trim();
+    if (deviceId.Length < 6)
+        return Results.BadRequest("DeviceId không hợp lệ.");
+
+    var user = await db.GetOrCreateDeviceUserAsync(deviceId, request.DeviceName);
+    var token = authStore.CreateToken(user);
+    try
+    {
+        await db.RecordLoginSessionAsync(user.Id, token, request.DeviceId);
+    }
+    catch
+    {
+        // Vẫn trả token để app hoạt động ngay cả khi DB phiên chưa sẵn sàng.
+    }
+
+    return Results.Ok(new
+    {
+        token,
+        username = user.Username,
+        displayName = user.DisplayName,
+        accountTier = user.AccountTier
+    });
+});
+
 app.MapGet("/api/tourist/auth/me", async (HttpContext context, AuthStore authStore, TouristDb db) =>
 {
     var bearer = AuthHelper.GetBearerToken(context);
@@ -235,6 +261,14 @@ app.MapGet("/api/tourist/pois/my-scan-history", async (HttpContext context, Auth
     if (principal is null) return Results.Unauthorized();
     var rows = await db.GetMyPoiScanHistoryAsync(principal.UserId, 200);
     return Results.Ok(rows);
+});
+
+app.MapGet("/api/tourist/pois/gps-heatmap", async (HttpContext context, AuthStore authStore, TouristDb db, int minutes = 90) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    var rows = await db.GetGpsHeatmapByPoiAsync(minutes);
+    return Results.Ok(rows.Select(x => new { poiId = x.PoiId, poiNameVi = x.PoiNameVi, gpsHits = x.GpsHits }));
 });
 
 app.MapPost("/api/tourist/comments", async (HttpContext context, TouristCommentCreateRequest request, AuthStore authStore, TouristDb db) =>

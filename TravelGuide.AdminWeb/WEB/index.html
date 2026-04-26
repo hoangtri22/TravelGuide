@@ -171,7 +171,7 @@
           <h2 class="card-title">Danh sách địa điểm</h2>
         <div class="table-scroll">
         <table id="poiTable">
-          <thead><tr><th>ID</th><th>Tên VI</th><th>Tag</th><th>Giá</th><th>Ưu tiên</th><th>Trạng thái</th><th>QR</th><th>Audio</th><th>Vị trí</th><th>Hành động</th></tr></thead>
+          <thead><tr><th>ID</th><th>Tên VI</th><th>Tag</th><th>Giá</th><th>Ưu tiên</th><th>Trạng thái</th><th>Audio</th><th>Vị trí</th><th>Hành động</th></tr></thead>
           <tbody></tbody>
         </table>
         </div>
@@ -258,7 +258,7 @@
 
       <section id="audioTab" class="card card-elevated tab-content hidden">
         <h2 class="card-title">Nguồn audio &amp; bản đồ</h2>
-        <p class="hint">Có thể upload file audio trực tiếp theo từng dòng POI, hệ thống sẽ điền path dạng <code>audio/...</code>. Sau upload nhớ bấm Lưu.</p>
+        <p class="hint">Chọn ngôn ngữ trước, rồi chọn file audio để upload theo từng dòng POI. Hệ thống sẽ điền path dạng <code>audio/...</code>; sau upload nhớ bấm Lưu.</p>
         <div id="audioTableWrap">
           <table id="audioTable">
             <thead><tr><th>ID</th><th>Tên (VI)</th><th>Audio URL</th><th>Map link</th><th></th></tr></thead>
@@ -319,10 +319,10 @@
                 <circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.2"></circle>
                 <line x1="9.5" y1="9.5" x2="13" y2="13" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"></line>
               </svg>
-              <input type="text" id="rtSearch" placeholder="Tìm theo ID, user, device...">
+              <input type="text" id="rtSearch" placeholder="Tìm theo ID, device...">
             </div>
             <select id="rtUserFilter">
-              <option value="">Tất cả user</option>
+              <option value="">Tất cả device</option>
             </select>
             <select id="rtPageSize">
               <option value="10">10 dòng</option>
@@ -336,8 +336,7 @@
               <thead>
                 <tr>
                   <th data-rt-sort="id">ID <i class="vh-sort-icon">↕</i></th>
-                  <th data-rt-sort="user">User <i class="vh-sort-icon">↕</i></th>
-                  <th data-rt-sort="device">Device <i class="vh-sort-icon">↕</i></th>
+                  <th data-rt-sort="user">Device <i class="vh-sort-icon">↕</i></th>
                   <th data-rt-sort="expires">Expires <i class="vh-sort-icon">↕</i></th>
                   <th data-rt-sort="revoked">Revoked <i class="vh-sort-icon">↕</i></th>
                 </tr>
@@ -430,7 +429,6 @@
               <tr>
                 <th>Tên địa điểm</th>
                 <th>Lượt GPS (trong vùng, 15′)</th>
-                <th>Lượt quét QR (trong ngày UTC)</th>
               </tr>
             </thead>
             <tbody id="heatmapPoiTbody"></tbody>

@@ -6,6 +6,8 @@ public record TouristRegisterRequest(string? Username, string? Password, string?
 
 public record TouristLoginRequest(string? Username, string? Password);
 
+public record TouristDeviceLoginRequest(string? DeviceId, string? DeviceName, string? AppPlatform);
+
 public record PremiumRedeemRequest(string? ClaimCode, decimal? AmountVnd);
 
 public record PoiUnlockConfirmRequest(decimal? AmountVnd);

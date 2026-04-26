@@ -26,13 +26,7 @@ public partial class QrScanHistoryPage : ContentPage
 
     private async Task ReloadAsync()
     {
-        var loggedIn = await _authService.IsLoggedInAsync();
-        HintLabel.IsVisible = !loggedIn;
-        if (!loggedIn)
-        {
-            HistoryList.ItemsSource = Array.Empty<ScanHistoryVm>();
-            return;
-        }
+        HintLabel.IsVisible = false;
 
         var (ok, items, _) = await _authService.GetMyScanHistoryAsync();
         _rows = ok ? items.ToList() : new List<TouristAuthService.MyScanHistoryRow>();

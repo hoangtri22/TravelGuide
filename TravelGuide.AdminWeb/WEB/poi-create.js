@@ -51,7 +51,6 @@ function resetEmptyForm() {
   byId("poiId").value = "";
   byId("price").value = "1000";
   byId("tag").value = "Địa Điểm Du Lịch";
-  byId("qrImagePath").value = "";
   byId("poiCreateFormTitle").textContent = "Tạo địa điểm mới";
   byId("poiCreateFormSubtitle").textContent =
     "Điền thông tin và bấm Lưu. Phí duy trì POI: 100.000đ/tháng (thu ngoài app).";
@@ -99,7 +98,6 @@ async function loadPoiForEdit(id) {
   byId("priority").value = p.priority ?? 0;
   byId("price").value = p.price ?? 0;
   byId("tag").value = normalizeTagForSelect(p.tag);
-  byId("qrImagePath").value = p.qrImagePath || "";
   byId("mapLink").value = p.mapLink || "";
   byId("imagePath").value = p.imagePath || "";
   byId("audioUrl").value = p.audioUrl || "";
@@ -180,7 +178,6 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
     priority: Number(byId("priority").value || 0),
     price: Number(byId("price").value || 0),
     tag: byId("tag").value || "Địa Điểm Du Lịch",
-    qrImagePath: byId("qrImagePath").value || "",
     mapLink: byId("mapLink").value || "",
     imagePath: byId("imagePath").value,
     audioUrl: resolvedAudioUrl
@@ -192,13 +189,7 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
       alert("Đã cập nhật POI.");
       window.location.href = "index.html";
     } else {
-      const created = await api("/api/pois", { method: "POST", body: JSON.stringify(payload) });
-      const createdId = Number(created?.id || 0);
-      if (createdId > 0 && !String(payload.qrImagePath || "").trim()) {
-        try {
-          await api(`/api/pois/${createdId}/qrcode`, { method: "POST" });
-        } catch { /* ignore */ }
-      }
+      await api("/api/pois", { method: "POST", body: JSON.stringify(payload) });
       alert("Đã tạo POI.");
       window.location.href = "index.html";
     }

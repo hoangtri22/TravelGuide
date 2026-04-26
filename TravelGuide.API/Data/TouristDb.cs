@@ -72,20 +72,23 @@ public sealed class TouristDb
     }
 
     /// <summary>Ghi phiên đăng nhập để admin đếm "trực tuyến" (bảng RefreshToken).</summary>
-    public async Task RecordLoginSessionAsync(int touristUserId, string bearerToken)
+    public async Task RecordLoginSessionAsync(int touristUserId, string bearerToken, string? deviceId = null)
     {
         var hash = HashBearerToken(bearerToken);
         var expires = DateTime.UtcNow.AddHours(48);
+        var normalizedDeviceId = (deviceId ?? string.Empty).Trim();
+        if (normalizedDeviceId.Length > 120) normalizedDeviceId = normalizedDeviceId[..120];
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         // Không thu hồi phiên cũ: mỗi lần đăng nhập = thêm một phiên (nhiều máy cùng user được đếm riêng).
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          INSERT INTO dbo.RefreshToken(TouristUserId, TokenHash, ExpiresAtUtc)
-                          VALUES(@uid, @hash, @exp);
+                          INSERT INTO dbo.RefreshToken(TouristUserId, TokenHash, DeviceId, ExpiresAtUtc)
+                          VALUES(@uid, @hash, @deviceId, @exp);
                           """;
         cmd.Parameters.AddWithValue("@uid", touristUserId);
         cmd.Parameters.AddWithValue("@hash", hash);
+        cmd.Parameters.AddWithValue("@deviceId", string.IsNullOrWhiteSpace(normalizedDeviceId) ? (object)DBNull.Value : normalizedDeviceId);
         cmd.Parameters.AddWithValue("@exp", expires);
         await cmd.ExecuteNonQueryAsync();
     }
@@ -221,10 +224,75 @@ public sealed class TouristDb
         return username.Trim();
     }
 
+    public async Task<TouristUser> GetOrCreateDeviceUserAsync(string? deviceId, string? deviceName)
+    {
+        var normalizedDeviceId = NormalizeDeviceId(deviceId);
+        if (normalizedDeviceId.Length == 0)
+            throw new ArgumentException("DeviceId is required.", nameof(deviceId));
+
+        var username = BuildDeviceUsername(normalizedDeviceId, deviceName);
+        var existing = await GetUserByUsernameAsync(username);
+        if (existing is not null) return existing;
+
+        var displayName = BuildDeviceDisplayName(normalizedDeviceId, deviceName);
+        var randomPassword = $"device:{Guid.NewGuid():N}";
+        try
+        {
+            await CreateUserAsync(username, randomPassword, displayName, "free");
+        }
+        catch
+        {
+            // Có thể race condition khi nhiều request tạo cùng lúc.
+        }
+
+        return await GetUserByUsernameAsync(username)
+               ?? throw new InvalidOperationException("Cannot create device user.");
+    }
+
     public static string NormalizeAccountTier(string? tier)
     {
         var t = (tier ?? "free").Trim().ToLowerInvariant();
         return t == "premium" ? "premium" : "free";
+    }
+
+    private static string NormalizeDeviceId(string? deviceId)
+    {
+        var raw = (deviceId ?? string.Empty).Trim().ToLowerInvariant();
+        if (raw.Length == 0) return string.Empty;
+
+        var chars = raw.Where(c => char.IsLetterOrDigit(c)).Take(48).ToArray();
+        return chars.Length == 0 ? string.Empty : new string(chars);
+    }
+
+    private static string BuildDeviceUsername(string normalizedDeviceId, string? deviceName)
+    {
+        var prefix = NormalizeUsernamePart(deviceName, 24);
+        if (prefix.Length == 0) prefix = "device";
+        return $"{prefix}_{normalizedDeviceId}";
+    }
+
+    private static string BuildDeviceDisplayName(string normalizedDeviceId, string? deviceName)
+    {
+        var name = (deviceName ?? string.Empty).Trim();
+        if (name.Length > 120) name = name[..120];
+        if (name.Length > 0) return name;
+
+        var shortId = normalizedDeviceId.Length <= 6 ? normalizedDeviceId : normalizedDeviceId[..6];
+        return $"Device {shortId}";
+    }
+
+    private static string NormalizeUsernamePart(string? value, int maxLength)
+    {
+        var raw = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (raw.Length == 0) return string.Empty;
+
+        var chars = raw.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray();
+        var compact = new string(chars);
+        while (compact.Contains("__", StringComparison.Ordinal))
+            compact = compact.Replace("__", "_", StringComparison.Ordinal);
+        compact = compact.Trim('_');
+        if (compact.Length > maxLength) compact = compact[..maxLength];
+        return compact;
     }
 
     private static async Task EnsureTouristUserColumnsAsync(SqlConnection connection)
@@ -459,6 +527,39 @@ public sealed class TouristDb
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Thống kê heatmap theo GPS-only (eventType = <c>poi_gps_inside</c>) trong cửa sổ phút gần nhất.
+    /// Dùng cho lớp heat trên bản đồ app.
+    /// </summary>
+    public async Task<List<(int PoiId, string PoiNameVi, int GpsHits)>> GetGpsHeatmapByPoiAsync(int recentMinutes = 90)
+    {
+        var rows = new List<(int PoiId, string PoiNameVi, int GpsHits)>();
+        var window = recentMinutes <= 0 ? 90 : Math.Min(recentMinutes, 1440);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT PoiId, MAX(ISNULL(NULLIF(LTRIM(RTRIM(PoiNameVi)), N''), N'')) AS PoiNameVi, COUNT(*) AS GpsHits
+                          FROM dbo.TouristPoiQrScanLog
+                          WHERE LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) = N'poi_gps_inside'
+                            AND CreatedAtUtc >= DATEADD(MINUTE, -@mins, SYSUTCDATETIME())
+                          GROUP BY PoiId
+                          ORDER BY GpsHits DESC, PoiId ASC;
+                          """;
+        cmd.Parameters.AddWithValue("@mins", window);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var poiId = reader.GetInt32(0);
+            var poiNameVi = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim();
+            var gpsHits = reader.GetInt32(2);
+            if (poiId <= 0 || gpsHits <= 0) continue;
+            rows.Add((poiId, poiNameVi, gpsHits));
+        }
+
+        return rows;
     }
 
     private static async Task SeedDefaultPremiumClaimAsync(SqlConnection connection)

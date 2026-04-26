@@ -99,8 +99,6 @@ public static class MauiProgram
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<AudioPage>();
-        builder.Services.AddTransient<TouristLoginPage>();
-        builder.Services.AddTransient<TouristRegisterPage>();
         builder.Services.AddTransient<QrScannerPage>();
         builder.Services.AddTransient<QrScanHistoryPage>();
 

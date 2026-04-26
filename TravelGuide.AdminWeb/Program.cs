@@ -39,7 +39,6 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
-builder.Services.Configure<PoiQrOptions>(builder.Configuration.GetSection(PoiQrOptions.SectionName));
 builder.Services.Configure<AndroidDownloadOptions>(builder.Configuration.GetSection(AndroidDownloadOptions.SectionName));
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -113,9 +112,8 @@ try
         await db.InitializeAsync();
 
         var qrOptions = scope.ServiceProvider.GetRequiredService<IOptions<AndroidDownloadOptions>>();
-        var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
         var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
-        await AndroidDownloadService.TryGenerateQrAsync(qrOptions.Value, env, httpClientFactory);
+        await AndroidDownloadService.TryGenerateQrAsync(qrOptions.Value, env);
     }
 }
 catch (Exception ex)
@@ -129,20 +127,6 @@ catch (Exception ex)
     Console.Error.WriteLine("Neu vua sua code: dong het instance Admin Web / Visual Studio debug roi chay lai (tranh khoa file DLL).");
     Console.ResetColor();
     throw;
-}
-
-static async Task GeneratePoiQrAsync(
-    int poiId,
-    PoiDto sourcePoi,
-    TravelGuideDb db,
-    IHttpClientFactory httpClientFactory,
-    IWebHostEnvironment env,
-    PoiQrOptions options,
-    CancellationToken cancellationToken)
-{
-    var http = httpClientFactory.CreateClient();
-    http.Timeout = TimeSpan.FromSeconds(25);
-    await PoiQrCodeGenerator.TryGenerateAndStoreAsync(poiId, sourcePoi, db, http, env, options, cancellationToken);
 }
 
 static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnvironment env, CancellationToken cancellationToken)
@@ -317,20 +301,14 @@ app.MapGet("/download/android", (HttpContext context, IOptions<AndroidDownloadOp
     return Results.Redirect(host + apkUrl);
 });
 
-app.MapGet("/download/android/qr.png", async (HttpContext context, IOptions<AndroidDownloadOptions> options, IHttpClientFactory httpClientFactory) =>
+app.MapGet("/download/android/qr.png", (HttpContext context, IOptions<AndroidDownloadOptions> options) =>
 {
     var opts = options.Value;
     var path = AndroidDownloadService.NormalizeDownloadPath(opts.DownloadPath);
     var host = AndroidDownloadPublicBaseResolver.Resolve(context.Request, opts);
     var payload = host + path;
     var size = opts.QrImageSizePx <= 0 ? 320 : opts.QrImageSizePx;
-    var remote = PoiQrCodeGenerator.BuildRemoteQrImageUrl(payload, size);
-    var http = httpClientFactory.CreateClient();
-    http.Timeout = TimeSpan.FromSeconds(20);
-    using var resp = await http.GetAsync(remote, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
-    if (!resp.IsSuccessStatusCode)
-        return Results.NotFound();
-    var bytes = await resp.Content.ReadAsByteArrayAsync(context.RequestAborted);
+    var bytes = AppDownloadQrPng.Encode(payload, size);
     return bytes.Length == 0 ? Results.NotFound() : Results.File(bytes, "image/png");
 });
 
@@ -362,32 +340,14 @@ app.MapGet("/apk/travelguide-latest.apk", (HttpContext context, IWebHostEnvironm
         : Results.File(path, "application/vnd.android.package-archive", "travelguide-latest.apk");
 });
 
-app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
+app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
 
     var id = await db.CreatePoiAsync(poi, principal);
-    if (string.IsNullOrWhiteSpace(poi.QrImagePath))
-    {
-        await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
-    }
-
     await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), id);
     return Results.Ok(new { id });
-});
-
-app.MapPost("/api/pois/{id:int}/qrcode", async (HttpContext context, int id, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
-{
-    var principal = AuthHelper.Authenticate(context, authStore);
-    if (principal is null) return Results.Unauthorized();
-
-    var poi = await db.GetPoiAsync(id);
-    if (poi is null) return Results.NotFound();
-
-    await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
-    var updatedPoi = await db.GetPoiAsync(id);
-    return Results.Ok(new { id, qrImagePath = updatedPoi?.QrImagePath ?? "" });
 });
 
 app.MapPost("/api/upload/audio", async (HttpContext context, AuthStore authStore, IWebHostEnvironment env) =>
@@ -634,6 +594,15 @@ app.MapPut("/api/tourists/{id:int}/tier", async (HttpContext context, int id, Up
     return ok
         ? Results.Ok(new { message = "Đã cập nhật tier du khách." })
         : Results.NotFound("Không tìm thấy tài khoản du khách.");
+});
+
+app.MapPost("/api/tourists/purge-legacy", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var result = await db.PurgeLegacyTouristUsersAsync();
+    return Results.Ok(result);
 });
 
 app.MapGet("/api/tourists/poi-scan-dashboard", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>

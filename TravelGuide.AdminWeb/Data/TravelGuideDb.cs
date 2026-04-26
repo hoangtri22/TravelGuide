@@ -31,6 +31,23 @@ public sealed class TravelGuideDb
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Chỉ giữ tài khoản du khách theo cơ chế đăng nhập thiết bị mới:
+    /// username có tiền tố <c>device_</c> hoặc hậu tố id thiết bị dài sau dấu gạch dưới.
+    /// </summary>
+    private static bool IsDeviceManagedTouristUsername(string? username)
+    {
+        var u = (username ?? string.Empty).Trim().ToLowerInvariant();
+        if (u.Length == 0) return false;
+        if (u.StartsWith("device_", StringComparison.Ordinal)) return true;
+
+        var splitAt = u.LastIndexOf('_');
+        if (splitAt <= 0 || splitAt >= u.Length - 1) return false;
+        var suffix = u[(splitAt + 1)..];
+        if (suffix.Length < 12 || suffix.Length > 48) return false;
+        return suffix.All(char.IsLetterOrDigit);
+    }
+
     /// <summary>Chuỗi kết nối SQL Server (localdb mặc định nếu không cấu hình biến môi trường).</summary>
     public TravelGuideDb()
     {
@@ -1168,12 +1185,28 @@ public sealed class TravelGuideDb
     public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null)
     {
         // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
-        var users = await SafeTouristQuery(GetTouristUsersAsync);
-        var refreshTokens = await SafeTouristQuery(GetTouristRefreshTokensAsync);
-        var favorites = await SafeTouristQuery(GetTouristFavoritesAsync);
-        var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
-        var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
-        var (activeLoginSessions, activeLoginAccounts) = await CountActiveTouristLoginStatsAsync();
+        var usersAll = await SafeTouristQuery(GetTouristUsersAsync);
+        var refreshTokensAll = await SafeTouristQuery(GetTouristRefreshTokensAsync);
+        var favoritesAll = await SafeTouristQuery(GetTouristFavoritesAsync);
+        var visitHistoryAll = await SafeTouristQuery(GetTouristVisitHistoryAsync);
+        var paymentsAll = await SafeTouristQuery(GetPaymentTransactionsAsync);
+
+        var users = usersAll
+            .Where(u => IsDeviceManagedTouristUsername(u.Username))
+            .ToList();
+        var allowedUserIds = users.Select(u => u.Id).ToHashSet();
+        var refreshTokens = refreshTokensAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var favorites = favoritesAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var visitHistory = visitHistoryAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var payments = paymentsAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+
+        var nowUtc = DateTime.UtcNow;
+        var activeLoginSessions = refreshTokens.Count(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc);
+        var activeLoginAccounts = refreshTokens
+            .Where(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc)
+            .Select(x => x.TouristUserId)
+            .Distinct()
+            .Count();
         var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart);
         return new
         {
@@ -2014,6 +2047,127 @@ public sealed class TravelGuideDb
     {
         var normalized = (tier ?? "free").Trim().ToLowerInvariant();
         return normalized == "premium" ? "premium" : "free";
+    }
+
+    /// <summary>
+    /// Xóa vật lý toàn bộ tài khoản du khách cũ (không theo chuẩn đăng nhập bằng thiết bị)
+    /// cùng dữ liệu liên quan (token, lịch sử, favorite, giao dịch, comment, log QR).
+    /// </summary>
+    public async Task<object> PurgeLegacyTouristUsersAsync()
+    {
+        var allUsers = await GetTouristUsersAsync();
+        var legacyUsers = allUsers
+            .Where(u => !IsDeviceManagedTouristUsername(u.Username))
+            .Select(u => (u.Id, u.Username))
+            .ToList();
+
+        if (legacyUsers.Count == 0)
+        {
+            return new
+            {
+                removedUsers = 0,
+                removedRefreshTokens = 0,
+                removedFavorites = 0,
+                removedVisitHistory = 0,
+                removedPayments = 0,
+                removedComments = 0,
+                removedPoiScanLogs = 0
+            };
+        }
+
+        return LooksLikeSqlServerConnection(_connectionString)
+            ? await PurgeLegacyTouristUsersSqlServerAsync(legacyUsers)
+            : await PurgeLegacyTouristUsersSqliteAsync(legacyUsers);
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqliteAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqliteAsync(connection, "DELETE FROM RefreshToken WHERE TouristUserId = $id;", id);
+            removedFavorites += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristFavorite WHERE TouristUserId = $id;", id);
+            removedVisitHistory += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristVisitHistory WHERE TouristUserId = $id;", id);
+            removedPayments += await ExecDeleteSqliteAsync(connection, "DELETE FROM PaymentTransaction WHERE TouristUserId = $id;", id);
+            removedComments += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristComment WHERE TouristUserId = $id;", id);
+            removedPoiScanLogs += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristPoiQrScanLog WHERE TouristUserId = $id;", id);
+            removedUsers += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristUser WHERE Id = $id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqliteAsync(SqliteConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$id", userId);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqlServerAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.RefreshToken WHERE TouristUserId = @id;", id);
+            removedFavorites += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristFavorite WHERE TouristUserId = @id;", id);
+            removedVisitHistory += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristVisitHistory WHERE TouristUserId = @id;", id);
+            removedPayments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.PaymentTransaction WHERE TouristUserId = @id;", id);
+            removedComments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristComment WHERE TouristUserId = @id;", id);
+            removedPoiScanLogs += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristPoiQrScanLog WHERE TouristUserId = @id;", id);
+            removedUsers += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristUser WHERE Id = @id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqlServerAsync(SqlConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@id", userId);
+        return await cmd.ExecuteNonQueryAsync();
     }
 
     private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()

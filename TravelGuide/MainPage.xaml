@@ -142,21 +142,9 @@
                         </Border>
                     </VerticalStackLayout></Border>
 
-                    <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Tài khoản du khách" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
-                            <Label x:Name="LblTouristAuthStatus" Text="Chưa đăng nhập" TextColor="#64748B"/>
-                            <HorizontalStackLayout Spacing="10">
-                                <Button Text="Đăng nhập" Clicked="OnTouristLoginClicked" />
-                                <Button Text="Đăng xuất" Clicked="OnTouristLogoutClicked" BackgroundColor="#E5E7EB" TextColor="#111827"/>
-                            </HorizontalStackLayout>
-                        </VerticalStackLayout>
-                    </Border>
-
                     <Button x:Name="ContinueBtn"
                             Text="{loc:Translate BtnContinue}"
                             Clicked="GoHome"
-                            IsEnabled="False"
                             BackgroundColor="#1E88E5"
                             TextColor="White"
                             CornerRadius="25"

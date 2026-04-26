@@ -65,7 +65,6 @@ public static class AndroidDownloadService
     public static async Task<string?> TryGenerateQrAsync(
         AndroidDownloadOptions options,
         IWebHostEnvironment env,
-        IHttpClientFactory httpClientFactory,
         CancellationToken cancellationToken = default)
     {
         var root = env.WebRootPath;
@@ -75,7 +74,6 @@ public static class AndroidDownloadService
         var payload = BuildDownloadUrl(options);
         if (payload.StartsWith("/", StringComparison.Ordinal))
             return null;
-        var remote = PoiQrCodeGenerator.BuildRemoteQrImageUrl(payload, options.QrImageSizePx);
         var fileName = GetNormalizedQrFileName(options);
 
         try
@@ -83,16 +81,9 @@ public static class AndroidDownloadService
             var dir = Path.Combine(root, "qrcodes");
             Directory.CreateDirectory(dir);
             var outPath = Path.Combine(dir, fileName);
-
-            var http = httpClientFactory.CreateClient();
-            http.Timeout = TimeSpan.FromSeconds(20);
-            using var resp = await http.GetAsync(remote, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!resp.IsSuccessStatusCode)
-                return null;
-
-            await using var input = await resp.Content.ReadAsStreamAsync(cancellationToken);
-            await using var output = File.Create(outPath);
-            await input.CopyToAsync(output, cancellationToken);
+            var png = AppDownloadQrPng.Encode(payload, options.QrImageSizePx);
+            if (png.Length == 0) return null;
+            await File.WriteAllBytesAsync(outPath, png, cancellationToken);
             return $"/qrcodes/{fileName}";
         }
         catch

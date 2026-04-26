@@ -21,6 +21,7 @@ public partial class MapPage : ContentPage
     private readonly NarrationEngine _narrationEngine;
     private readonly GpsBackgroundService _gpsService;
     private readonly GeofenceEngine _geofenceEngine;
+    private readonly TouristAuthService _authService;
 
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
@@ -43,7 +44,7 @@ public partial class MapPage : ContentPage
 
     private static string F(double d) => d.ToString(CultureInfo.InvariantCulture);
 
-    public MapPage(DatabaseService dbService, NarrationEngine narrationEngine, GpsBackgroundService gpsService, GeofenceEngine geofenceEngine)
+    public MapPage(DatabaseService dbService, NarrationEngine narrationEngine, GpsBackgroundService gpsService, GeofenceEngine geofenceEngine, TouristAuthService authService)
     {
         InitializeComponent();
 #if ANDROID
@@ -63,6 +64,7 @@ public partial class MapPage : ContentPage
         _narrationEngine = narrationEngine;
         _gpsService = gpsService;
         _geofenceEngine = geofenceEngine;
+        _authService = authService;
 
         WeakReferenceMessenger.Default.Register<LocationMessage>(this, (r, m) =>
         {
@@ -389,6 +391,32 @@ public partial class MapPage : ContentPage
 
         _lastKnownLocation = userLocation;
         var allPlaces = await _dbService.GetPlacesAsync();
+        var (heatOk, heatRows, _) = await _authService.GetGpsHeatmapAsync(minutes: 5);
+        var gpsRows = (heatOk ? heatRows : Array.Empty<TouristAuthService.GpsHeatmapRow>());
+        var gpsHeatByPoi = gpsRows
+            .Where(x => x.PoiId > 0 && x.GpsHits > 0)
+            .GroupBy(x => x.PoiId)
+            .ToDictionary(g => g.Key, g => g.Sum(v => v.GpsHits));
+
+        static string NormalizeViName(string? s) =>
+            (s ?? string.Empty).Trim().ToLowerInvariant();
+        var gpsHeatByName = gpsRows
+            .Where(x => x.GpsHits > 0 && !string.IsNullOrWhiteSpace(x.PoiNameVi))
+            .GroupBy(x => NormalizeViName(x.PoiNameVi))
+            .ToDictionary(g => g.Key, g => g.Sum(v => v.GpsHits));
+
+        var heatLayerPoints = allPlaces
+            .Select(p => new
+            {
+                p.Longitude,
+                p.Latitude,
+                Hits = gpsHeatByPoi.TryGetValue(p.Id, out var n)
+                    ? n
+                    : (gpsHeatByName.TryGetValue(NormalizeViName(p.NameVi), out var byName) ? byName : 0)
+            })
+            .Where(x => x.Hits > 0)
+            .Select(x => new { lng = x.Longitude, lat = x.Latitude, hits = x.Hits })
+            .ToList();
         var sb = new StringBuilder();
         foreach (var p in allPlaces)
         {
@@ -405,7 +433,11 @@ public partial class MapPage : ContentPage
         {
             mapView.Source = new HtmlWebViewSource
             {
-                Html = BuildLeafletHtml(userLocation, sb.ToString(), JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()))
+                Html = BuildLeafletHtml(
+                    userLocation,
+                    sb.ToString(),
+                    JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()),
+                    JsonSerializer.Serialize(heatLayerPoints))
             };
             ArmMapLoadingFallback();
         }
@@ -468,7 +500,7 @@ public partial class MapPage : ContentPage
         EndpointResolver.ResolveAdminWebBaseUrls().Primary;
 
     /// <summary>HTML Leaflet + OpenStreetMap; giữ API JS <c>addPlace</c>/<c>updateLocation</c>/<c>highlightMarker</c>/<c>clearHighlight</c>/<c>markVisitedMarker</c>.</summary>
-    private string BuildLeafletHtml(Location center, string markersJs, string adminWebBaseJson)
+    private string BuildLeafletHtml(Location center, string markersJs, string adminWebBaseJson, string? heatLayerJson = null)
     {
         // Leaflet qua MauiAsset (appassets) trên Android WebView thường không chạy được (MIME/loader) → luôn dùng HTTPS CDN.
         const string leafletCss = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
@@ -493,6 +525,7 @@ public partial class MapPage : ContentPage
     window.onerror=function(msg,src,line,col,err){{window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
     if (typeof L==='undefined') {{ window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Leaflet L undefined'); }}
     const adminWebBase = {adminWebBaseJson};
+    const gpsHeatRows = {heatLayerJson ?? "[]"};
     let mapLoaded = false;
     function notifyLoadedOnce(){{
       if (mapLoaded) return;
@@ -606,6 +639,29 @@ public partial class MapPage : ContentPage
       markerMap[markerId].el.style.height = '16px';
     }}
     document.getElementById('locateBtn').addEventListener('click', () => window.location.href=MAP_BRIDGE+'/locate');
+    function heatColor(hits){{
+      if (hits >= 8) return '#7f1d1d';
+      if (hits >= 5) return '#dc2626';
+      if (hits >= 3) return '#f97316';
+      if (hits >= 2) return '#f59e0b';
+      return '#fde047';
+    }}
+    function heatRadius(hits){{
+      return 58 + Math.min(170, Math.sqrt(Math.max(1, hits)) * 36);
+    }}
+    for (const r of (Array.isArray(gpsHeatRows) ? gpsHeatRows : [])) {{
+      const lat = Number(r?.lat ?? 0);
+      const lng = Number(r?.lng ?? 0);
+      const hits = Number(r?.hits ?? 0);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || hits <= 0) continue;
+      L.circle([lat, lng], {{
+        radius: heatRadius(hits),
+        color: heatColor(hits),
+        weight: 2,
+        fillColor: heatColor(hits),
+        fillOpacity: 0.4
+      }}).addTo(map);
+    }}
     {markersJs}
     setTimeout(() => window.location.href=MAP_BRIDGE+'/locate', 1500);
   </script>

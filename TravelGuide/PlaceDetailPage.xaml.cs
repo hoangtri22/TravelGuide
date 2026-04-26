@@ -1,6 +1,5 @@
 using TravelGuide.Models;
 using Microsoft.Maui.ApplicationModel;
-using Microsoft.Maui.ApplicationModel.DataTransfer;
 using System.Globalization;
 
 namespace TravelGuide;
@@ -55,8 +54,6 @@ public partial class PlaceDetailPage : ContentPage
         LblAboutPrice.Text = $"Mức giá tham khảo: {Math.Max(0, _currentPlace.Price):N0} VND";
         LblAboutCoords.Text = $"Tọa độ: {_currentPlace.Latitude:F6}, {_currentPlace.Longitude:F6}";
         LblAboutMapLink.Text = string.IsNullOrWhiteSpace(map) ? "Map link: chưa có" : $"Map link: {map}";
-        ImgQr.Source = ResolveQrImageSource(_currentPlace);
-
         var keywords = BuildKeywords(_currentPlace.Tag);
         LblReviewKeywords.Text = string.Join(" · ", keywords);
         await RefreshReviewsAsync(defaultRating);
@@ -100,23 +97,11 @@ public partial class PlaceDetailPage : ContentPage
         }
     }
 
-    private async void OnOpenQrScannerClicked(object sender, EventArgs e)
-    {
-        var poiId = _currentPlace?.Id ?? 0;
-        if (poiId > 0)
-        {
-            await Shell.Current.GoToAsync($"{nameof(QrScannerPage)}?payload={Uri.EscapeDataString(poiId.ToString(CultureInfo.InvariantCulture))}");
-            return;
-        }
-
-        await Shell.Current.GoToAsync(nameof(QrScannerPage));
-    }
-
     private void OnTabClicked(object sender, EventArgs e)
     {
         if (sender is not Button btn) return;
         var tab = (btn.CommandParameter as string)?.Trim().ToLowerInvariant();
-        if (tab is not ("overview" or "reviews" or "about" or "qr")) return;
+        if (tab is not ("overview" or "reviews" or "about")) return;
         _activeTab = tab;
         RefreshTabState();
     }
@@ -126,12 +111,10 @@ public partial class PlaceDetailPage : ContentPage
         SectionOverview.IsVisible = _activeTab == "overview";
         SectionReviews.IsVisible = _activeTab == "reviews";
         SectionAbout.IsVisible = _activeTab == "about";
-        SectionQr.IsVisible = _activeTab == "qr";
 
         SetTabButtonState(TabOverview, _activeTab == "overview");
         SetTabButtonState(TabReviews, _activeTab == "reviews");
         SetTabButtonState(TabAbout, _activeTab == "about");
-        SetTabButtonState(TabQr, _activeTab == "qr");
     }
 
     private static void SetTabButtonState(Button btn, bool active)
@@ -190,7 +173,7 @@ public partial class PlaceDetailPage : ContentPage
 
             LblRating.Text = $"{avgRating:F1} ★★★★★";
             LblReviewCount.Text = $"({reviewCount:N0})";
-            LblReviewSummary.Text = $"Đánh giá từ khách đã đăng nhập ({reviewCount:N0})";
+            LblReviewSummary.Text = $"Đánh giá từ khách du lịch ({reviewCount:N0})";
 
             ReviewsCollection.ItemsSource = remote.Items
                 .Select(r => new LocalReviewVm(
@@ -213,7 +196,7 @@ public partial class PlaceDetailPage : ContentPage
         LblReviewCount.Text = $"({localCount:N0})";
         LblReviewSummary.Text = localCount == 0
             ? $"Chưa có đánh giá cho {GetTagLabel(_currentPlace.Tag)}"
-            : $"Đánh giá từ khách đã đăng nhập ({localCount:N0})";
+            : $"Đánh giá từ khách du lịch ({localCount:N0})";
 
         ReviewsCollection.ItemsSource = rows
             .Select(r => new LocalReviewVm(
@@ -238,7 +221,7 @@ public partial class PlaceDetailPage : ContentPage
         var (ok, username, _) = await _authService.GetMeAsync();
         if (!ok || string.IsNullOrWhiteSpace(username))
         {
-            await DisplayAlert("Cần đăng nhập", "Bạn cần đăng nhập tài khoản để gửi đánh giá.", "OK");
+            await DisplayAlert("Lỗi", "Không thể khởi tạo tài khoản thiết bị để gửi đánh giá.", "OK");
             return;
         }
 
@@ -290,28 +273,5 @@ public partial class PlaceDetailPage : ContentPage
         var text = (adminReply ?? string.Empty).Trim();
         return string.IsNullOrWhiteSpace(text) ? string.Empty : $"Phản hồi admin: {text}";
     }
-
-    private static string ResolveQrImageSource(TouristPlace place)
-    {
-        var raw = (place.QrImagePath ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(raw))
-            return BuildFallbackQr(place.Id);
-        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-            raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            return raw;
-
-        var normalized = raw.TrimStart('.', '/');
-        if (normalized.StartsWith("WEB/", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[4..];
-
-        if (normalized.Length == 0) return BuildFallbackQr(place.Id);
-        return $"{GetAdminWebBaseUrlForQr().TrimEnd('/')}/{normalized}";
-    }
-
-    private static string GetAdminWebBaseUrlForQr() =>
-        EndpointResolver.ResolveAdminWebBaseUrls().Primary;
-
-    private static string BuildFallbackQr(int poiId) =>
-        $"https://api.qrserver.com/v1/create-qr-code/?size=220x220&data={Uri.EscapeDataString(poiId.ToString(CultureInfo.InvariantCulture))}";
 
 }
