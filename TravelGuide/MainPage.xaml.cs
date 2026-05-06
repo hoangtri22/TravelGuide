@@ -12,7 +12,6 @@ public partial class MainPage : ContentPage
     private bool _isNavigating;
 
     private string _selectedLang = "vi";
-
     private readonly List<string> _fullCurrencyList = new();
 
     private readonly Dictionary<string, string> _langNames = new()
@@ -81,7 +80,11 @@ public partial class MainPage : ContentPage
 
             var stack = border.Content as VerticalStackLayout;
             if (stack?.Children.Count > 1 && stack.Children[1] is Label lbl)
-                lbl.TextColor = isSelected ? Colors.White : Color.FromArgb("#555555");
+                lbl.TextColor = isSelected
+                    ? Colors.White
+                    : Application.Current?.RequestedTheme == AppTheme.Dark
+                        ? Color.FromArgb("#E5E7EB")
+                        : Color.FromArgb("#555555");
         }
 
         if (LblSelectedLang != null && _langNames.TryGetValue(code, out var name))

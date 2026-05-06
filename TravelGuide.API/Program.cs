@@ -6,6 +6,13 @@ using TravelGuide.API.Models;
 using TravelGuide.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+void ApplySharedSqlConnection(IConfiguration cfg)
+{
+    var fromCfg = (cfg["ConnectionStrings:TravelGuideSqlServer"] ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(fromCfg)) return;
+    Environment.SetEnvironmentVariable("TRAVELGUIDE_SQLSERVER", fromCfg, EnvironmentVariableTarget.Process);
+}
+ApplySharedSqlConnection(builder.Configuration);
 builder.Services.AddSingleton<TouristDb>();
 builder.Services.AddSingleton<PoiPublicReader>();
 builder.Services.AddSingleton<AuthStore>();
@@ -62,6 +69,28 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapGet("/", () => Results.Ok(new { service = "TravelGuide.API", status = "ok" }));
+
+string ResolveApkFilePathFromApiHost()
+{
+    var candidates = new[]
+    {
+        Path.Combine(Directory.GetCurrentDirectory(), "TravelGuide.AdminWeb", "WEB", "apk", "travelguide-latest.apk"),
+        Path.Combine(Directory.GetCurrentDirectory(), "WEB", "apk", "travelguide-latest.apk"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "TravelGuide.AdminWeb", "WEB", "apk", "travelguide-latest.apk")),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "WEB", "apk", "travelguide-latest.apk"))
+    };
+    return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
+}
+
+app.MapGet("/download/apk", (HttpContext context) =>
+{
+    var apkPath = ResolveApkFilePathFromApiHost();
+    if (!File.Exists(apkPath))
+        return Results.NotFound("APK file not found. Put file at TravelGuide.AdminWeb/WEB/apk/travelguide-latest.apk");
+
+    context.Response.Headers["Content-Disposition"] = "attachment; filename=\"app.apk\"";
+    return Results.File(apkPath, "application/vnd.android.package-archive", "app.apk");
+});
 
 app.MapPost("/api/tourist/auth/device-login", async (TouristDeviceLoginRequest request, TouristDb db, AuthStore authStore) =>
 {

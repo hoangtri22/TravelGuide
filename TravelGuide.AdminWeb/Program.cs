@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.OpenApi.Models;
+using QRCoder;
 
 // =============================================================================
 // TravelGuide.AdminWeb — Minimal API (Program.cs)
@@ -34,6 +35,13 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     Args = args,
     WebRootPath = ResolveWebRootPath()
 });
+void ApplySharedSqlConnection(IConfiguration cfg)
+{
+    var fromCfg = (cfg["ConnectionStrings:TravelGuideSqlServer"] ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(fromCfg)) return;
+    Environment.SetEnvironmentVariable("TRAVELGUIDE_SQLSERVER", fromCfg, EnvironmentVariableTarget.Process);
+}
+ApplySharedSqlConnection(builder.Configuration);
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
@@ -101,6 +109,58 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+string ResolveApkPublicUrl()
+{
+    var fromEnv = (Environment.GetEnvironmentVariable("TRAVELGUIDE_PUBLIC_APK_URL") ?? string.Empty).Trim();
+    if (!string.IsNullOrWhiteSpace(fromEnv))
+        return fromEnv;
+    var fromCfg = (builder.Configuration["ApkPublic:DownloadUrl"] ?? string.Empty).Trim();
+    return fromCfg;
+}
+
+string GetApkFilePath()
+{
+    var root = string.IsNullOrWhiteSpace(app.Environment.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : app.Environment.WebRootPath;
+    return Path.Combine(root, "apk", "travelguide-latest.apk");
+}
+
+string EnsureStaticApkQr(string publicApkUrl)
+{
+    var root = string.IsNullOrWhiteSpace(app.Environment.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : app.Environment.WebRootPath;
+    var qrDir = Path.Combine(root, "qrcodes");
+    Directory.CreateDirectory(qrDir);
+    var qrPath = Path.Combine(qrDir, "apk-download-static.png");
+    var metaPath = Path.Combine(qrDir, "apk-download-static.url.txt");
+
+    var shouldRegenerate = !File.Exists(qrPath);
+    if (File.Exists(metaPath))
+    {
+        var old = (File.ReadAllText(metaPath) ?? string.Empty).Trim();
+        if (!string.Equals(old, publicApkUrl, StringComparison.Ordinal))
+            shouldRegenerate = true;
+    }
+    else
+    {
+        shouldRegenerate = true;
+    }
+
+    if (shouldRegenerate)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        using var qrData = qrGenerator.CreateQrCode(publicApkUrl, QRCodeGenerator.ECCLevel.Q);
+        var pngQr = new PngByteQRCode(qrData);
+        var bytes = pngQr.GetGraphic(12);
+        File.WriteAllBytes(qrPath, bytes);
+        File.WriteAllText(metaPath, publicApkUrl);
+    }
+
+    return "/qrcodes/apk-download-static.png";
+}
+
 try
 {
     await using (var scope = app.Services.CreateAsyncScope())
@@ -121,6 +181,32 @@ catch (Exception ex)
     Console.ResetColor();
     throw;
 }
+
+app.MapGet("/download/apk", (HttpContext context) =>
+{
+    var apkPath = GetApkFilePath();
+    if (!File.Exists(apkPath))
+        return Results.NotFound("APK file not found. Put file at WEB/apk/travelguide-latest.apk");
+
+    context.Response.Headers["Content-Disposition"] = "attachment; filename=\"app.apk\"";
+    return Results.File(apkPath, "application/vnd.android.package-archive", "app.apk");
+});
+
+app.MapGet("/api/download/apk-info", (HttpContext context) =>
+{
+    var publicApkUrl = ResolveApkPublicUrl();
+    if (string.IsNullOrWhiteSpace(publicApkUrl))
+        return Results.BadRequest("Missing TRAVELGUIDE_PUBLIC_APK_URL (or ApkPublic:DownloadUrl).");
+
+    var qrPath = EnsureStaticApkQr(publicApkUrl);
+    var absoluteQr = $"{context.Request.Scheme}://{context.Request.Host}{qrPath}";
+    return Results.Ok(new
+    {
+        downloadUrl = publicApkUrl,
+        qrImagePath = qrPath,
+        qrImageUrl = absoluteQr
+    });
+});
 
 static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnvironment env, CancellationToken cancellationToken)
 {

@@ -606,6 +606,51 @@ a.btn-outline:hover {
 
 .table-card .card-title { margin-bottom: 16px; }
 
+.apk-public-box {
+  margin-top: 14px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 520px;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.apk-public-box .card-title,
+.apk-public-box .hint {
+  text-align: center;
+}
+
+.apk-public-box .hint {
+  margin-bottom: 10px;
+}
+
+.apk-public-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 2px;
+}
+
+.apk-qr-image {
+  width: 180px;
+  height: 180px;
+  border-radius: 12px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  object-fit: contain;
+}
+
+.apk-download-inline {
+  min-height: 42px;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
 .table-scroll {
   border-radius: var(--radius-md);
   border: 1px solid var(--gray-200);

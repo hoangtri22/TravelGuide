@@ -141,6 +141,31 @@ function applyRoleChrome() {
   switchTab("poiTab");
 }
 
+async function loadApkPublicDistribution() {
+  const box = byId("apkPublicBox");
+  if (!box) return;
+  if (normalizedRole() !== "admin") {
+    box.classList.add("hidden");
+    return;
+  }
+  try {
+    const data = await api("/api/download/apk-info");
+    const url = String(data?.downloadUrl || "").trim();
+    const qr = String(data?.qrImagePath || "").trim();
+    if (!url || !qr) {
+      box.classList.add("hidden");
+      return;
+    }
+    const img = byId("apkQrImage");
+    const dl = byId("apkDownloadBtn");
+    if (img) img.src = qr;
+    if (dl) dl.href = url;
+    box.classList.remove("hidden");
+  } catch {
+    box.classList.add("hidden");
+  }
+}
+
 /** Bảng chỉnh Audio URL / Map link theo danh sách POI hiện tại (chủ quán). */
 function renderAudioSources() {
   const tbody = byId("audioTable")?.querySelector("tbody");
@@ -1861,6 +1886,7 @@ async function loadTouristOverview() {
     const totalAcc = Number(touristPick(dash, "totalAccounts", "TotalAccounts") ?? 0).toLocaleString("vi-VN");
     const activated = Number(touristPick(dash, "activatedCount", "ActivatedCount") ?? 0).toLocaleString("vi-VN");
     const sessToday = Number(touristPick(dash, "sessionsToday", "SessionsToday") ?? 0).toLocaleString("vi-VN");
+    const manualNarrationToday = Number(touristPick(dash, "manualNarrationToday", "ManualNarrationToday") ?? 0).toLocaleString("vi-VN");
     const actSess = Number(touristPick(dash, "activeLoginSessions", "ActiveLoginSessions") ?? 0).toLocaleString("vi-VN");
     const actAcc = Number(touristPick(dash, "activeLoginAccounts", "ActiveLoginAccounts") ?? 0).toLocaleString("vi-VN");
     let live = dash.liveSessions ?? dash.LiveSessions;
@@ -1873,6 +1899,7 @@ async function loadTouristOverview() {
         ${pill(totalAcc, "Lượt truy cập", "tourist-dash-pill--tone-slate")}
         ${pill(activated, "Đã kích hoạt / Premium", "tourist-dash-pill--tone-emerald")}
         ${pill(sessToday, "Visit history (hôm nay)", "tourist-dash-pill--tone-amber")}
+        ${pill(manualNarrationToday, "Nghe thuyết minh (hôm nay)", "tourist-dash-pill--tone-indigo")}
       </div>
       <section class="tourist-dash-sessions" aria-labelledby="tourist-live-heading">
         <div class="tourist-dash-sessions__head">
@@ -2069,6 +2096,7 @@ byId("loginForm").addEventListener("submit", async (e) => {
     byId("appSection").classList.remove("hidden");
     applyRoleChrome();
     await loadPois();
+    await loadApkPublicDistribution();
     await loadAccounts();
     await loadComments();
     await loadTouristOverview();
@@ -2544,6 +2572,7 @@ byId("commentList")?.addEventListener("click", async (e) => {
     app.classList.remove("hidden");
     applyRoleChrome();
     loadPois()
+      .then(() => loadApkPublicDistribution())
       .then(() => loadAccounts())
       .then(() => loadComments())
       .then(() => loadTouristOverview())

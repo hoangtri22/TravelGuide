@@ -1409,6 +1409,10 @@ public sealed class TravelGuideDb
         var totalAccounts = users.Count;
 
         var sessionsToday = visitHistory.Count(h => h.OccurredAtUtc >= today && h.OccurredAtUtc < today.AddDays(1));
+        var manualNarrationToday = visitHistory.Count(h =>
+            h.OccurredAtUtc >= today
+            && h.OccurredAtUtc < today.AddDays(1)
+            && string.Equals((h.EventType ?? string.Empty).Trim(), "poi_manual_narration", StringComparison.OrdinalIgnoreCase));
 
         var hourly = new int[24];
         foreach (var h in visitHistory.Where(x => x.OccurredAtUtc >= windowStart))
@@ -1454,6 +1458,7 @@ public sealed class TravelGuideDb
             totalAccounts,
             activatedCount,
             sessionsToday,
+            manualNarrationToday,
             hourlyActivity = hourly,
             visitHistoryTopPoisChart = BuildVisitHistoryTopPoisChart(visitHistory, now, visitHistoryChartWeekStart),
             liveSessions,
@@ -2061,7 +2066,8 @@ public sealed class TravelGuideDb
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
-                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + IFNULL((SELECT COUNT(*) FROM TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
                                  IFNULL((SELECT COUNT(*) FROM RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > $nowUtc), 0) AS activeSessions
                           FROM TouristUser u
                           ORDER BY u.Id DESC;
@@ -2090,7 +2096,8 @@ public sealed class TravelGuideDb
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT TOP 500 u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
-                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + ISNULL((SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
                                  ISNULL((SELECT COUNT(*) FROM dbo.RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > SYSUTCDATETIME()), 0) AS activeSessions
                           FROM dbo.TouristUser u
                           ORDER BY u.Id DESC;

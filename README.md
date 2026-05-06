@@ -207,23 +207,66 @@ dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj" --launch
 cd <duong-dan-toi-thu-muc-TravelGuide>
 dotnet run --project "TravelGuide.API/TravelGuide.API.csproj"
 ```
-- Swagger: `http://localhost:5096/swagger` (tuỳ launch settings)
+- Swagger (mặc định profile `https`): `https://localhost:7149/swagger`
+- Có thể dùng HTTP: `http://localhost:5096/swagger`
 - Cấu hình giá mô phỏng: `TravelGuide.API/appsettings.json` (`TouristPricing`)
 
-### Cài app trên điện thoại thật trong mạng nội bộ (local/LAN)
-1. Chạy 2 service local:
-   - `TravelGuide.AdminWeb` (port `5280`)
-   - `TravelGuide.API` (port `5096`)
-2. Đảm bảo điện thoại và máy dev cùng Wi-Fi/LAN.
-3. Cập nhật endpoint nội bộ:
-   - `TravelGuide/Resources/Raw/device_endpoints.json`:
-     - `androidPhysicalApiBaseUrl = http://<LAN-IP-PC>:5096`
-     - `androidPhysicalAdminWebBaseUrl = http://<LAN-IP-PC>:5280`
-4. Build lại APK và đặt file tại `TravelGuide.AdminWeb/WEB/apk/travelguide-latest.apk`.
-5. Cài APK nội bộ qua URL LAN:
-   - `http://<LAN-IP-PC>:5280/apk/travelguide-latest.apk`
+### Dùng Dev Tunnel (devtunnels.ms) cho máy thật
+Mục tiêu luồng: `App điện thoại -> https://*.devtunnels.ms -> localhost trên máy dev`.
 
-> Không hỗ trợ tunnel/public internet. Hệ thống chỉ phục vụ localhost hoặc LAN nội bộ.
+1. Chạy backend local trước:
+   - Tourist API: `dotnet run --project "TravelGuide.API/TravelGuide.API.csproj"`
+   - (tuỳ chọn) AdminWeb: `dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj" --launch-profile http`
+2. Trong Visual Studio mở **Dev Tunnels** và forward đúng port:
+   - API: `5096` (Public)
+   - AdminWeb: `5280` (Public, nếu cần các endpoint web/admin)
+3. Start tunnel, chờ trạng thái `Running`, copy URL public.
+4. Ghi URL tunnel vào app config:
+   - 1 URL chung cho cả API + AdminWeb:
+     - `powershell -ExecutionPolicy Bypass -File .\scripts\set-devtunnel-endpoints.ps1 -ApiTunnelUrl "https://abc123.devtunnels.ms"`
+   - 2 URL riêng:
+     - `powershell -ExecutionPolicy Bypass -File .\scripts\set-devtunnel-endpoints.ps1 -ApiTunnelUrl "https://api-abc123.devtunnels.ms" -AdminTunnelUrl "https://admin-abc123.devtunnels.ms"`
+5. Build lại app MAUI và cài APK lên máy thật.
+
+Ghi chú:
+- File được cập nhật: `TravelGuide/Resources/Raw/device_endpoints.json`.
+- Nếu tunnel URL đổi, chạy lại script rồi build lại app.
+- Nếu tunnel đang `Stopped` hoặc chưa forward port, app sẽ không gọi được API.
+
+### Tải APK từ internet bằng URL public cố định (QR dùng lâu dài)
+1. Chuẩn bị URL tải APK public (có thể là domain tunnel hoặc link Google Drive direct download).
+2. Tạo tunnel cố định bằng Cloudflare Tunnel (named tunnel + DNS route):
+   - `cloudflared tunnel create travelguide-adminweb`
+   - `cloudflared tunnel route dns travelguide-adminweb app-download.your-domain.com`
+   - Cấu hình ingress theo mẫu `scripts/cloudflared-config.example.yml`.
+3. Cấu hình URL public cho AdminWeb (ưu tiên một trong hai cách):
+   - `TravelGuide.AdminWeb/appsettings.json`:
+     - `ApkPublic:DownloadUrl=https://...`
+   - hoặc biến môi trường:
+     - `TRAVELGUIDE_PUBLIC_APK_URL=https://...`
+   - `TRAVELGUIDE_CLOUDFLARE_TUNNEL_NAME=travelguide-adminweb`
+4. Chạy script tự động server + tunnel:
+   - `powershell -ExecutionPolicy Bypass -File .\scripts\start-public-apk-tunnel.ps1`
+5. Trong AdminWeb (tab POI), khối **Tải APK qua QR (Tunnel Public)** sẽ hiển thị:
+   - QR tĩnh: `/qrcodes/apk-download-static.png`
+   - Nút **Tải APP** trực tiếp
+6. Có thể mở trang public chứa QR (không cần vào dashboard admin):
+   - `/apk-qr.html`
+   - Ví dụ qua tunnel: `https://<admin-tunnel-url>/apk-qr.html`
+   - Trang này hiển thị QR tĩnh + nút tải/copy link từ server (không có phần nhập link thủ công).
+
+Ghi chú:
+- Endpoint tải trực tiếp: `GET /download/apk`
+- API metadata QR: `GET /api/download/apk-info`
+- QR chỉ regenerate khi `TRAVELGUIDE_PUBLIC_APK_URL` đổi, nên có thể in dùng lâu dài.
+
+### Build APK Release (file signed)
+```bash
+cd <duong-dan-toi-thu-muc-TravelGuide>
+dotnet build "TravelGuide/TravelGuide.csproj" -f net9.0-android -c Release -t:SignAndroidPackage
+```
+- File APK signed sau khi build:
+  - `TravelGuide/bin/Release/net9.0-android/TravelGuide.TravelGuide-Signed.apk`
 
 ## 🔄 Luồng hoạt động
 

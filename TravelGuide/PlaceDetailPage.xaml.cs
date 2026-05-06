@@ -1,5 +1,7 @@
 using TravelGuide.Models;
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Devices;
+using Microsoft.Maui.Storage;
 using System.Globalization;
 
 namespace TravelGuide;
@@ -12,6 +14,7 @@ public partial class PlaceDetailPage : ContentPage
     private readonly TouristAuthService _authService;
     private string _activeTab = "overview";
     private bool _isSubmittingReview;
+    private const string ManualNarrationEventType = "poi_manual_narration";
     private sealed record LocalReviewVm(string Author, string RatingText, string TimeText, string Content, string AdminReplyText);
 
     public PlaceDetailPage(NarrationEngine narrationEngine, DatabaseService dbService, TouristAuthService authService)
@@ -78,7 +81,42 @@ public partial class PlaceDetailPage : ContentPage
     private async void OnSpeakClicked(object sender, EventArgs e)
     {
         if (_currentPlace != null)
+        {
             await _narrationEngine.SpeakExclusiveAsync(_currentPlace);
+            await TryLogManualNarrationAsync(_currentPlace);
+        }
+    }
+
+    private async Task TryLogManualNarrationAsync(TouristPlace place)
+    {
+        try
+        {
+            const string prefKey = "tg_device_install_id";
+            var deviceId = Preferences.Get(prefKey, "");
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                deviceId = Guid.NewGuid().ToString("N");
+                Preferences.Set(prefKey, deviceId);
+            }
+
+            var manufacturer = DeviceInfo.Current.Manufacturer ?? "";
+            var model = DeviceInfo.Current.Model ?? "";
+            var deviceModel = $"{manufacturer} {model}".Trim();
+            if (string.IsNullOrWhiteSpace(deviceModel)) deviceModel = "unknown";
+
+            await _authService.LogPoiQrScanAsync(
+                place.Id,
+                place.NameVi,
+                ManualNarrationEventType,
+                0m,
+                deviceId,
+                deviceModel,
+                DeviceInfo.Current.Platform.ToString());
+        }
+        catch
+        {
+            // Không chặn UX nghe thuyết minh nếu log lỗi.
+        }
     }
 
     /// <summary>Mở <see cref="TouristPlace.MapLink"/> trong trình duyệt / app bản đồ.</summary>
