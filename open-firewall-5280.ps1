@@ -23,4 +23,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "Da them rule: $ruleName (TCP 5280 inbound, tat ca profile)." -ForegroundColor Green
-Write-Host "Dien thoai cung Wi-Fi co the mo: http://<IP-may-tinh>:5280/download/android/qr.png"
+Write-Host "Dien thoai cung Wi-Fi co the mo giao dien local: http://<IP-may-tinh>:5280"

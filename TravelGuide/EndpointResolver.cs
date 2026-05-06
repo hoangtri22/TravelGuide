@@ -16,8 +16,8 @@ internal static class EndpointResolver
 
     /// <summary>
     /// URL TravelGuide.API mặc định khi chưa có URL trong Preferences (màn đăng nhập ghi đè khi đổi mạng).
-    /// Thứ tự ưu tiên thực tế khi dùng app: Preferences từ đăng nhập → env <c>TRAVELGUIDE_API_BASE_URL</c> →
-    /// <c>device_endpoints.json</c> (máy thật; tên file hợp lệ với Android Raw) → mặc định: Android emulator <c>10.0.2.2:5096</c>, máy thật/env/file như mô tả dưới, nền tảng khác <c>127.0.0.1:5096</c>.
+    /// Thứ tự ưu tiên thực tế khi dùng app: Preferences từ đăng nhập → <c>device_endpoints.json</c> (máy thật; tên file hợp lệ với Android Raw)
+    /// → mặc định: Android emulator <c>10.0.2.2:5096</c>, nền tảng khác <c>127.0.0.1:5096</c>.
     /// </summary>
     internal static string GetDefaultApiBaseUrl()
     {
@@ -27,14 +27,9 @@ internal static class EndpointResolver
         if (DeviceInfo.DeviceType == DeviceType.Virtual)
             return ApiBaseAndroidEmulator;
 
-        var env = Environment.GetEnvironmentVariable("TRAVELGUIDE_API_BASE_URL")?.Trim();
-        if (!string.IsNullOrWhiteSpace(env)
-            && Uri.TryCreate(env, UriKind.Absolute, out var envUri)
-            && (string.Equals(envUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(envUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
-            return envUri.ToString().TrimEnd('/');
-
-        return GetAndroidPhysicalApiBaseUrlFromConfig() ?? ApiBaseAndroidEmulator;
+        if (TryNormalizeHttpUrl(GetAndroidPhysicalApiBaseUrlFromConfig(), out var cfg))
+            return cfg!;
+        return ApiBaseLoopback;
     }
 
     /// <summary>Tên cũ — gọi <see cref="GetDefaultApiBaseUrl"/>.</summary>
@@ -56,6 +51,25 @@ internal static class EndpointResolver
     /// <summary>Ưu tiên <c>tourist_api_base_url</c> / <c>api_base_url</c> (màn đăng nhập), sau đó mặc định theo nền tảng / env / file nhúng.</summary>
     internal static string ResolveApiBaseUrl()
     {
+        if (DeviceInfo.Platform == DevicePlatform.Android
+            && DeviceInfo.DeviceType == DeviceType.Physical)
+        {
+            var candidates = new[]
+            {
+                Preferences.Get("tourist_api_base_url", ""),
+                Preferences.Get("api_base_url", ""),
+                GetAndroidPhysicalApiBaseUrlFromConfig()
+            };
+            var normalized = candidates
+                .Select(TryNormalizeHttpUrl)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!)
+                .ToList();
+            if (normalized.Count > 0)
+                return normalized[0];
+            return GetDefaultApiBaseUrl();
+        }
+
         var tourist = Preferences.Get("tourist_api_base_url", "")?.Trim();
         if (Uri.TryCreate(tourist, UriKind.Absolute, out var touristUri) && !IsAndroidPhysicalWithEmulatorHost(touristUri))
             return touristUri.ToString().TrimEnd('/');
@@ -69,23 +83,29 @@ internal static class EndpointResolver
 
     internal static (string Primary, string Secondary) ResolveAdminWebBaseUrls()
     {
+        if (DeviceInfo.Platform == DevicePlatform.Android
+            && DeviceInfo.DeviceType == DeviceType.Physical)
+        {
+            var candidates = new[]
+            {
+                Preferences.Get("admin_web_base_url", ""),
+                GetAndroidPhysicalAdminBaseUrlFromConfig()
+            };
+            var normalized = candidates
+                .Select(TryNormalizeHttpUrl)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!)
+                .ToList();
+            var chosen = normalized.Count > 0 ? normalized[0] : null;
+            if (!string.IsNullOrWhiteSpace(chosen))
+                return (chosen!, chosen!);
+        }
+
         var configured = Preferences.Get("admin_web_base_url", "")?.Trim();
         if (Uri.TryCreate(configured, UriKind.Absolute, out var cfgUri))
         {
             var url = NormalizeAdminHostForAndroid(cfgUri.ToString().TrimEnd('/'));
             return (url, url);
-        }
-
-        if (DeviceInfo.Platform == DevicePlatform.Android
-            && DeviceInfo.DeviceType != DeviceType.Virtual)
-        {
-            EnsureAndroidPhysicalEndpointsLoaded();
-            if (!string.IsNullOrWhiteSpace(_androidPhysicalAdminWebBaseUrl)
-                && Uri.TryCreate(_androidPhysicalAdminWebBaseUrl, UriKind.Absolute, out var physAdmin))
-            {
-                var u = physAdmin.ToString().TrimEnd('/');
-                return (u, u);
-            }
         }
 
         var apiBase = ResolveApiBaseUrl();
@@ -168,4 +188,30 @@ internal static class EndpointResolver
         EnsureAndroidPhysicalEndpointsLoaded();
         return _androidPhysicalApiBaseUrl;
     }
+
+    private static string? GetAndroidPhysicalAdminBaseUrlFromConfig()
+    {
+        EnsureAndroidPhysicalEndpointsLoaded();
+        return _androidPhysicalAdminWebBaseUrl;
+    }
+
+    private static bool TryNormalizeHttpUrl(string? raw, out string? normalized)
+    {
+        normalized = null;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+        if (!Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var uri))
+            return false;
+        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (IsAndroidPhysicalWithEmulatorHost(uri))
+            return false;
+        normalized = uri.ToString().TrimEnd('/');
+        return true;
+    }
+
+    private static string? TryNormalizeHttpUrl(string? raw) =>
+        TryNormalizeHttpUrl(raw, out var normalized) ? normalized : null;
+
 }

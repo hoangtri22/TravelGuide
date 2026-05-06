@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net;
-using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Microsoft.Maui.Devices;
 using TravelGuide.Models;
@@ -135,6 +134,7 @@ public sealed class TouristAuthService
             if (!response.IsSuccessStatusCode)
             {
                 var error = (await response.Content.ReadAsStringAsync()).Trim();
+                RecordHttpError($"POST {url} -> {(int)response.StatusCode} {response.StatusCode}. {error}");
                 return (false, string.Empty, string.Empty, string.Empty, string.IsNullOrWhiteSpace(error) ? "Không thể khởi tạo phiên thiết bị." : error);
             }
 
@@ -153,11 +153,13 @@ public sealed class TouristAuthService
         catch (OperationCanceledException)
         {
             var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
+            RecordHttpError($"POST {baseUrl}/api/tourist/auth/device-login -> timeout");
             return (false, string.Empty, string.Empty, string.Empty, $"Request timeout when calling API ({baseUrl}).");
         }
         catch (Exception ex)
         {
             var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
+            RecordHttpError($"POST {baseUrl}/api/tourist/auth/device-login -> {ex.Message}");
             return (false, string.Empty, string.Empty, string.Empty, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
         }
     }
@@ -173,72 +175,6 @@ public sealed class TouristAuthService
         }
 
         return await LoginByDeviceAsync();
-    }
-
-    public async Task<(bool Ok, string Message)> RegisterAsync(string username, string password, string displayName, string accountTier)
-    {
-        try
-        {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/register";
-            using var cts = new CancellationTokenSource(ApiTimeout);
-            var response = await _httpClient.PostAsJsonAsync(url, new
-            {
-                username,
-                password,
-                displayName,
-                accountTier
-            }, cts.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, string.IsNullOrWhiteSpace(error) ? "Đăng ký thất bại." : error);
-            }
-            return (true, "Đăng ký thành công.");
-        }
-        catch (OperationCanceledException)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Request timeout when calling API ({baseUrl}).");
-        }
-        catch (Exception ex)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
-        }
-    }
-
-    public async Task<(bool Ok, string Message)> LoginAsync(string username, string password)
-    {
-        try
-        {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/login";
-            using var cts = new CancellationTokenSource(ApiTimeout);
-            var response = await _httpClient.PostAsJsonAsync(url, new { username, password }, cts.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, string.IsNullOrWhiteSpace(error) ? "Đăng nhập thất bại." : error);
-            }
-
-            var dto = await response.Content.ReadFromJsonAsync<TouristLoginResponse>();
-            if (dto is null || string.IsNullOrWhiteSpace(dto.Token))
-                return (false, "Phản hồi đăng nhập không hợp lệ.");
-
-            await SecureStorage.Default.SetAsync(TokenKey, dto.Token);
-            Preferences.Set(UsernameKey, dto.Username ?? username);
-            Preferences.Set(TierKey, string.IsNullOrWhiteSpace(dto.AccountTier) ? "free" : dto.AccountTier);
-            return (true, "Đăng nhập thành công.");
-        }
-        catch (OperationCanceledException)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Request timeout when calling API ({baseUrl}).");
-        }
-        catch (Exception ex)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
-        }
     }
 
     public async Task<bool> IsLoggedInAsync()
@@ -281,7 +217,10 @@ public sealed class TouristAuthService
             }
 
             if (!response.IsSuccessStatusCode)
+            {
+                RecordHttpError($"GET {url} -> {(int)response.StatusCode} {response.StatusCode}");
                 return (false, "", "");
+            }
 
             var dto = await response.Content.ReadFromJsonAsync<TouristMeResponse>();
             if (dto is null) return (false, "", "");
@@ -294,6 +233,7 @@ public sealed class TouristAuthService
         }
         catch
         {
+            RecordHttpError($"GET /api/tourist/auth/me -> exception");
             return (false, "", "");
         }
     }
@@ -383,7 +323,10 @@ public sealed class TouristAuthService
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             if (!response.IsSuccessStatusCode)
+            {
+                RecordHttpError($"GET {url} -> {(int)response.StatusCode} {response.StatusCode}");
                 return (false, false, true, 0, "Không kiểm tra được quyền truy cập.");
+            }
 
             var dto = await response.Content.ReadFromJsonAsync<PoiAccessResponse>();
             if (dto is null) return (false, false, true, 0, "Phản hồi không hợp lệ.");
@@ -391,6 +334,7 @@ public sealed class TouristAuthService
         }
         catch (Exception ex)
         {
+            RecordHttpError($"GET /api/tourist/pois/{poiId}/access -> {ex.Message}");
             return (false, false, true, 0, ex.Message);
         }
     }
@@ -737,38 +681,12 @@ public sealed class TouristAuthService
         return false;
     }
 
-    /// <summary>
-    /// Người dùng đôi khi paste bị dính chuỗi LAN cũ ngay sau tunnel URL (vd: ...trycloudflare.com192.168.1.115:5096).
-    /// Ưu tiên tách lấy tunnel URL hợp lệ đầu tiên để tránh kết nối sai host.
-    /// </summary>
     private static string NormalizeApiBaseUrlInput(string input)
     {
-        if (string.IsNullOrWhiteSpace(input))
-            return input;
-
-        var patterns = new[]
-        {
-            @"https?://[a-zA-Z0-9.-]+\.trycloudflare\.com",
-            @"https?://[a-zA-Z0-9.-]+\.ngrok-free\.app",
-            @"https?://[a-zA-Z0-9.-]+\.ngrok\.io"
-        };
-
-        foreach (var pattern in patterns)
-        {
-            var m = Regex.Match(input, pattern, RegexOptions.IgnoreCase);
-            if (m.Success)
-                return m.Value;
-        }
-
         return input;
     }
 
-    private sealed class TouristLoginResponse
-    {
-        public string? Token { get; set; }
-        public string? Username { get; set; }
-        public string? AccountTier { get; set; }
-    }
+    private static void RecordHttpError(string message) => DemoDiagnostics.RecordHttpError(message);
 
     private sealed class DeviceLoginResponse
     {

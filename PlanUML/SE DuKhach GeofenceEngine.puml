@@ -1,28 +1,39 @@
 @startuml
 title SE DuKhach GeofenceEngine
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
 actor "Du khách" as U
-participant "GpsBackgroundService.RunLoopAsync()" as LOOP
-participant "GeofenceEngine.ProcessLocationAsync()" as GEO
-participant "DatabaseService.GetPlacesAsync()" as DB
-participant "GeofenceEngine.HandleInsidePoi() // private" as IN
-participant "GeofenceEngine.HandleOutsideAllPoi() // private" as OUT
-participant "MapPage.OnPoiEntered()" as MAP1
-participant "MapPage.OnPoiTriggered()" as MAP2
-participant "MapPage.OnPoiExited()" as MAP3
-participant "NarrationEngine.SpeakAsync()" as NAR
+participant "GpsBackgroundService\nRunLoopAsync()" as LOOP
+participant "GeofenceEngine\nProcessLocationAsync()" as GEO
+participant "DatabaseService\nGetPlacesAsync()" as DB
+participant "GeofenceEngine\nHandleInsidePoi()" as IN
+participant "GeofenceEngine\nHandleOutsideAllPoi()" as OUT
+participant "MapPage\nOnPoiEntered()" as MAP1
+participant "MapPage\nOnPoiTriggered()" as MAP2
+participant "MapPage\nOnPoiExited()" as MAP3
+participant "NarrationEngine\nSpeakAsync()" as NAR
 LOOP -> GEO : await ProcessLocationAsync(location)
 GEO -> DB : await GetPlacesAsync()
 DB --> GEO : List<TouristPlace>
 alt trong bán kính một POI (theo Priority + khoảng cách)
+  U -[hidden]-> LOOP
+  IN -[hidden]-> NAR
   GEO -> IN : await HandleInsidePoi(poi)
   IN -> MAP1 : OnPoiEntered?.Invoke(poi) khi _currentInsidePoi != poi.Id
   alt chưa đủ DebounceSeconds hoặc còn CooldownSeconds
+    U -[hidden]-> LOOP
+    IN -[hidden]-> NAR
     IN --> GEO : return (không phát)
   else đủ điều kiện
+    U -[hidden]-> LOOP
+    IN -[hidden]-> NAR
     IN -> MAP2 : OnPoiTriggered?.Invoke(poi)
     IN -> NAR : await _narrationEngine.SpeakAsync(poi)
   end
 else không còn trong POI nào
+  U -[hidden]-> LOOP
+  IN -[hidden]-> NAR
   GEO -> OUT : HandleOutsideAllPoi()
   OUT -> MAP3 : OnPoiExited?.Invoke()
 end

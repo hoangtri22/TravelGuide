@@ -57,7 +57,6 @@ public partial class HomePage : ContentPage
         base.OnAppearing();
         EnsureAuthUiSyncTimer();
         _authUiSyncTimer?.Start();
-        MiniPlayer.Attach(_narrationEngine);
         SyncLocalization(AppLanguage.Current);
         UpdateLanguageButton(AppLanguage.Current);
         UpdateLocalizedChrome();

@@ -152,6 +152,14 @@
                             FontAttributes="Bold"
                             Margin="0,5,0,20"/>
 
+                    <Button Text="Demo Debug"
+                            Clicked="OpenDemoDebug"
+                            BackgroundColor="#E2E8F0"
+                            TextColor="#0F172A"
+                            CornerRadius="18"
+                            HeightRequest="40"
+                            Margin="0,0,0,20"/>
+
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>

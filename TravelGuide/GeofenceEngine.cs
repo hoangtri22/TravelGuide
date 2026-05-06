@@ -58,7 +58,7 @@ public class GeofenceEngine
     {
         var places = await _dbService.GetPlacesAsync();
 
-        // Nhiều vùng chồng nhau: ưu tiên Priority cao, sau đó khoảng cách nhỏ nhất
+        // Nhiều vùng chồng nhau: chọn POI có tâm gần nhất (Priority chỉ dùng để phá hòa nếu cần)
         var insidePoi = places
             .Select(p => new
             {
@@ -69,8 +69,8 @@ public class GeofenceEngine
                     DistanceUnits.Kilometers) * 1000
             })
             .Where(x => x.DistM <= x.P.Radius)
-            .OrderByDescending(x => x.P.Priority)
-            .ThenBy(x => x.DistM)
+            .OrderBy(x => x.DistM)
+            .ThenByDescending(x => x.P.Priority)
             .Select(x => x.P)
             .FirstOrDefault();
 

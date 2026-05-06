@@ -10,7 +10,7 @@ if errorlevel 1 (
 )
 echo.
 echo XONG. Dung IP Wi-Fi may tinh, vi du:
-echo   http://192.168.x.x:5280/download-android.html
+echo   http://192.168.x.x:5280
 echo.
 echo Cac dong IPv4 (tim adapter Wi-Fi):
 ipconfig | findstr /i "IPv4"

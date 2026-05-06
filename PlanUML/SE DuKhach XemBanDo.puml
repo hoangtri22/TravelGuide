@@ -1,5 +1,7 @@
 @startuml
 title SE DuKhach XemBanDo
+skinparam shadowing false
+skinparam monochrome true
 actor "Du khách" as U
 participant "MapPage.OnAppearing()" as MP
 participant "MapPage.LoadMap()" as LOAD
@@ -20,5 +22,5 @@ GPS -> LOOP : _ = RunLoopAsync(token)
 LOOP -> LOOP : Geolocation.Default.GetLocationAsync(...)
 LOOP -> GEO : await _geofenceEngine.ProcessLocationAsync(location)
 LOOP -> LOOP : WeakReferenceMessenger.Default.Send(new LocationMessage(location))
-note over WV : MapPage nhận LocationMessage và mapView.EvaluateJavaScriptAsync(\"updateLocation(...)\")
+note over WV : MapPage nhận LocationMessage và mapView.EvaluateJavaScriptAsync(updateLocation(...))
 @enduml

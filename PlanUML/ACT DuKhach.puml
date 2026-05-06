@@ -3,9 +3,9 @@ title ACT DuKhach
 start
 :Mở app;
 if (Đã có token hợp lệ?) then (Không)
-  :TouristLoginPage.TryLoginAsync() / TouristRegisterPage.OnRegisterClicked();
-  if (Auth thành công?) then (Không)
-    :Hiển thị lỗi đăng nhập;
+  :TouristAuthService.EnsureTokenAsync()\n-> LoginByDeviceAsync() -> POST /api/tourist/auth/device-login;
+  if (Tạo phiên thành công?) then (Không)
+    :Hiển thị lỗi kết nối API;
     stop
   endif
 endif
@@ -28,6 +28,10 @@ elseif (QR)
   endif
 else (History/Audio)
   :QrScanHistoryPage.ReloadAsync() -> GetMyScanHistoryAsync();
+  if (Mở chi tiết POI và đánh giá?) then (Có)
+    :PlaceDetailPage.OnSubmitReviewClicked();
+    :DatabaseService.AddPlaceReviewAsync()\n-> TouristAuthService.SubmitPlaceReviewAsync();
+  endif
 endif
 stop
 @enduml

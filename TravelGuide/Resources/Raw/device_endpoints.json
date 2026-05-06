@@ -1,5 +1,5 @@
 ﻿{
-  "androidPhysicalApiBaseUrl": "http://192.168.1.16:5096",
-  "androidPhysicalAdminWebBaseUrl": "http://192.168.1.16:5280",
-  "notes": "Auto IP at last Windows build (PrepareForBuild). Rebuild after Wi-Fi change, or set env TRAVELGUIDE_LAN_IP, or use app login API URL / tunnel for other networks."
+  "androidPhysicalApiBaseUrl": "http://127.0.0.1:5096",
+  "androidPhysicalAdminWebBaseUrl": "http://127.0.0.1:5280",
+  "notes": "Local-only defaults. Rebuild/update with LAN IP when testing inside the same local network."
 }

@@ -86,8 +86,6 @@ public partial class AudioPage : ContentPage
     {
         base.OnAppearing();
 
-        // Kết nối MiniPlayer với NarrationEngine để hiển thị trạng thái phát
-        MiniPlayer.Attach(_narrationEngine);
         _dbService.ClearCache();
         await LoadAsync();
     }

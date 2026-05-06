@@ -1,5 +1,7 @@
 @startuml
 title SE DuKhach PhatThuyetMinh
+skinparam shadowing false
+skinparam monochrome true
 actor "Du khách" as U
 participant "GeofenceEngine.HandleInsidePoi()" as GEO
 participant "NarrationEngine.SpeakAsync()" as SPEAK

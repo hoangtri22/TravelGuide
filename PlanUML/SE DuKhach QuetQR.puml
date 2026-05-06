@@ -1,18 +1,25 @@
 @startuml
 title SE DuKhach QuetQR
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
 actor "Du khách" as U
-participant "QrScannerPage.OnBarcodesDetected()" as DETECT
-participant "QrScannerPage.HandleQrPayloadAsync()" as HANDLE
-participant "QrScannerPage.TryParsePremiumClaim()" as CLAIM
-participant "QrScannerPage.TryResolvePlace()" as RESOLVE
-participant "QrScannerPage.HandlePremiumClaimFlowAsync()" as PREMIUM
-participant "QrScannerPage.HandlePoiAfterScanAsync()" as POI
+participant "QrScannerPage\nOnBarcodesDetected()" as DETECT
+participant "QrScannerPage\nHandleQrPayloadAsync()" as HANDLE
+participant "QrScannerPage\nTryParsePremiumClaim()" as CLAIM
+participant "QrScannerPage\nTryResolvePlace()" as RESOLVE
+participant "QrScannerPage\nHandlePremiumClaimFlowAsync()" as PREMIUM
+participant "QrScannerPage\nHandlePoiAfterScanAsync()" as POI
 U -> DETECT : CameraBarcodeReaderView BarcodesDetected -> OnBarcodesDetected
 DETECT -> HANDLE : await HandleQrPayloadAsync(raw)
 HANDLE -> CLAIM : TryParsePremiumClaim(raw)
 alt có mã premium
+  U -[hidden]-> DETECT
+  HANDLE -[hidden]-> POI
   HANDLE -> PREMIUM : await HandlePremiumClaimFlowAsync(claimCode)
 else payload POI
+  U -[hidden]-> DETECT
+  HANDLE -[hidden]-> POI
   HANDLE -> RESOLVE : TryResolvePlace(raw, places)
   RESOLVE --> HANDLE : TouristPlace?
   HANDLE -> POI : await HandlePoiAfterScanAsync(place)

@@ -2,10 +2,6 @@ namespace TravelGuide.API.Models;
 
 public record TouristAuthPrincipal(int UserId, string Username);
 
-public record TouristRegisterRequest(string? Username, string? Password, string? DisplayName, string? AccountTier);
-
-public record TouristLoginRequest(string? Username, string? Password);
-
 public record TouristDeviceLoginRequest(string? DeviceId, string? DeviceName, string? AppPlatform);
 
 public record PremiumRedeemRequest(string? ClaimCode, decimal? AmountVnd);

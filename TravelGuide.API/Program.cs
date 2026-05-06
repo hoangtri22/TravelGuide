@@ -63,56 +63,6 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 app.MapGet("/", () => Results.Ok(new { service = "TravelGuide.API", status = "ok" }));
 
-app.MapPost("/api/tourist/auth/register", async (TouristRegisterRequest request, TouristDb db) =>
-{
-    var username = TouristDb.NormalizeUsername(request.Username);
-    var password = (request.Password ?? string.Empty).Trim();
-    var displayName = (request.DisplayName ?? string.Empty).Trim();
-
-    if (username.Length < 3) return Results.BadRequest("Username tối thiểu 3 ký tự.");
-    if (password.Length < 6) return Results.BadRequest("Password tối thiểu 6 ký tự.");
-    if (displayName.Length < 2) return Results.BadRequest("Display name tối thiểu 2 ký tự.");
-
-    var tier = TouristDb.NormalizeAccountTier(request.AccountTier);
-    if (string.Equals(tier, "premium", StringComparison.OrdinalIgnoreCase))
-        return Results.BadRequest("Premium chỉ kích hoạt bằng mã QR (quét mã và xác nhận).");
-
-    var created = await db.CreateUserAsync(username, password, displayName, tier);
-    if (!created) return Results.BadRequest("Username đã tồn tại.");
-    return Results.Ok(new
-    {
-        message = "Đăng ký thành công.",
-        accountTier = tier
-    });
-});
-
-app.MapPost("/api/tourist/auth/login", async (TouristLoginRequest request, TouristDb db, AuthStore authStore) =>
-{
-    var username = TouristDb.NormalizeUsername(request.Username);
-    var user = await db.GetUserByUsernameAsync(username);
-    var passwordTry = (request.Password ?? string.Empty).Trim();
-    if (user is null || user.PasswordHash != PasswordTools.Hash(passwordTry))
-        return Results.Json(new { message = "Sai tài khoản hoặc mật khẩu." }, statusCode: 401);
-
-    var token = authStore.CreateToken(user);
-    try
-    {
-        await db.RecordLoginSessionAsync(user.Id, token);
-    }
-    catch
-    {
-        // Bảng RefreshToken / quyền DB — vẫn trả token để app đăng nhập được
-    }
-
-    return Results.Ok(new
-    {
-        token,
-        username = user.Username,
-        displayName = user.DisplayName,
-        accountTier = user.AccountTier
-    });
-});
-
 app.MapPost("/api/tourist/auth/device-login", async (TouristDeviceLoginRequest request, TouristDb db, AuthStore authStore) =>
 {
     var deviceId = (request.DeviceId ?? string.Empty).Trim();

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body>
   <!-- Đăng nhập — bố cục theo Admin portal design / Login.tsx -->
@@ -285,34 +285,34 @@
 
       <section id="touristTab" class="card card-elevated tab-content hidden">
         <h2 class="card-title">Dữ liệu du khách</h2>
-        <p class="hint">Tổng hợp dữ liệu từ TouristUser, RefreshToken và VisitHistory.</p>
-        <p class="hint" id="touristLoginStatsLine" style="margin-top:4px">Phiên đăng nhập còn hiệu lực (máy/phiên): — · Tài khoản đang có ít nhất một phiên: —</p>
+        <p class="hint">Tổng hợp dữ liệu từ TouristUser, phiên đăng nhập và VisitHistory.</p>
+        <p class="hint" id="touristLoginStatsLine" style="margin-top:4px">Phiên đăng nhập còn hiệu lực (máy/phiên): — · Lượt truy cập đang có ít nhất một phiên: —</p>
         <div class="actions-row">
           <button type="button" id="refreshTouristBtn" class="secondary">Làm mới dữ liệu</button>
         </div>
 
         <nav class="tourist-toc" aria-label="Chuyển nhanh trong tab du khách">
           <span class="tourist-toc-label">Đi tới</span>
-          <a href="#tourist-sec-accounts">Tài khoản</a>
-          <a href="#tourist-sec-tokens">Refresh token</a>
+          <a href="#tourist-sec-accounts">Lượt truy cập</a>
+          <a href="#tourist-sec-tokens">Phiên đăng nhập</a>
           <a href="#tourist-sec-visits">Visit history</a>
           <a href="#tourist-sec-dashboard">Biểu đồ / phiên gần đây</a>
         </nav>
 
-        <h3 id="tourist-sec-accounts">Tài khoản du khách <span class="tourist-sec-meta" id="touristMetaUsers"></span></h3>
+        <h3 id="tourist-sec-accounts">Lượt truy cập du khách <span class="tourist-sec-meta" id="touristMetaUsers"></span></h3>
         <div class="table-scroll tourist-user-table-wrap">
           <table id="touristUserTable" class="tourist-user-table">
             <thead><tr><th>ID</th><th>Username</th><th>DisplayName</th><th>Lượt truy cập</th><th>Phiên đăng nhập</th><th>Tier</th><th>Created</th><th>Hành động</th></tr></thead>
             <tbody id="touristUserTbody"></tbody>
           </table>
         </div>
-        <p class="hint tourist-below-hint">Cuộn xuống để xem <strong>thống kê &amp; biểu đồ</strong>, rồi <strong>Refresh token</strong> và <strong>Visit history</strong>.</p>
+        <p class="hint tourist-below-hint">Cuộn xuống để xem <strong>thống kê &amp; biểu đồ</strong>, rồi <strong>Phiên đăng nhập</strong> và <strong>Visit history</strong>.</p>
 
         <h3 id="tourist-sec-dashboard" class="tourist-dash-section-title">Thống kê nhanh &amp; hoạt động gần đây</h3>
         <div id="touristDashboardExtra" class="tourist-dashboard-extra" aria-label="Thống kê du khách"></div>
 
-        <h3 id="tourist-sec-tokens">Refresh token <span class="tourist-sec-meta" id="touristMetaTokens"></span></h3>
-        <section class="vh-widget" aria-label="Refresh token">
+        <h3 id="tourist-sec-tokens">Phiên đăng nhập <span class="tourist-sec-meta" id="touristMetaTokens"></span></h3>
+        <section class="vh-widget" aria-label="Phiên đăng nhập">
           <div class="vh-controls">
             <div class="vh-search-box">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -337,8 +337,8 @@
                 <tr>
                   <th data-rt-sort="id">ID <i class="vh-sort-icon">↕</i></th>
                   <th data-rt-sort="user">Device <i class="vh-sort-icon">↕</i></th>
-                  <th data-rt-sort="expires">Expires <i class="vh-sort-icon">↕</i></th>
-                  <th data-rt-sort="revoked">Revoked <i class="vh-sort-icon">↕</i></th>
+                  <th data-rt-sort="expires">Hết hạn phiên (giờ VN) <i class="vh-sort-icon">↕</i></th>
+                  <th data-rt-sort="revoked">Thu hồi <i class="vh-sort-icon">↕</i></th>
                 </tr>
               </thead>
               <tbody id="rtTbody"></tbody>
@@ -419,10 +419,15 @@
       <section id="heatmapTab" class="card card-elevated tab-content hidden">
         <div class="heatmap-toolbar">
           <button type="button" id="heatmapRefreshBtn" class="secondary">Làm mới bản đồ</button>
+          <div class="heatmap-toolbar-actions">
+            <button type="button" id="heatmapZoomInBtn" class="secondary" title="Phóng to">+ Phóng to</button>
+            <button type="button" id="heatmapZoomOutBtn" class="secondary" title="Thu nhỏ">− Thu nhỏ</button>
+            <button type="button" id="heatmapFitBtn" class="secondary" title="Hiện vừa khung các điểm POI">Vừa khung</button>
+          </div>
           <p class="hint heatmap-summary" id="heatmapSummary" aria-live="polite"></p>
         </div>
-        <div id="heatmapMap" class="heatmap-map" role="region" aria-label="Bản đồ heatmap"></div>
-        <p class="hint heatmap-legend-hint"><span class="heatmap-legend-gradient" aria-hidden="true"></span> Thấp → cao (max: QR tích lũy · hoặc GPS 15′ + QR trong ngày UTC)</p>
+        <div id="heatmapMap" class="heatmap-map" tabindex="0" role="region" aria-label="Bản đồ heatmap — cuộn chuột để zoom sau khi đã click vào bản đồ"></div>
+        <p class="hint heatmap-legend-hint"><span class="heatmap-legend-gradient" aria-hidden="true"></span> Thấp → cao (max: QR tích lũy · hoặc GPS 15′ + QR trong ngày UTC). <strong>Vòng tím đứt nét:</strong> bán kính geofence (mét) — vùng app bắt đầu thuyết minh khi GPS vào trong (sau debounce 3 giây). <strong>Zoom:</strong> OSM chỉ có tile đến ~19; trên đó là phóng ảnh (đến 22). Dùng nút +/− hoặc cuộn chuột khi đã click vào bản đồ.</p>
         <div class="heatmap-table-wrap table-scroll">
           <table class="heatmap-table" id="heatmapPoiTable">
             <thead>
@@ -438,6 +443,6 @@
     </main>
   </section>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-  <script src="app.js?v=36"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>

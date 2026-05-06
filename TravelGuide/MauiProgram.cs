@@ -26,7 +26,6 @@ public static class MauiProgram
         if (DeviceInfo.Platform != DevicePlatform.Android || DeviceInfo.DeviceType != DeviceType.Physical)
             return;
 
-        Environment.SetEnvironmentVariable("TRAVELGUIDE_API_BASE_URL", apiBase);
         Preferences.Set("api_base_url", apiBase);
         Preferences.Set("tourist_api_base_url", apiBase);
     }
@@ -40,7 +39,7 @@ public static class MauiProgram
         MapboxTokenBootstrap.TryLoadFromBundledSecretFile();
 
 #if DEBUG
-        // Để rỗng: không ép IP — đổi Wi‑Fi chỉ cần sửa URL trên màn đăng nhập / device_endpoints.json / biến TRAVELGUIDE_API_BASE_URL.
+        // Để rỗng: không ép IP — đổi Wi‑Fi chỉ cần sửa URL trên màn đăng nhập / device_endpoints.json.
         // Chỉ điền URL khi muốn ép máy thật DEBUG luôn trỏ một máy dev cố định (ví dụ http://192.168.x.x:5096).
         ApplyDebugAndroidPhysicalApiBase("");
 #endif
@@ -101,6 +100,7 @@ public static class MauiProgram
         builder.Services.AddTransient<AudioPage>();
         builder.Services.AddTransient<QrScannerPage>();
         builder.Services.AddTransient<QrScanHistoryPage>();
+        builder.Services.AddTransient<DemoDebugPage>();
 
         var app = builder.Build();
 

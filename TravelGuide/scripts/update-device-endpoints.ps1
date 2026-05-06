@@ -67,7 +67,7 @@ $json = @"
 {
   "androidPhysicalApiBaseUrl": "$apiBase",
   "androidPhysicalAdminWebBaseUrl": "$adminBase",
-  "notes": "Auto IP at last Windows build (PrepareForBuild). Rebuild after Wi-Fi change, or set env TRAVELGUIDE_LAN_IP, or use app login API URL / tunnel for other networks."
+  "notes": "Auto LAN IP at last Windows build (PrepareForBuild). Rebuild after Wi-Fi change or set env TRAVELGUIDE_LAN_IP."
 }
 "@
 

@@ -1,12 +1,14 @@
 @startuml
 title SE DuKhach TimKiem
+skinparam shadowing false
+skinparam monochrome true
 actor "Du khách" as U
 participant "HomePage.OnAppearing()" as ONAPP
 participant "HomePage.LoadPlacesAsync()" as LOAD
 participant "DatabaseService.GetPlacesAsync()" as DB
 participant "DatabaseService.RefreshFromApiOrFallbackAsync()" as REF
 participant "DatabaseService.TryGetFromApiAsync()" as TRY
-participant "TravelGuide.API Program.cs MapGet(\"/api/public/pois\")" as HTTP
+participant "TravelGuide.API Program.cs MapGet(/api/public/pois)" as HTTP
 U -> ONAPP : Mở HomePage
 ONAPP -> LOAD : await LoadPlacesAsync()
 LOAD -> DB : await GetPlacesAsync()

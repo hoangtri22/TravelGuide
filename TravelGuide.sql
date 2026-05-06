@@ -4,7 +4,7 @@ GO
 USE TravelGuideDb;
 GO
 
--- UserAccount: admin + owner
+-- Tài khoản web quản trị: admin + chủ quán (owner)
 CREATE TABLE dbo.UserAccount
 (
     Id                    INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -19,7 +19,7 @@ CREATE TABLE dbo.UserAccount
 );
 GO
 
--- TouristUser
+-- Tài khoản du khách (app)
 CREATE TABLE dbo.TouristUser
 (
     Id            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -32,7 +32,7 @@ CREATE TABLE dbo.TouristUser
 );
 GO
 
--- Poi
+-- Bảng địa điểm (POI)
 CREATE TABLE dbo.Poi
 (
     Id            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -51,14 +51,13 @@ CREATE TABLE dbo.Poi
     Radius        FLOAT NOT NULL DEFAULT 50,
     ImagePath     NVARCHAR(500) NOT NULL DEFAULT N'',
     AudioUrl      NVARCHAR(1000) NOT NULL DEFAULT N'',
-    QrImagePath   NVARCHAR(1000) NULL,
     Status        NVARCHAR(30) NOT NULL DEFAULT N'published' CHECK (Status IN (N'published', N'pending', N'rejected')),
     RejectReason  NVARCHAR(1000) NOT NULL DEFAULT N'',
     OwnerUserId   INT NOT NULL DEFAULT 0,
     Priority      INT NOT NULL DEFAULT 0,
     MapLink       NVARCHAR(1000) NOT NULL DEFAULT N'',
     Price         DECIMAL(18,2) NOT NULL DEFAULT 0,
-    Tag           NVARCHAR(100) NOT NULL DEFAULT N'Qu�n �n',
+    Tag           NVARCHAR(100) NOT NULL DEFAULT N'Quán ăn',
     CreatedAtUtc  DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
     UpdatedAtUtc  DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -70,7 +69,7 @@ GO
 CREATE INDEX IX_Poi_OwnerUserId ON dbo.Poi(OwnerUserId, Id ASC);
 GO
 
--- RefreshToken
+-- Phiên đăng nhập du khách theo thiết bị
 CREATE TABLE dbo.RefreshToken
 (
     Id             BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -90,66 +89,4 @@ CREATE UNIQUE INDEX UX_RefreshToken_TokenHash ON dbo.RefreshToken(TokenHash);
 GO
 
 CREATE INDEX IX_RefreshToken_TouristUserId ON dbo.RefreshToken(TouristUserId, ExpiresAtUtc DESC);
-GO
-
--- TouristFavorite
-CREATE TABLE dbo.TouristFavorite
-(
-    Id             BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    TouristUserId  INT NOT NULL,
-    PoiId          INT NOT NULL,
-    CreatedAtUtc   DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
-    FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id),
-    UNIQUE (TouristUserId, PoiId)
-);
-GO
-
-CREATE INDEX IX_TouristFavorite_PoiId ON dbo.TouristFavorite(PoiId, CreatedAtUtc DESC);
-GO
-
--- TouristVisitHistory
-CREATE TABLE dbo.TouristVisitHistory
-(
-    Id              BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    TouristUserId   INT NOT NULL,
-    PoiId           INT NOT NULL,
-    EventType       NVARCHAR(30) NOT NULL DEFAULT N'view' CHECK (EventType IN (N'view', N'audio_play', N'audio_complete', N'map_open')),
-    PlaybackSeconds INT NOT NULL DEFAULT 0,
-    WatchedPercent  DECIMAL(5,2) NOT NULL DEFAULT 0,
-    Source          NVARCHAR(50) NULL,
-    OccurredAtUtc   DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
-    FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id)
-);
-GO
-
-CREATE INDEX IX_TouristVisitHistory_UserTime ON dbo.TouristVisitHistory(TouristUserId, OccurredAtUtc DESC);
-GO
-
-CREATE INDEX IX_TouristVisitHistory_PoiTime ON dbo.TouristVisitHistory(PoiId, OccurredAtUtc DESC);
-GO
-
--- PaymentTransaction
-CREATE TABLE dbo.PaymentTransaction
-(
-    Id             BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    TouristUserId  INT NOT NULL,
-    Provider       NVARCHAR(50) NOT NULL,
-    ProviderRef    NVARCHAR(150) NOT NULL,
-    PlanCode       NVARCHAR(50) NOT NULL DEFAULT N'premium_monthly',
-    Currency       NVARCHAR(10) NOT NULL DEFAULT N'VND',
-    Amount         DECIMAL(18,2) NOT NULL,
-    Status         NVARCHAR(30) NOT NULL CHECK (Status IN (N'pending', N'success', N'failed', N'refunded', N'cancelled')),
-    PaidAtUtc      DATETIME2(0) NULL,
-    ExpiresAtUtc   DATETIME2(0) NULL,
-    RawPayloadJson NVARCHAR(MAX) NULL,
-    CreatedAtUtc   DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
-    UpdatedAtUtc   DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
-    UNIQUE (Provider, ProviderRef)
-);
-GO
-
-CREATE INDEX IX_PaymentTransaction_UserTime ON dbo.PaymentTransaction(TouristUserId, CreatedAtUtc DESC);
 GO

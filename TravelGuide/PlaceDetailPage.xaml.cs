@@ -65,7 +65,6 @@ public partial class PlaceDetailPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        MiniPlayer.Attach(_narrationEngine);
         _ = RefreshUIAsync(); // ← Refresh lại khi quay lại trang
     }
 

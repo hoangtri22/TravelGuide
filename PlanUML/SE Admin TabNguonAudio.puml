@@ -2,37 +2,43 @@
 title SE Admin Tab Nguồn audio (audioUrl + mapLink theo POI)
 skinparam shadowing false
 skinparam monochrome true
+hide footbox
 
 actor "Admin hoặc chủ quán" as U
-participant "TravelGuide.AdminWeb/WEB/app.js switchTab + renderAudioSources()" as FE
-participant "TravelGuide.AdminWeb/WEB/app.js loadPois()" as LOAD
-participant "TravelGuide.AdminWeb/WEB/app.js apiMultipart / api" as APIJS
-participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/pois\")" as GETP
-participant "TravelGuide.AdminWeb/Program.cs MapPost(\"/api/upload/audio\")" as UP
-participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/pois/{id}\")" as PUTP
+participant "app.js\nswitchTab + renderAudioSources()" as FE
+participant "app.js\nloadPois()" as LOAD
+participant "app.js\napiMultipart / api" as APIJS
+participant "Program.cs\nGET /api/pois" as GETP
+participant "Program.cs\nPOST /api/upload/audio" as UP
+participant "Program.cs\nPUT /api/pois/{id}" as PUTP
 
-U -> FE : Mở tab **Nguồn audio**
-FE -> FE : renderAudioSources() — đọc mảng **pois** đã load (không gọi GET /api/audio)
+U -> FE : Mở tab Nguồn audio
+FE -> FE : renderAudioSources() - đọc mảng pois đã load (không gọi GET /api/audio)
 
 alt cần làm mới danh sách POI
+  U -[hidden]-> FE
+  APIJS -[hidden]-> PUTP
   FE -> LOAD : await loadPois()
   LOAD -> APIJS : GET /api/pois
   APIJS -> GETP
   GETP --> FE : danh sách POI (audioUrl, mapLink, …)
 end
 
-U -> FE : Chọn file → **Upload**
+U -> FE : Chọn ngôn ngữ (VI/EN/JA/KO/ZH) + chọn file -> Upload
 FE -> APIJS : POST multipart /api/upload/audio
 APIJS -> UP
 UP --> FE : { audioUrl } → điền vào ô input (chưa lưu DB)
+FE -> FE : Hiển thị thông báo Upload audio (LANG) thành công/thất bại
 
-U -> FE : Bấm **Lưu** trên dòng POI
+U -> FE : Bấm Lưu trên dòng POI
 FE -> APIJS : PUT /api/pois/{id} (body: POI đầy đủ + audioUrl, mapLink)
 APIJS -> PUTP
 PUTP --> FE : 200
 FE -> LOAD : await loadPois(); renderAudioSources()
 
-note bottom of GETP
-  Backend có thêm GET /api/audio (Program.cs) — **SPA hiện không gọi**; tab dùng dữ liệu từ /api/pois.
+note right of GETP
+  Backend có thêm GET /api/audio (Program.cs).
+  SPA hiện không gọi endpoint này.
+  Tab dùng dữ liệu từ GET /api/pois.
 end note
 @enduml

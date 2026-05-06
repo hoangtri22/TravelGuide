@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="TravelGuide.DemoDebugPage"
+             Title="Demo Debug">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="10">
+            <Label Text="Current API base URL" FontAttributes="Bold" />
+            <Label x:Name="ApiBaseLabel" LineBreakMode="WordWrap" />
+
+            <Label Text="Current AdminWeb base URL" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label x:Name="AdminBaseLabel" LineBreakMode="WordWrap" />
+
+            <Label Text="Last HTTP error" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label x:Name="LastHttpErrorLabel" LineBreakMode="WordWrap" />
+
+            <Label Text="Error time (UTC)" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label x:Name="LastHttpErrorAtLabel" />
+
+            <Button Text="Refresh"
+                    Margin="0,16,0,0"
+                    Clicked="OnRefreshClicked" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

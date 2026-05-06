@@ -1045,8 +1045,8 @@ public sealed class TravelGuideDb
     {
         var seed = new[]
         {
-            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
-            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
+            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.761918, 106.701914, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
+            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.761025393958171, 106.7032226711829, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
             new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "Quán Nước")
         };
 
@@ -1182,7 +1182,7 @@ public sealed class TravelGuideDb
     /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật và so sánh NameVi/DescVi.</summary>
     private sealed record PoiRow(int Id, string Status, int OwnerUserId, string NameVi, string DescVi);
 
-    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null)
+    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null, DateOnly? touristWeekChartMonday = null)
     {
         // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
         var usersAll = await SafeTouristQuery(GetTouristUsersAsync);
@@ -1207,7 +1207,11 @@ public sealed class TravelGuideDb
             .Select(x => x.TouristUserId)
             .Distinct()
             .Count();
-        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart);
+
+        var weekMondayResolved = touristWeekChartMonday ?? UtcCalendarMondayContaining(DateOnly.FromDateTime(DateTime.UtcNow));
+        var weekVisitChart = await BuildWeekVisitChartAsync(allowedUserIds, weekMondayResolved);
+
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart, weekVisitChart);
         return new
         {
             users,
@@ -1219,6 +1223,127 @@ public sealed class TravelGuideDb
         };
     }
 
+    /// <summary>Thứ Hai (lịch UTC) của tuần chứa <paramref name="day"/> — T2…CN.</summary>
+    private static DateOnly UtcCalendarMondayContaining(DateOnly day)
+    {
+        var utcMidnight = DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var dow = ((int)utcMidnight.DayOfWeek + 6) % 7;
+        return DateOnly.FromDateTime(utcMidnight.AddDays(-dow));
+    }
+
+    private async Task<object> BuildWeekVisitChartAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var empty = Enumerable.Repeat(0, 7).ToArray();
+        if (allowedUserIds.Count == 0)
+        {
+            return new
+            {
+                weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+                currentWeek = empty,
+                previousWeek = empty
+            };
+        }
+
+        var current = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, weekMonday);
+        var prevMonday = weekMonday.AddDays(-7);
+        var previous = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, prevMonday);
+        return new
+        {
+            weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+            currentWeek = current,
+            previousWeek = previous
+        };
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        if (allowedUserIds.Count == 0)
+            return new int[7];
+
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetVisitDayCountsForUtcWeekSqlServerAsync(allowedUserIds, weekMonday);
+
+        return await GetVisitDayCountsForUtcWeekSqliteAsync(allowedUserIds, weekMonday);
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekSqlServerAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var counts = new int[7];
+        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var endUtc = startUtc.AddDays(7);
+        var ids = string.Join(",", allowedUserIds.Order());
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                             WITH ev AS (
+                               SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM dbo.TouristVisitHistory h
+                               UNION ALL
+                               SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM dbo.TouristPoiQrScanLog l
+                             )
+                             SELECT DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) AS Di,
+                                    COUNT_BIG(*) AS Cnt
+                             FROM ev v
+                             WHERE v.Ts >= @weekStart AND v.Ts < @weekEnd
+                               AND v.TouristUserId IN ({ids})
+                               AND DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) BETWEEN 0 AND 6
+                             GROUP BY DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE))
+                             """;
+        cmd.Parameters.AddWithValue("@weekStart", startUtc);
+        cmd.Parameters.AddWithValue("@weekEnd", endUtc);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var di = reader.GetInt32(0);
+            var cnt = (int)reader.GetInt64(1);
+            if (di is >= 0 and < 7)
+                counts[di] = cnt;
+        }
+
+        return counts;
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekSqliteAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var counts = new int[7];
+        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var endUtc = startUtc.AddDays(7);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            SELECT v.TouristUserId, v.Ts FROM (
+                              SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM TouristVisitHistory h
+                              UNION ALL
+                              SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM TouristPoiQrScanLog l
+                            ) v
+                            WHERE v.Ts >= $start AND v.Ts < $end
+                            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var uid = reader.GetInt32(0);
+            if (!allowedUserIds.Contains(uid))
+                continue;
+            var ts = reader.GetDateTime(1);
+            if (ts.Kind == DateTimeKind.Unspecified)
+                ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
+            if (ts < startUtc || ts >= endUtc)
+                continue;
+            var idx = (int)Math.Floor((ts - startUtc).TotalDays);
+            if (idx is >= 0 and < 7)
+                counts[idx]++;
+        }
+
+        return counts;
+    }
+
     /// <summary>Thống kê nhanh + dữ liệu LIVE/sparkline cho tab Dữ liệu du khách.</summary>
     private static object BuildTouristDashboard(
         List<TouristUserDto> users,
@@ -1226,7 +1351,8 @@ public sealed class TravelGuideDb
         List<TouristVisitHistoryDto> visitHistory,
         int activeLoginSessions,
         int activeLoginAccounts,
-        DateOnly? visitHistoryChartWeekStart)
+        DateOnly? visitHistoryChartWeekStart,
+        object weekVisitChart)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
@@ -1332,7 +1458,8 @@ public sealed class TravelGuideDb
             visitHistoryTopPoisChart = BuildVisitHistoryTopPoisChart(visitHistory, now, visitHistoryChartWeekStart),
             liveSessions,
             activeLoginSessions,
-            activeLoginAccounts
+            activeLoginAccounts,
+            weekVisitChart
         };
     }
 
@@ -1801,18 +1928,19 @@ public sealed class TravelGuideDb
     private async Task<List<PoiQrScanLogDto>> GetPoiQrScanLogsAsync()
     {
         var result = new List<PoiQrScanLogDto>();
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT TOP 500 Id, TouristUserId, Username, PoiId, PoiNameVi, EventType, AmountVnd,
                                  DeviceId, DeviceModel, AppPlatform, CreatedAtUtc
-                          FROM TouristPoiQrScanLog
+                          FROM dbo.TouristPoiQrScanLog
                           ORDER BY Id DESC;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var amt = reader.IsDBNull(6) ? 0m : reader.GetDecimal(6);
             result.Add(new PoiQrScanLogDto(
                 reader.GetInt64(0),
                 reader.GetInt32(1),
@@ -1820,7 +1948,7 @@ public sealed class TravelGuideDb
                 reader.GetInt32(3),
                 reader.GetString(4),
                 reader.GetString(5),
-                Convert.ToDecimal(reader.GetDouble(6)),
+                amt,
                 reader.IsDBNull(7) ? null : reader.GetString(7),
                 reader.IsDBNull(8) ? null : reader.GetString(8),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
@@ -1837,34 +1965,35 @@ public sealed class TravelGuideDb
         var dayStartUtc = DateTime.UtcNow.Date;
         var nextDayUtc = dayStartUtc.AddDays(1);
         var gpsEt = TouristPoiGpsInsideEventType;
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT PoiId,
                                  MAX(PoiNameVi) AS PoiNameVi,
                                  SUM(AmountVnd) AS TotalVnd,
-                                 SUM(CASE WHEN LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
-                                 SUM(CASE WHEN CreatedAtUtc >= $sinceUtc AND LOWER(TRIM(COALESCE(EventType, ''))) = LOWER($gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
-                                 SUM(CASE WHEN CreatedAtUtc >= $dayStartUtc AND CreatedAtUtc < $nextDayUtc AND LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
-                          FROM TouristPoiQrScanLog
+                                 SUM(CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
+                                 SUM(CASE WHEN CreatedAtUtc >= @sinceUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) = LOWER(@gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
+                                 SUM(CASE WHEN CreatedAtUtc >= @dayStartUtc AND CreatedAtUtc < @nextDayUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
+                          FROM dbo.TouristPoiQrScanLog
                           GROUP BY PoiId
                           ORDER BY TotalVnd DESC;
                           """;
-        cmd.Parameters.AddWithValue("$sinceUtc", sinceUtc);
-        cmd.Parameters.AddWithValue("$dayStartUtc", dayStartUtc);
-        cmd.Parameters.AddWithValue("$nextDayUtc", nextDayUtc);
-        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
+        cmd.Parameters.AddWithValue("@sinceUtc", sinceUtc);
+        cmd.Parameters.AddWithValue("@dayStartUtc", dayStartUtc);
+        cmd.Parameters.AddWithValue("@nextDayUtc", nextDayUtc);
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var totalVnd = reader.IsDBNull(2) ? 0m : Convert.ToDecimal(reader.GetValue(2));
             result.Add(new PoiQrScanRevenueDto(
                 reader.GetInt32(0),
-                reader.GetString(1),
-                Convert.ToDecimal(reader.GetDouble(2)),
-                reader.GetInt32(3),
-                reader.GetInt32(4),
-                reader.GetInt32(5)));
+                reader.IsDBNull(1) ? "" : reader.GetString(1),
+                totalVnd,
+                reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt32(5)));
         }
 
         return result;
@@ -1873,14 +2002,14 @@ public sealed class TravelGuideDb
     private async Task<int> GetPoiQrScanTotalCountAsync()
     {
         var gpsEt = TouristPoiGpsInsideEventType;
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                            SELECT COUNT(*) FROM TouristPoiQrScanLog
-                            WHERE LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt);
+                            SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog
+                            WHERE LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt);
                             """;
-        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
         var raw = await cmd.ExecuteScalarAsync();
         if (raw is null || raw == DBNull.Value) return 0;
         return Convert.ToInt32(raw);

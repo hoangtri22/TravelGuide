@@ -9,6 +9,7 @@ namespace TravelGuide;
 public partial class MainPage : ContentPage
 {
     private readonly DatabaseService _dbService;
+    private bool _isNavigating;
 
     private string _selectedLang = "vi";
 
@@ -133,13 +134,48 @@ public partial class MainPage : ContentPage
     /// <summary>Áp ngôn ngữ, xóa cache POI, điều hướng tới dashboard <see cref="HomePage"/>.</summary>
     private async void GoHome(object sender, EventArgs e)
     {
+        if (_isNavigating) return;
+        _isNavigating = true;
+        ContinueBtn.IsEnabled = false;
+        var oldText = ContinueBtn.Text;
+        ContinueBtn.Text = "Đang tải...";
+
+        try
+        {
         AppLanguage.SetLanguage(_selectedLang);
         _dbService.ClearCache();
-        await _dbService.GetPlacesAsync();
+        // Không để màn hình đầu bị "treo" quá lâu khi mạng/API chậm.
+        var warmupTask = _dbService.GetPlacesAsync();
+        var completed = await Task.WhenAny(warmupTask, Task.Delay(TimeSpan.FromSeconds(8)));
+        if (completed == warmupTask)
+            await warmupTask;
 
-        if (Handler?.MauiContext == null) return;
-        var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
-        await Navigation.PushAsync(homePage);
+            try
+            {
+                await Shell.Current.GoToAsync(nameof(HomePage));
+            }
+            catch
+            {
+                if (Handler?.MauiContext == null) return;
+                var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
+                await Navigation.PushAsync(homePage);
+            }
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Lỗi", $"Không thể mở trang chính: {ex.Message}", "OK");
+        }
+        finally
+        {
+            ContinueBtn.Text = oldText;
+            ContinueBtn.IsEnabled = true;
+            _isNavigating = false;
+        }
+    }
+
+    private async void OpenDemoDebug(object sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync(nameof(DemoDebugPage));
     }
 
     /// <summary>Cập nhật <see cref="ILocalizationResourceManager.CurrentCulture"/> theo mã ngôn ngữ.</summary>

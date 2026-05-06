@@ -1,4 +1,4 @@
 Dat file APK release tai day voi ten:
 travelguide-latest.apk
 
-Sau do QR /download/android se redirect ve file nay.
+File APK duoc su dung cho phat hanh/kiem thu noi bo trong mang local/LAN.
