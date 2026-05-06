@@ -29,7 +29,7 @@ if %errorLevel% neq 0 (
 
 echo.
 echo XONG. Dien thoai cung Wi-Fi co the vao (thay IP duoi day):
-echo   http://^<IP-may-tinh^>:5280/download/android/qr.png
+echo   http://^<IP-may-tinh^>:5280
 echo.
 echo Cac IPv4 tren may (tim dong Wi-Fi, thuong 192.168.x.x):
 ipconfig | findstr /i "IPv4"

@@ -4,19 +4,22 @@ skinparam shadowing false
 skinparam monochrome true
 actor "Chủ quán" as O
 rectangle "Owner Web" {
-  usecase "Đăng nhập token RAM" as O1
+  usecase "Đăng ký tài khoản chủ quán\n(chờ admin duyệt)" as O0
+  usecase "Đăng nhập\n(JWT trong sessionStorage)" as O1
   usecase "Quản lý POI của quán" as O2
-  usecase "Sinh QR cho POI" as O3
+  usecase "Mở form sửa/tạo POI\n(poi-create.html)" as O3
   usecase "Quản lý bản dịch POI" as O4
   usecase "Quản lý nguồn audio/map link" as O5
 }
 
 ' Ep layout để gần giống sơ đồ mẫu
+O0 -[hidden]down- O1
 O1 -[hidden]down- O2
 O2 -[hidden]down- O4
 O4 -[hidden]down- O5
 O2 -[hidden]right- O3
 
+O --> O0
 O --> O1
 O --> O2
 O --> O4

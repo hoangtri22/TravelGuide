@@ -9,11 +9,9 @@ namespace TravelGuide;
 public partial class MainPage : ContentPage
 {
     private readonly DatabaseService _dbService;
-    private readonly TouristAuthService _touristAuthService;
-    private bool _isTouristLoggedIn;
+    private bool _isNavigating;
 
     private string _selectedLang = "vi";
-
     private readonly List<string> _fullCurrencyList = new();
 
     private readonly Dictionary<string, string> _langNames = new()
@@ -26,23 +24,15 @@ public partial class MainPage : ContentPage
     };
 
     /// <summary>Khởi tạo UI, nạp danh sách tiền tệ và cài đặt đã lưu.</summary>
-    public MainPage(DatabaseService dbService, TouristAuthService touristAuthService)
+    public MainPage(DatabaseService dbService)
     {
         InitializeComponent();
         _dbService = dbService;
-        _touristAuthService = touristAuthService;
 
         LoadCurrencies();
         LoadSavedSettings();
 
         if (CurrencyListFrame != null) CurrencyListFrame.IsVisible = false;
-        _ = RefreshTouristAuthStatusAsync();
-    }
-
-    protected override async void OnAppearing()
-    {
-        base.OnAppearing();
-        await RefreshTouristAuthStatusAsync();
     }
 
     /// <summary>Lấy danh sách mã tiền tệ từ <see cref="CultureInfo"/> (fallback cố định nếu lỗi).</summary>
@@ -90,7 +80,11 @@ public partial class MainPage : ContentPage
 
             var stack = border.Content as VerticalStackLayout;
             if (stack?.Children.Count > 1 && stack.Children[1] is Label lbl)
-                lbl.TextColor = isSelected ? Colors.White : Color.FromArgb("#555555");
+                lbl.TextColor = isSelected
+                    ? Colors.White
+                    : Application.Current?.RequestedTheme == AppTheme.Dark
+                        ? Color.FromArgb("#E5E7EB")
+                        : Color.FromArgb("#555555");
         }
 
         if (LblSelectedLang != null && _langNames.TryGetValue(code, out var name))
@@ -143,19 +137,48 @@ public partial class MainPage : ContentPage
     /// <summary>Áp ngôn ngữ, xóa cache POI, điều hướng tới dashboard <see cref="HomePage"/>.</summary>
     private async void GoHome(object sender, EventArgs e)
     {
-        if (!_isTouristLoggedIn)
-        {
-            await DisplayAlert("Thông báo", "Vui lòng đăng nhập du khách trước khi tiếp tục.", "OK");
-            return;
-        }
+        if (_isNavigating) return;
+        _isNavigating = true;
+        ContinueBtn.IsEnabled = false;
+        var oldText = ContinueBtn.Text;
+        ContinueBtn.Text = "Đang tải...";
 
+        try
+        {
         AppLanguage.SetLanguage(_selectedLang);
         _dbService.ClearCache();
-        await _dbService.GetPlacesAsync();
+        // Không để màn hình đầu bị "treo" quá lâu khi mạng/API chậm.
+        var warmupTask = _dbService.GetPlacesAsync();
+        var completed = await Task.WhenAny(warmupTask, Task.Delay(TimeSpan.FromSeconds(8)));
+        if (completed == warmupTask)
+            await warmupTask;
 
-        if (Handler?.MauiContext == null) return;
-        var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
-        await Navigation.PushAsync(homePage);
+            try
+            {
+                await Shell.Current.GoToAsync(nameof(HomePage));
+            }
+            catch
+            {
+                if (Handler?.MauiContext == null) return;
+                var homePage = Handler.MauiContext.Services.GetRequiredService<HomePage>();
+                await Navigation.PushAsync(homePage);
+            }
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Lỗi", $"Không thể mở trang chính: {ex.Message}", "OK");
+        }
+        finally
+        {
+            ContinueBtn.Text = oldText;
+            ContinueBtn.IsEnabled = true;
+            _isNavigating = false;
+        }
+    }
+
+    private async void OpenDemoDebug(object sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync(nameof(DemoDebugPage));
     }
 
     /// <summary>Cập nhật <see cref="ILocalizationResourceManager.CurrentCulture"/> theo mã ngôn ngữ.</summary>
@@ -169,33 +192,5 @@ public partial class MainPage : ContentPage
                 locMgr.CurrentCulture = new CultureInfo(code);
         }
         catch { }
-    }
-
-    private async Task RefreshTouristAuthStatusAsync()
-    {
-        var me = await _touristAuthService.GetMeAsync();
-        if (LblTouristAuthStatus == null) return;
-        _isTouristLoggedIn = me.Ok;
-        LblTouristAuthStatus.Text = me.Ok
-            ? $"Đã đăng nhập: {me.Username} ({me.AccountTier})"
-            : "Chưa đăng nhập";
-        if (ContinueBtn != null)
-            ContinueBtn.IsEnabled = _isTouristLoggedIn;
-    }
-
-    private async void OnTouristLoginClicked(object sender, EventArgs e)
-    {
-        if (Handler?.MauiContext == null) return;
-        var page = Handler.MauiContext.Services.GetRequiredService<TouristLoginPage>();
-        await Navigation.PushAsync(page);
-        await RefreshTouristAuthStatusAsync();
-        if (_isTouristLoggedIn)
-            GoHome(this, EventArgs.Empty);
-    }
-
-    private async void OnTouristLogoutClicked(object sender, EventArgs e)
-    {
-        await _touristAuthService.LogoutAsync();
-        await RefreshTouristAuthStatusAsync();
     }
 }

@@ -1,17 +1,23 @@
 @startuml
 title SE DuKhach DangXuat
+skinparam shadowing false
+skinparam monochrome true
 actor "Du khách" as U
 participant "MainPage.OnTouristLogoutClicked()" as UI
 participant "TouristAuthService.LogoutAsync()" as SVC
-participant "TravelGuide.API Program.cs MapPost(\"/api/tourist/auth/logout\")" as API
+participant "TravelGuide.API Program.cs MapPost(/api/tourist/auth/logout)" as API
 collections "SecureStorage.Default + Preferences" as STORE
 U -> UI : Nút đăng xuất (MainPage)
 UI -> SVC : await LogoutAsync()
 SVC -> STORE : SecureStorage.GetAsync(TokenKey)
 alt có bearer
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
   SVC -> API : POST /api/tourist/auth/logout + Authorization Bearer
   API --> SVC : (bỏ qua lỗi mạng trong catch)
 else không token
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
 end
 SVC -> STORE : SecureStorage.Remove(TokenKey)
 SVC -> STORE : Preferences.Remove(UsernameKey); Preferences.Remove(TierKey)

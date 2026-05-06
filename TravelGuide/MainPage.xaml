@@ -27,15 +27,15 @@
 
                     <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
                         <VerticalStackLayout Spacing="2">
-                            <Label Text="{loc:Translate WelcomeText}" FontSize="24" FontAttributes="Bold" TextColor="#0F172A"/>
-                            <Label Text="{loc:Translate SetupJourney}" FontSize="13" TextColor="#64748B"/>
+                            <Label Text="{loc:Translate WelcomeText}" FontSize="24" FontAttributes="Bold" TextColor="{AppThemeBinding Light=#0F172A, Dark=#F8FAFC}"/>
+                            <Label Text="{loc:Translate SetupJourney}" FontSize="13" TextColor="{AppThemeBinding Light=#64748B, Dark=#CBD5E1}"/>
                         </VerticalStackLayout>
                     </Border>
 
                     <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
                     <VerticalStackLayout Spacing="10">
                         <Label Text="{loc:Translate LanguageLabel}"
-                               FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                               FontAttributes="Bold" TextColor="{AppThemeBinding Light=#555555, Dark=#E5E7EB}" FontSize="14"/>
 
                         <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
 
@@ -117,7 +117,7 @@
                     <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="{loc:Translate CurrencyLabel}"
-                               FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
+                               FontAttributes="Bold" TextColor="{AppThemeBinding Light=#555555, Dark=#E5E7EB}" FontSize="14"/>
                         <Border StrokeShape="RoundRectangle 12" Padding="10,0"
                                 Stroke="#E0E0E0" HeightRequest="45">
                             <Entry x:Name="CurrencyEntry"
@@ -135,28 +135,16 @@
                                 <CollectionView.ItemTemplate>
                                     <DataTemplate>
                                         <Label Text="{Binding .}" Padding="15,10"
-                                               FontSize="14" TextColor="#333333"/>
+                                               FontSize="14" TextColor="{AppThemeBinding Light=#333333, Dark=#F1F5F9}"/>
                                     </DataTemplate>
                                 </CollectionView.ItemTemplate>
                             </CollectionView>
                         </Border>
                     </VerticalStackLayout></Border>
 
-                    <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 18" Padding="16">
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Tài khoản du khách" FontAttributes="Bold" TextColor="#555555" FontSize="14"/>
-                            <Label x:Name="LblTouristAuthStatus" Text="Chưa đăng nhập" TextColor="#64748B"/>
-                            <HorizontalStackLayout Spacing="10">
-                                <Button Text="Đăng nhập" Clicked="OnTouristLoginClicked" />
-                                <Button Text="Đăng xuất" Clicked="OnTouristLogoutClicked" BackgroundColor="#E5E7EB" TextColor="#111827"/>
-                            </HorizontalStackLayout>
-                        </VerticalStackLayout>
-                    </Border>
-
                     <Button x:Name="ContinueBtn"
                             Text="{loc:Translate BtnContinue}"
                             Clicked="GoHome"
-                            IsEnabled="False"
                             BackgroundColor="#1E88E5"
                             TextColor="White"
                             CornerRadius="25"

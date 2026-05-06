@@ -8,13 +8,15 @@ if (POST /api/auth/login OK?) then (Có)
   :applyRoleChrome() role=owner;
   if (Chọn module?) then (Quản lý POI quán)
     :loadPois() -> GET /api/pois (owner scope);
-    :poi-create.js submit -> PUT /api/pois/{id};
-    :api(`/api/pois/{id}/qrcode`, { method: "POST" });
+    :Mở poi-create.html?id=...;
+    :poi-create.js submit -> POST /api/pois hoặc PUT /api/pois/{id};
   elseif (Bản dịch)
-    :loadTranslation(id) -> GET /api/translations/{id};
+    :loadTranslation(id) -> GET /api/translations/{id}?lang=...;
     :translationForm submit -> PUT /api/translations/{id};
+    :Tạo lại máy -> POST /api/translations/{id}/regenerate?lang=...;
   else (Audio/Map)
     :renderAudioSources();
+    :Upload file -> POST /api/upload/audio;
     :audio-save-btn click -> PUT /api/pois/{id} (audioUrl,mapLink);
   endif
 else (Không)

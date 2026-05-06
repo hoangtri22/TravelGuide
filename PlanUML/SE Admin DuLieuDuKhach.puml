@@ -1,24 +1,30 @@
 @startuml
 title SE Admin DuLieuDuKhach
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
 actor Admin as A
-participant "TravelGuide.AdminWeb/WEB/app.js async function loadTouristOverview()" as FE
-participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
-participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/tourists/overview\")" as API1
-participant "TravelGuide.AdminWeb/Program.cs MapGet(\"/api/tourists/poi-scan-dashboard\")" as API2
-database "TravelGuideDb.GetTouristOverviewAsync()" as DB1
-database "TravelGuideDb.GetTouristPoiScanDashboardAsync()" as DB2
+participant "app.js\nloadTouristOverview()" as FE
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nGET /api/tourists/overview" as API1
+participant "Program.cs\nGET /api/tourists/poi-scan-dashboard" as API2
+database "TravelGuideDb\nGetTouristOverviewAsync()" as DB1
+database "TravelGuideDb\nGetTouristPoiScanDashboardAsync()" as DB2
 A -> FE : Tab dữ liệu du khách / refresh
 FE -> APIJS : await api(`/api/tourists/overview?visitHistoryChartWeekStart=...`)
 APIJS -> API1 : GET
 API1 -> DB1 : await GetTouristOverviewAsync(visitHistoryChartWeekStart)
 DB1 --> API1 : object dashboard
-FE -> APIJS : await api(\"/api/tourists/poi-scan-dashboard\")
+FE -> APIJS : await api(/api/tourists/poi-scan-dashboard)
 APIJS -> API2 : GET
 API2 -> DB2 : await GetTouristPoiScanDashboardAsync()
 DB2 --> API2 : object dashboard quét POI
 FE --> A : render KPI / bảng / biểu đồ
 
-note bottom of API2
-  Cùng endpoint **GET /api/tourists/poi-scan-dashboard** được gọi thêm từ tab **Heatmap** (app.js ``refreshHeatmapTab``), không chỉ tab Dữ liệu du khách.
+note right of API2
+  GET /api/tourists/poi-scan-dashboard
+  cũng được gọi từ tab Heatmap
+  (app.js refreshHeatmapTab),
+  không chỉ tab Dữ liệu du khách.
 end note
 @enduml

@@ -2,9 +2,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
-using TravelGuide.AdminWeb.Services;
+using QRCoder;
 
 // =============================================================================
 // TravelGuide.AdminWeb — Minimal API (Program.cs)
@@ -36,11 +35,16 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     Args = args,
     WebRootPath = ResolveWebRootPath()
 });
+void ApplySharedSqlConnection(IConfiguration cfg)
+{
+    var fromCfg = (cfg["ConnectionStrings:TravelGuideSqlServer"] ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(fromCfg)) return;
+    Environment.SetEnvironmentVariable("TRAVELGUIDE_SQLSERVER", fromCfg, EnvironmentVariableTarget.Process);
+}
+ApplySharedSqlConnection(builder.Configuration);
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
-builder.Services.Configure<PoiQrOptions>(builder.Configuration.GetSection(PoiQrOptions.SectionName));
-builder.Services.Configure<AndroidDownloadOptions>(builder.Configuration.GetSection(AndroidDownloadOptions.SectionName));
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -105,17 +109,64 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+string ResolveApkPublicUrl()
+{
+    var fromEnv = (Environment.GetEnvironmentVariable("TRAVELGUIDE_PUBLIC_APK_URL") ?? string.Empty).Trim();
+    if (!string.IsNullOrWhiteSpace(fromEnv))
+        return fromEnv;
+    var fromCfg = (builder.Configuration["ApkPublic:DownloadUrl"] ?? string.Empty).Trim();
+    return fromCfg;
+}
+
+string GetApkFilePath()
+{
+    var root = string.IsNullOrWhiteSpace(app.Environment.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : app.Environment.WebRootPath;
+    return Path.Combine(root, "apk", "travelguide-latest.apk");
+}
+
+string EnsureStaticApkQr(string publicApkUrl)
+{
+    var root = string.IsNullOrWhiteSpace(app.Environment.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : app.Environment.WebRootPath;
+    var qrDir = Path.Combine(root, "qrcodes");
+    Directory.CreateDirectory(qrDir);
+    var qrPath = Path.Combine(qrDir, "apk-download-static.png");
+    var metaPath = Path.Combine(qrDir, "apk-download-static.url.txt");
+
+    var shouldRegenerate = !File.Exists(qrPath);
+    if (File.Exists(metaPath))
+    {
+        var old = (File.ReadAllText(metaPath) ?? string.Empty).Trim();
+        if (!string.Equals(old, publicApkUrl, StringComparison.Ordinal))
+            shouldRegenerate = true;
+    }
+    else
+    {
+        shouldRegenerate = true;
+    }
+
+    if (shouldRegenerate)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        using var qrData = qrGenerator.CreateQrCode(publicApkUrl, QRCodeGenerator.ECCLevel.Q);
+        var pngQr = new PngByteQRCode(qrData);
+        var bytes = pngQr.GetGraphic(12);
+        File.WriteAllBytes(qrPath, bytes);
+        File.WriteAllText(metaPath, publicApkUrl);
+    }
+
+    return "/qrcodes/apk-download-static.png";
+}
+
 try
 {
     await using (var scope = app.Services.CreateAsyncScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<TravelGuideDb>();
         await db.InitializeAsync();
-
-        var qrOptions = scope.ServiceProvider.GetRequiredService<IOptions<AndroidDownloadOptions>>();
-        var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
-        var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
-        await AndroidDownloadService.TryGenerateQrAsync(qrOptions.Value, env, httpClientFactory);
     }
 }
 catch (Exception ex)
@@ -131,19 +182,31 @@ catch (Exception ex)
     throw;
 }
 
-static async Task GeneratePoiQrAsync(
-    int poiId,
-    PoiDto sourcePoi,
-    TravelGuideDb db,
-    IHttpClientFactory httpClientFactory,
-    IWebHostEnvironment env,
-    PoiQrOptions options,
-    CancellationToken cancellationToken)
+app.MapGet("/download/apk", (HttpContext context) =>
 {
-    var http = httpClientFactory.CreateClient();
-    http.Timeout = TimeSpan.FromSeconds(25);
-    await PoiQrCodeGenerator.TryGenerateAndStoreAsync(poiId, sourcePoi, db, http, env, options, cancellationToken);
-}
+    var apkPath = GetApkFilePath();
+    if (!File.Exists(apkPath))
+        return Results.NotFound("APK file not found. Put file at WEB/apk/travelguide-latest.apk");
+
+    context.Response.Headers["Content-Disposition"] = "attachment; filename=\"app.apk\"";
+    return Results.File(apkPath, "application/vnd.android.package-archive", "app.apk");
+});
+
+app.MapGet("/api/download/apk-info", (HttpContext context) =>
+{
+    var publicApkUrl = ResolveApkPublicUrl();
+    if (string.IsNullOrWhiteSpace(publicApkUrl))
+        return Results.BadRequest("Missing TRAVELGUIDE_PUBLIC_APK_URL (or ApkPublic:DownloadUrl).");
+
+    var qrPath = EnsureStaticApkQr(publicApkUrl);
+    var absoluteQr = $"{context.Request.Scheme}://{context.Request.Host}{qrPath}";
+    return Results.Ok(new
+    {
+        downloadUrl = publicApkUrl,
+        qrImagePath = qrPath,
+        qrImageUrl = absoluteQr
+    });
+});
 
 static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnvironment env, CancellationToken cancellationToken)
 {
@@ -175,25 +238,6 @@ static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnviro
     await using var fs = File.Create(fullPath);
     await file.CopyToAsync(fs, cancellationToken);
     return $"audio/{finalName}";
-}
-
-static string? ResolveLocalAndroidApkPath(IWebHostEnvironment env)
-{
-    const string fileName = "travelguide-latest.apk";
-    var candidates = new[]
-    {
-        string.IsNullOrWhiteSpace(env.WebRootPath) ? null : Path.Combine(env.WebRootPath, "apk", fileName),
-        Path.Combine(env.ContentRootPath, "WEB", "apk", fileName),
-        Path.Combine(AppContext.BaseDirectory, "WEB", "apk", fileName),
-        Path.Combine(Directory.GetCurrentDirectory(), "WEB", "apk", fileName)
-    };
-    foreach (var p in candidates)
-    {
-        if (!string.IsNullOrWhiteSpace(p) && File.Exists(p))
-            return p;
-    }
-
-    return null;
 }
 
 app.MapPost("/api/auth/login", async (LoginRequest request, TravelGuideDb db, AuthStore authStore) =>
@@ -293,101 +337,14 @@ app.MapGet("/api/public/tourist-comments/{poiId:int}", async (int poiId, TravelG
     return Results.Ok(rows);
 });
 
-app.MapGet("/download/android", (HttpContext context, IOptions<AndroidDownloadOptions> options, IWebHostEnvironment env) =>
-{
-    var opts = options.Value;
-    var apkUrl = (opts.ApkUrl ?? "").Trim();
-    if (apkUrl.Length == 0)
-    {
-        if (ResolveLocalAndroidApkPath(env) is not null)
-            apkUrl = "/apk/travelguide-latest.apk";
-    }
-
-    if (apkUrl.Length == 0)
-        return Results.NotFound("Chưa cấu hình APK (AndroidDownload:ApkUrl hoặc file WEB/apk/travelguide-latest.apk).");
-
-    if (apkUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-        apkUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        return Results.Redirect(apkUrl);
-
-    if (!apkUrl.StartsWith('/'))
-        apkUrl = "/" + apkUrl;
-
-    var host = AndroidDownloadPublicBaseResolver.Resolve(context.Request, opts);
-    return Results.Redirect(host + apkUrl);
-});
-
-app.MapGet("/download/android/qr.png", async (HttpContext context, IOptions<AndroidDownloadOptions> options, IHttpClientFactory httpClientFactory) =>
-{
-    var opts = options.Value;
-    var path = AndroidDownloadService.NormalizeDownloadPath(opts.DownloadPath);
-    var host = AndroidDownloadPublicBaseResolver.Resolve(context.Request, opts);
-    var payload = host + path;
-    var size = opts.QrImageSizePx <= 0 ? 320 : opts.QrImageSizePx;
-    var remote = PoiQrCodeGenerator.BuildRemoteQrImageUrl(payload, size);
-    var http = httpClientFactory.CreateClient();
-    http.Timeout = TimeSpan.FromSeconds(20);
-    using var resp = await http.GetAsync(remote, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
-    if (!resp.IsSuccessStatusCode)
-        return Results.NotFound();
-    var bytes = await resp.Content.ReadAsByteArrayAsync(context.RequestAborted);
-    return bytes.Length == 0 ? Results.NotFound() : Results.File(bytes, "image/png");
-});
-
-app.MapGet("/api/download/android", (HttpContext http, IOptions<AndroidDownloadOptions> options, IWebHostEnvironment env) =>
-{
-    var o = options.Value;
-    var path = AndroidDownloadService.NormalizeDownloadPath(o.DownloadPath);
-    var host = AndroidDownloadPublicBaseResolver.Resolve(http.Request, o);
-    var downloadUrl = host + path;
-    var apkUrl = (o.ApkUrl ?? "").Trim();
-    if (apkUrl.Length == 0 && ResolveLocalAndroidApkPath(env) is not null)
-        apkUrl = host + "/apk/travelguide-latest.apk";
-    else if (apkUrl.Length > 0 && apkUrl.StartsWith('/'))
-        apkUrl = host + apkUrl;
-
-    return Results.Json(new
-    {
-        downloadUrl,
-        apkUrl,
-        qrUrl = host + path + "/qr.png"
-    });
-});
-
-app.MapGet("/apk/travelguide-latest.apk", (HttpContext context, IWebHostEnvironment env) =>
-{
-    var path = ResolveLocalAndroidApkPath(env);
-    return path is null
-        ? Results.NotFound()
-        : Results.File(path, "application/vnd.android.package-archive", "travelguide-latest.apk");
-});
-
-app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
+app.MapPost("/api/pois", async (HttpContext context, PoiDto poi, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
 
     var id = await db.CreatePoiAsync(poi, principal);
-    if (string.IsNullOrWhiteSpace(poi.QrImagePath))
-    {
-        await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
-    }
-
     await db.EnsureAutoTranslationsAsync(httpClientFactory.CreateClient(), id);
     return Results.Ok(new { id });
-});
-
-app.MapPost("/api/pois/{id:int}/qrcode", async (HttpContext context, int id, TravelGuideDb db, AuthStore authStore, IHttpClientFactory httpClientFactory, IWebHostEnvironment env, IOptions<PoiQrOptions> qrOptions) =>
-{
-    var principal = AuthHelper.Authenticate(context, authStore);
-    if (principal is null) return Results.Unauthorized();
-
-    var poi = await db.GetPoiAsync(id);
-    if (poi is null) return Results.NotFound();
-
-    await GeneratePoiQrAsync(id, poi, db, httpClientFactory, env, qrOptions.Value, context.RequestAborted);
-    var updatedPoi = await db.GetPoiAsync(id);
-    return Results.Ok(new { id, qrImagePath = updatedPoi?.QrImagePath ?? "" });
 });
 
 app.MapPost("/api/upload/audio", async (HttpContext context, AuthStore authStore, IWebHostEnvironment env) =>
@@ -615,12 +572,12 @@ app.MapGet("/api/export/extra_places.json", async (HttpContext context, TravelGu
     return Results.Json(places);
 });
 
-app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb db, AuthStore authStore, DateOnly? visitHistoryChartWeekStart) =>
+app.MapGet("/api/tourists/overview", async (HttpContext context, TravelGuideDb db, AuthStore authStore, DateOnly? visitHistoryChartWeekStart, DateOnly? touristWeekChartMonday) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);
     if (principal is null) return Results.Unauthorized();
     if (principal.Role != "admin") return Results.Forbid();
-    var data = await db.GetTouristOverviewAsync(visitHistoryChartWeekStart);
+    var data = await db.GetTouristOverviewAsync(visitHistoryChartWeekStart, touristWeekChartMonday);
     return Results.Ok(data);
 });
 
@@ -634,6 +591,15 @@ app.MapPut("/api/tourists/{id:int}/tier", async (HttpContext context, int id, Up
     return ok
         ? Results.Ok(new { message = "Đã cập nhật tier du khách." })
         : Results.NotFound("Không tìm thấy tài khoản du khách.");
+});
+
+app.MapPost("/api/tourists/purge-legacy", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (principal.Role != "admin") return Results.Forbid();
+    var result = await db.PurgeLegacyTouristUsersAsync();
+    return Results.Ok(result);
 });
 
 app.MapGet("/api/tourists/poi-scan-dashboard", async (HttpContext context, TravelGuideDb db, AuthStore authStore) =>

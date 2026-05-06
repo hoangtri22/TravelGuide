@@ -21,9 +21,12 @@ public partial class MapPage : ContentPage
     private readonly NarrationEngine _narrationEngine;
     private readonly GpsBackgroundService _gpsService;
     private readonly GeofenceEngine _geofenceEngine;
+    private readonly TouristAuthService _authService;
+    private const int HeatmapRefreshSeconds = 5;
 
     private Location? _lastKnownLocation;
     private TouristPlace? _nearestPlace;
+    private CancellationTokenSource? _heatmapRefreshCts;
 
     /// <summary>HTTPS + host .invalid: Android WebView thường không gọi <see cref="MapView_Navigating"/> với <c>app://</c> → overlay "Đang tải bản đồ" kẹt vĩnh viễn.</summary>
     private const string MapJsBridgeRoot = "https://tg.invalid";
@@ -43,7 +46,7 @@ public partial class MapPage : ContentPage
 
     private static string F(double d) => d.ToString(CultureInfo.InvariantCulture);
 
-    public MapPage(DatabaseService dbService, NarrationEngine narrationEngine, GpsBackgroundService gpsService, GeofenceEngine geofenceEngine)
+    public MapPage(DatabaseService dbService, NarrationEngine narrationEngine, GpsBackgroundService gpsService, GeofenceEngine geofenceEngine, TouristAuthService authService)
     {
         InitializeComponent();
 #if ANDROID
@@ -63,6 +66,7 @@ public partial class MapPage : ContentPage
         _narrationEngine = narrationEngine;
         _gpsService = gpsService;
         _geofenceEngine = geofenceEngine;
+        _authService = authService;
 
         WeakReferenceMessenger.Default.Register<LocationMessage>(this, (r, m) =>
         {
@@ -71,7 +75,7 @@ public partial class MapPage : ContentPage
                 _lastKnownLocation = m.Value;
                 if (mapView != null)
                 {
-                    await mapView.EvaluateJavaScriptAsync($"updateLocation({F(m.Value.Longitude)}, {F(m.Value.Latitude)});");
+                    await mapView.EvaluateJavaScriptAsync($"updateLocation({F(m.Value.Longitude)}, {F(m.Value.Latitude)}, false);");
                     await UpdateNearbyBanner(m.Value);
                 }
             });
@@ -86,9 +90,9 @@ public partial class MapPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        MiniPlayer.Attach(_narrationEngine);
         _dbService.ClearCache();
         LoadMap();
+        StartHeatmapRefreshLoop();
         await _gpsService.StartAsync();
     }
 
@@ -102,6 +106,7 @@ public partial class MapPage : ContentPage
         _geofenceEngine.OnPoiTriggered -= OnPoiTriggered;
         _geofenceEngine.OnPoiExited -= OnPoiExited;
         CancelMapLoadingFallback();
+        CancelHeatmapRefreshLoop();
     }
 
     /// <summary>Callback <see cref="GeofenceEngine.OnPoiEntered"/>: banner + highlight marker.</summary>
@@ -111,8 +116,9 @@ public partial class MapPage : ContentPage
         {
             _nearestPlace = poi;
             LblNearbyTitle.Text = poi.Name;
-            LblNearbyDist.Text = T("Bạn đang trong vùng này", "You are in this area", "このエリアにいます", "이 구역에 있습니다", "您正在此区域内");
-            NearbyBanner.IsVisible = true;
+            // Chi cap nhat context POI; banner chi hien khi dang phat thuyet minh.
+            LblNearbyDist.Text = T("Sẵn sàng phát thuyết minh", "Ready to play narration", "再生準備完了", "재생 준비 완료", "已准备播放讲解");
+            NearbyBanner.IsVisible = false;
             _ = mapView.EvaluateJavaScriptAsync($"highlightMarker({F(poi.Longitude)}, {F(poi.Latitude)});");
             _ = MarkPoiVisitedAsync(poi);
         });
@@ -132,8 +138,10 @@ public partial class MapPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            LblNearbyTitle.Text = poi.Name;
             NearbyBanner.BackgroundColor = Color.FromArgb("#2E7D32");
             LblNearbyDist.Text = T("Đang phát thuyết minh...", "Playing commentary...", "解説を再生中...", "해설 재생 중...", "正在播放讲解...");
+            NearbyBanner.IsVisible = true;
         });
     }
 
@@ -288,6 +296,92 @@ public partial class MapPage : ContentPage
         _mapLoadingFallbackCts = null;
     }
 
+    private void StartHeatmapRefreshLoop()
+    {
+        CancelHeatmapRefreshLoop();
+        _heatmapRefreshCts = new CancellationTokenSource();
+        var token = _heatmapRefreshCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await RefreshHeatmapOverlayAsync();
+                    await Task.Delay(TimeSpan.FromSeconds(HeatmapRefreshSeconds), token);
+                }
+                catch (System.OperationCanceledException)
+                {
+                    break;
+                }
+                catch
+                {
+                    // Bỏ qua lỗi tức thời để không ảnh hưởng các chức năng map khác.
+                }
+            }
+        }, token);
+    }
+
+    private void CancelHeatmapRefreshLoop()
+    {
+        try
+        {
+            _heatmapRefreshCts?.Cancel();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        _heatmapRefreshCts?.Dispose();
+        _heatmapRefreshCts = null;
+    }
+
+    private async Task RefreshHeatmapOverlayAsync()
+    {
+        var heat = await _authService.GetGpsHeatmapAsync();
+        if (!heat.Ok) return;
+
+        var places = await _dbService.GetPlacesAsync();
+        var placeById = places
+            .Where(p => p.Id > 0)
+            .GroupBy(p => p.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var points = new List<HeatPointDto>();
+        foreach (var row in heat.Items)
+        {
+            if (!placeById.TryGetValue(row.PoiId, out var place))
+                continue;
+
+            if (Math.Abs(place.Latitude) > 90 || Math.Abs(place.Longitude) > 180)
+                continue;
+
+            var hits = Math.Max(0, row.GpsHits);
+            if (hits <= 0) continue;
+
+            points.Add(new HeatPointDto(
+                place.Longitude,
+                place.Latitude,
+                hits,
+                string.IsNullOrWhiteSpace(row.PoiNameVi) ? place.Name : row.PoiNameVi));
+        }
+
+        var payload = JsonSerializer.Serialize(points);
+        await MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            if (mapView is null) return;
+            try
+            {
+                await mapView.EvaluateJavaScriptAsync($"updateHeatmap({payload});");
+            }
+            catch
+            {
+                // Map chưa sẵn sàng bridge thì bỏ qua vòng này.
+            }
+        });
+    }
+
     /// <summary>Nếu bridge không về (mạng/WebView), ẩn overlay để user không kẹt vĩnh viễn.</summary>
     private void ArmMapLoadingFallback()
     {
@@ -332,7 +426,7 @@ public partial class MapPage : ContentPage
 
             _lastKnownLocation = location;
             UpdateGpsStatus(T($"Độ chính xác: {location.Accuracy:F0}m", $"Accuracy: {location.Accuracy:F0}m", $"精度: {location.Accuracy:F0}m", $"정확도: {location.Accuracy:F0}m", $"精度: {location.Accuracy:F0}m"), "#4CAF50");
-            await mapView.EvaluateJavaScriptAsync($"updateLocation({F(location.Longitude)}, {F(location.Latitude)});");
+            await mapView.EvaluateJavaScriptAsync($"updateLocation({F(location.Longitude)}, {F(location.Latitude)}, true);");
             await UpdateNearbyBanner(location);
         }
         catch
@@ -346,8 +440,8 @@ public partial class MapPage : ContentPage
     {
         var places = await _dbService.GetPlacesAsync();
         _nearestPlace = places
-            .OrderByDescending(p => p.Priority)
-            .ThenBy(p => Location.CalculateDistance(userLocation.Latitude, userLocation.Longitude, p.Latitude, p.Longitude, DistanceUnits.Kilometers))
+            .OrderBy(p => Location.CalculateDistance(userLocation.Latitude, userLocation.Longitude, p.Latitude, p.Longitude, DistanceUnits.Kilometers))
+            .ThenByDescending(p => p.Priority)
             .FirstOrDefault();
         if (_nearestPlace == null) return;
 
@@ -357,7 +451,8 @@ public partial class MapPage : ContentPage
             LblNearbyTitle.Text = _nearestPlace.Name;
             LblNearbyDist.Text = dist < 1000 ? T($"Cách bạn {dist:F0}m", $"{dist:F0}m away", $"{dist:F0}m先", $"{dist:F0}m 거리", $"距您{dist:F0}米")
                                              : T($"Cách bạn {dist / 1000:F1}km", $"{dist / 1000:F1}km away", $"{dist / 1000:F1}km先", $"{dist / 1000:F1}km 거리", $"距您{dist / 1000:F1}公里");
-            NearbyBanner.IsVisible = true;
+            // Khong hien banner khi chua phat. Banner se duoc bat trong OnPoiTriggered.
+            NearbyBanner.IsVisible = false;
         }
         else
         {
@@ -380,11 +475,11 @@ public partial class MapPage : ContentPage
         {
             userLocation = await Geolocation.Default.GetLastKnownLocationAsync()
                 ?? await Geolocation.Default.GetLocationAsync(new GeolocationRequest(GeolocationAccuracy.Low, TimeSpan.FromSeconds(5)))
-                ?? new Location(10.7595, 106.7012);
+                ?? new Location(10.761918, 106.701914);
         }
         catch
         {
-            userLocation = new Location(10.7595, 106.7012);
+            userLocation = new Location(10.761918, 106.701914);
         }
 
         _lastKnownLocation = userLocation;
@@ -405,7 +500,11 @@ public partial class MapPage : ContentPage
         {
             mapView.Source = new HtmlWebViewSource
             {
-                Html = BuildLeafletHtml(userLocation, sb.ToString(), JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()))
+                Html = BuildLeafletHtml(
+                    userLocation,
+                    sb.ToString(),
+                    JsonSerializer.Serialize(GetAdminWebBaseUrlForQr()),
+                    "[]")
             };
             ArmMapLoadingFallback();
         }
@@ -468,7 +567,7 @@ public partial class MapPage : ContentPage
         EndpointResolver.ResolveAdminWebBaseUrls().Primary;
 
     /// <summary>HTML Leaflet + OpenStreetMap; giữ API JS <c>addPlace</c>/<c>updateLocation</c>/<c>highlightMarker</c>/<c>clearHighlight</c>/<c>markVisitedMarker</c>.</summary>
-    private string BuildLeafletHtml(Location center, string markersJs, string adminWebBaseJson)
+    private string BuildLeafletHtml(Location center, string markersJs, string adminWebBaseJson, string? heatLayerJson = null)
     {
         // Leaflet qua MauiAsset (appassets) trên Android WebView thường không chạy được (MIME/loader) → luôn dùng HTTPS CDN.
         const string leafletCss = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
@@ -482,17 +581,22 @@ public partial class MapPage : ContentPage
     html, body {{ margin:0; padding:0; width:100%; height:100%; overflow:hidden; }}
     #map {{ position:absolute; left:0; top:0; right:0; bottom:0; width:100%; height:100%; min-height:100%; }}
     #locateBtn{{position:absolute;top:16px;right:16px;z-index:1000;background:#1E88E5;color:white;border:none;padding:10px 14px;border-radius:10px;font-weight:bold;font-size:14px;}}
+    #heatmapBtn{{position:absolute;top:64px;right:16px;z-index:1000;background:#334155;color:white;border:none;padding:8px 12px;border-radius:10px;font-weight:bold;font-size:12px;}}
     .leaflet-div-icon.poi-pin{{background:transparent!important;border:none!important;}}
   </style>
 </head><body>
   <div id='map'></div>
   <button id='locateBtn' type='button'>{T("📍 Vị trí của tôi", "📍 My location", "📍 現在地", "📍 내 위치", "📍 我的位置")}</button>
+  <button id='heatmapBtn' type='button'>{T("🔥 Heatmap: BẬT", "🔥 Heatmap: ON", "🔥 ヒートマップ: ON", "🔥 히트맵: ON", "🔥 热力图: 开")}</button>
   <script>const MAP_BRIDGE='{MapJsBridgeRoot}';</script>
   <script src='{leafletJs}' onerror=""window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Leaflet script load failed');""></script>
   <script>
     window.onerror=function(msg,src,line,col,err){{window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent(msg+' | '+src+':'+line);return true;}};
     if (typeof L==='undefined') {{ window.location.href=MAP_BRIDGE+'/error?msg='+encodeURIComponent('Leaflet L undefined'); }}
     const adminWebBase = {adminWebBaseJson};
+    let heatmapEnabled = true;
+    // Tắt lớp heatmap GPS (vòng đỏ) theo yêu cầu: luôn rỗng.
+    let gpsHeatRows = [];
     let mapLoaded = false;
     function notifyLoadedOnce(){{
       if (mapLoaded) return;
@@ -515,6 +619,51 @@ public partial class MapPage : ContentPage
     }});
     window.addEventListener('resize', function() {{ try {{ map.invalidateSize(false); }} catch(e) {{}} }});
     var userMarker = null, markerMap = {{}}, markerByCoord = {{}};
+    const heatLayer = L.layerGroup().addTo(map);
+    function heatColor(v){{
+      if (v >= 30) return '#ef4444';
+      if (v >= 18) return '#f97316';
+      if (v >= 10) return '#eab308';
+      if (v >= 5) return '#22c55e';
+      return '#3b82f6';
+    }}
+    function heatRadius(v){{
+      return Math.max(10, Math.min(32, 8 + Math.sqrt(Math.max(1, v)) * 3));
+    }}
+    function renderHeatmap(points){{
+      heatLayer.clearLayers();
+      if (!heatmapEnabled) return;
+      (Array.isArray(points) ? points : []).forEach(p => {{
+        const lng = Number(p.lng), lat = Number(p.lat), hits = Number(p.hits || 0);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat) || hits <= 0) return;
+        const c = heatColor(hits);
+        const marker = L.circleMarker([lat, lng], {{
+          radius: heatRadius(hits),
+          color: c,
+          weight: 1,
+          fillColor: c,
+          fillOpacity: 0.34,
+          interactive: false
+        }});
+        marker.bindTooltip((p.name || 'POI') + ': ' + hits + ' GPS', {{sticky:true}});
+        marker.addTo(heatLayer);
+      }});
+    }}
+    function updateHeatmap(points){{
+      gpsHeatRows = Array.isArray(points) ? points : [];
+      renderHeatmap(gpsHeatRows);
+    }}
+    function setHeatmapBtnState(){{
+      const btn = document.getElementById('heatmapBtn');
+      if (!btn) return;
+      if (heatmapEnabled){{
+        btn.style.background = '#334155';
+        btn.textContent = '{T("🔥 Heatmap: BẬT", "🔥 Heatmap: ON", "🔥 ヒートマップ: ON", "🔥 히트맵: ON", "🔥 热力图: 开")}';
+      }} else {{
+        btn.style.background = '#64748b';
+        btn.textContent = '{T("🔥 Heatmap: TẮT", "🔥 Heatmap: OFF", "🔥 ヒートマップ: OFF", "🔥 히트맵: OFF", "🔥 热力图: 关")}';
+      }}
+    }}
     function speakById(id){{ window.location.href=MAP_BRIDGE+'/speak?id='+encodeURIComponent(String(id)); }}
     function scanById(id){{ window.location.href=MAP_BRIDGE+'/scan?id='+encodeURIComponent(String(id)); }}
     function openById(id){{ window.location.href=MAP_BRIDGE+'/open?id='+encodeURIComponent(String(id)); }}
@@ -568,13 +717,16 @@ public partial class MapPage : ContentPage
       markerMap[markerId] = {{ marker: m, el: el, defaultColor: color, isVisited: color === '#4CAF50' }};
       markerByCoord[coordKey] = markerId;
     }}
-    function updateLocation(lng,lat){{
+    function updateLocation(lng,lat,center){{
       if (userMarker) {{ map.removeLayer(userMarker); userMarker = null; }}
       const uel = document.createElement('div');
       uel.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#1E88E5;border:3px solid #fff;box-shadow:0 0 0 2px rgba(30,136,229,.35);';
       const uicon = L.divIcon({{ html: uel, className: '', iconSize: [20, 20], iconAnchor: [10, 10] }});
       userMarker = L.marker([lat, lng], {{ icon: uicon, zIndexOffset: 1000 }}).addTo(map);
-      map.flyTo([lat, lng], 16);
+      // Chỉ recenter khi user bấm nut vi tri; GPS nền định kỳ thì không tự đổi zoom.
+      if (center === true) {{
+        map.flyTo([lat, lng], Math.max(map.getZoom(), 16));
+      }}
     }}
     function highlightMarker(lng,lat){{
       Object.keys(markerMap).forEach(id => {{
@@ -606,9 +758,17 @@ public partial class MapPage : ContentPage
       markerMap[markerId].el.style.height = '16px';
     }}
     document.getElementById('locateBtn').addEventListener('click', () => window.location.href=MAP_BRIDGE+'/locate');
+    document.getElementById('heatmapBtn').addEventListener('click', () => {{
+      heatmapEnabled = !heatmapEnabled;
+      setHeatmapBtnState();
+      renderHeatmap(gpsHeatRows);
+    }});
+    setHeatmapBtnState();
     {markersJs}
     setTimeout(() => window.location.href=MAP_BRIDGE+'/locate', 1500);
   </script>
 </body></html>";
     }
+
+    private sealed record HeatPointDto(double Lng, double Lat, int Hits, string Name);
 }

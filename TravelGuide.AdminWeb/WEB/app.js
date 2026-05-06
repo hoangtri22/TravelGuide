@@ -6,11 +6,15 @@ let token = "";
 let currentRole = "";
 let pois = [];
 let touristOverview = null;
-let qrBackfillRunning = false;
-let qrBackfillAttempted = false;
 let commentSearchTimer = null;
 let visitHistoryLineChart = null;
 const visitHistoryLineHidden = new Set();
+let touristWeekVisitsChart = null;
+/** Monday 00:00 UTC của tuần đang xem (biểu đồ lượt truy cập tuần). */
+let touristWeekVisitsMondayMs = null;
+/** yyyy-MM-dd (UTC) — gửi lên API để server gom đủ lịch sử (không giới hạn 300 dòng). */
+let touristWeekChartMondayParam = null;
+const TOURIST_WEEK_VISIT_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const commentState = {
   status: "all",
   search: "",
@@ -96,7 +100,7 @@ function switchTab(tabId) {
     } else if (tabId === "accountTab") {
       sub.textContent = "Duyệt đăng ký chủ quán, khóa / xóa tài khoản web.";
     } else if (tabId === "touristTab") {
-      sub.textContent = "Tài khoản và hoạt động du khách từ ứng dụng.";
+      sub.textContent = "Lượt truy cập và hoạt động du khách từ ứng dụng.";
     } else if (tabId === "heatmapTab") {
       sub.textContent = "";
     }
@@ -137,6 +141,31 @@ function applyRoleChrome() {
   switchTab("poiTab");
 }
 
+async function loadApkPublicDistribution() {
+  const box = byId("apkPublicBox");
+  if (!box) return;
+  if (normalizedRole() !== "admin") {
+    box.classList.add("hidden");
+    return;
+  }
+  try {
+    const data = await api("/api/download/apk-info");
+    const url = String(data?.downloadUrl || "").trim();
+    const qr = String(data?.qrImagePath || "").trim();
+    if (!url || !qr) {
+      box.classList.add("hidden");
+      return;
+    }
+    const img = byId("apkQrImage");
+    const dl = byId("apkDownloadBtn");
+    if (img) img.src = qr;
+    if (dl) dl.href = url;
+    box.classList.remove("hidden");
+  } catch {
+    box.classList.add("hidden");
+  }
+}
+
 /** Bảng chỉnh Audio URL / Map link theo danh sách POI hiện tại (chủ quán). */
 function renderAudioSources() {
   const tbody = byId("audioTable")?.querySelector("tbody");
@@ -168,6 +197,18 @@ function renderAudioSources() {
     tdAct.className = "audio-actions-cell";
     const actionsWrap = document.createElement("div");
     actionsWrap.className = "audio-actions";
+    const langSelect = document.createElement("select");
+    langSelect.className = "audio-lang-select";
+    langSelect.dataset.poiId = String(p.id);
+    langSelect.innerHTML = `
+      <option value="">Ngôn ngữ</option>
+      <option value="vi">VI</option>
+      <option value="en">EN</option>
+      <option value="ja">JA</option>
+      <option value="ko">KO</option>
+      <option value="zh">ZH</option>`;
+    actionsWrap.appendChild(langSelect);
+
     const inFile = document.createElement("input");
     inFile.type = "file";
     inFile.className = "audio-file-input";
@@ -215,8 +256,30 @@ function setAuthPanel(mode) {
 
 const fmtDate = (v) => {
   if (!v) return "";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString("vi-VN");
+  const raw = String(v).trim();
+  const hasZone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(raw);
+  // DateTime từ .NET/SQL đôi khi không có timezone suffix; coi như UTC để đổi đúng sang giờ VN.
+  const normalized = hasZone ? raw : `${raw}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime())
+    ? raw
+    : d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+};
+
+const fmtDateUtc = (v) => {
+  if (!v) return "";
+  const raw = String(v).trim();
+  const hasZone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(raw);
+  const normalized = hasZone ? raw : `${raw}Z`;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return raw;
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  const ss = String(d.getUTCSeconds()).padStart(2, "0");
+  return `${hh}:${mi}:${ss} ${dd}/${mm}/${yyyy}`;
 };
 
 const visitHistoryState = { sortKey: "id", sortDir: -1, page: 1, pageSize: 10, query: "", userFilter: "" };
@@ -226,8 +289,111 @@ const visitHistoryChartState = { customWeekStart: null };
 /** Leaflet + heatmap tab (admin). */
 let heatmapLeafletPromise = null;
 let heatmapMap = null;
+let heatmapBaseTiles = null;
 let heatmapLayer = null;
+let heatmapGeofenceLayer = null;
 let heatmapMarkers = null;
+/** Copy latlngs cho nút “Vừa khung” sau fitBounds. */
+let heatmapLastFitLatLngs = null;
+
+const HEATMAP_MAX_ZOOM = 22;
+const HEATMAP_TILE_NATIVE_ZOOM = 19;
+
+/** Cho phép zoom “ảo” sau mức tile OSM (19): ảnh phóng thêm nhưng vẫn dùng được. */
+function heatmapApplyExtendedZoomCapabilities(map) {
+  if (!map) return;
+  try {
+    map.setMaxZoom(HEATMAP_MAX_ZOOM);
+  } catch { /* ignore */ }
+  const patchTiles = (layer) => {
+    if (!layer || typeof layer !== "object") return;
+    try {
+      layer.options.maxZoom = HEATMAP_MAX_ZOOM;
+      layer.options.maxNativeZoom = HEATMAP_TILE_NATIVE_ZOOM;
+    } catch { /* ignore */ }
+  };
+  if (heatmapBaseTiles) patchTiles(heatmapBaseTiles);
+  map.eachLayer((ly) => {
+    if (ly instanceof L.TileLayer) patchTiles(ly);
+  });
+}
+
+/** Toolbar zoom / fit — luôn khởi tạo map nếu chưa có (tránh click khi heatmapMap === null). */
+function heatmapRunWhenReady(fn) {
+  if (normalizedRole() !== "admin") return Promise.resolve();
+  return ensureLeafletHeatLibs()
+    .then(() => {
+      if (heatmapMap) {
+        fn();
+        return;
+      }
+      return refreshHeatmapTab().then(() => {
+        fn();
+      });
+    })
+    .catch((err) => {
+      alert(err?.message || String(err));
+    });
+}
+
+/**
+ * Zoom bằng bánh xe trong `.main-content { overflow:auto }`:
+ * Chrome có thể làm listener wheel của Leaflet thành passive → không zoom được.
+ */
+/** Pane: geofence (giữa) · chấm POI (trên quầng nhiệt). */
+function heatmapEnsureHeatmapPanes(map) {
+  if (!map?.createPane) return;
+  if (!map.getPane("tgHeatGeofence")) {
+    map.createPane("tgHeatGeofence");
+    map.getPane("tgHeatGeofence").style.zIndex = "455";
+  }
+  if (!map.getPane("tgHeatDots")) {
+    map.createPane("tgHeatDots");
+    map.getPane("tgHeatDots").style.zIndex = "480";
+  }
+}
+
+/** Bán kính geofence POI (m) — trùng field Radius trên CMS / extra_places. */
+function poiRadiusMeters(p) {
+  const r = Number(p?.radius ?? p?.Radius);
+  return Number.isFinite(r) && r > 0 ? r : 50;
+}
+
+/** Bán kính marker (px) theo độ “nhiệt”, không cho hai vòng tròn chồng nhau (khoảng cách mép ≥ gapPx). */
+function heatmapCircleRadiusPx(desiredPx, neighborDistPx, gapPx, minPx, maxPx) {
+  const cap =
+    neighborDistPx === Infinity || !Number.isFinite(neighborDistPx)
+      ? maxPx
+      : Math.max(minPx, (neighborDistPx - gapPx) / 2);
+  return Math.min(maxPx, Math.max(minPx, Math.min(desiredPx, cap)));
+}
+
+function bindHeatmapWheelZoomFix(map) {
+  const el = map?.getContainer?.();
+  if (!el || el.dataset.tgWheelFix === "1") return;
+  el.dataset.tgWheelFix = "1";
+  let acc = 0;
+  el.addEventListener(
+    "wheel",
+    (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      let dy = ev.deltaY;
+      if (ev.deltaMode === 1) dy *= 16;
+      else if (ev.deltaMode === 2) dy *= 800;
+      acc += dy;
+      const stepAt = 48;
+      if (Math.abs(acc) < stepAt) return;
+      const dir = acc > 0 ? -1 : 1;
+      acc = 0;
+      const z = map.getZoom();
+      const cap = typeof map.getMaxZoom === "function" ? map.getMaxZoom() : HEATMAP_MAX_ZOOM;
+      const nz = Math.max(map.getMinZoom(), Math.min(cap, z + dir));
+      if (nz !== z) map.setZoom(nz);
+    },
+    { passive: false, capture: true }
+  );
+}
 
 function heatmapPick(row, camel, pascal) {
   if (!row || typeof row !== "object") return undefined;
@@ -304,6 +470,17 @@ function heatmapNormalizeViName(s) {
     .replace(/\s+/g, " ");
 }
 
+/** Tên POI (đã chuẩn hóa) không hiển thị trên tab Heatmap — không xóa khỏi CMS/app. */
+const HEATMAP_HIDDEN_POI_NAME_KEYS = new Set([
+  heatmapNormalizeViName("Sủi cảo Tân Tòng Lợi"),
+  heatmapNormalizeViName("Sủi cảo Tân Long Lợi")
+]);
+
+function heatmapIsHiddenOnHeatmapTab(p) {
+  const k = heatmapNormalizeViName(p?.nameVi ?? p?.NameVi);
+  return Boolean(k && HEATMAP_HIDDEN_POI_NAME_KEYS.has(k));
+}
+
 /** Map: tên đã chuẩn hóa → mảng POI (cùng tên có thể nhiều bản ghi). */
 function heatmapBuildPoiNameLookup(poisArr) {
   const m = new Map();
@@ -344,6 +521,7 @@ function heatmapBuildAggregatedTableRows(poisArr, nameLookup, revRows, qrTodayPi
     if (scans <= 0 && gps <= 0 && qr <= 0) continue;
 
     const logName = String(heatmapPick(row, "poiNameVi", "PoiNameVi") ?? "");
+    if (HEATMAP_HIDDEN_POI_NAME_KEYS.has(heatmapNormalizeViName(logName))) continue;
     const { p } = heatmapResolvePoiForMap(poisArr, nameLookup, pid, logName);
     const key = p ? `a:${Number(p.id ?? p.Id)}` : `n:${heatmapNormalizeViName(logName)}`;
     const label = p ? String(p?.nameVi ?? p?.NameVi ?? logName).trim() || logName : logName;
@@ -356,6 +534,15 @@ function heatmapBuildAggregatedTableRows(poisArr, nameLookup, revRows, qrTodayPi
       cur.gps += gps;
       cur.qr += qr;
     }
+  }
+  // Luôn hiển thị toàn bộ POI trên bảng heatmap (POI chưa có activity => 0/0/0).
+  for (const p of poisArr) {
+    const adminId = Number(p?.id ?? p?.Id);
+    if (!Number.isFinite(adminId) || adminId <= 0) continue;
+    const key = `a:${adminId}`;
+    if (agg.has(key)) continue;
+    const label = String(p?.nameVi ?? p?.NameVi ?? "").trim();
+    agg.set(key, { label, scans: 0, gps: 0, qr: 0 });
   }
   return [...agg.values()];
 }
@@ -393,6 +580,8 @@ async function refreshHeatmapTab() {
     String(dashboard?.heatmapQrDayUtc ?? dashboard?.HeatmapQrDayUtc ?? "").trim() ||
     new Date().toISOString().slice(0, 10);
 
+  const poisHeat = Array.isArray(pois) ? pois.filter((p) => !heatmapIsHiddenOnHeatmapTab(p)) : [];
+
   const heatmapQrTodayPick = (row) => {
     const v = heatmapPick(row, "qrScansTodayUtc", "QrScansTodayUtc");
     if (v !== undefined && v !== null) return Number(v) || 0;
@@ -412,7 +601,7 @@ async function refreshHeatmapTab() {
     });
   }
 
-  const nameLookup = heatmapBuildPoiNameLookup(pois);
+  const nameLookup = heatmapBuildPoiNameLookup(poisHeat);
   /** Ghép nhiều PoiId trong log → cùng một POI quản trị: cộng trọng số nhiệt. */
   const plate = new Map();
   let maxIntensity = 1;
@@ -427,7 +616,7 @@ async function refreshHeatmapTab() {
     const meta = scanByPoi.get(pid);
     if (!heatmapPoiHasActivity(meta)) continue;
     const displayName = String(heatmapPick(row, "poiNameVi", "PoiNameVi") ?? meta?.name ?? "");
-    const { p, how } = heatmapResolvePoiForMap(pois, nameLookup, pid, displayName);
+    const { p, how } = heatmapResolvePoiForMap(poisHeat, nameLookup, pid, displayName);
     if (how === "id") cntId += 1;
     else if (how === "name") cntName += 1;
     else if (how === "ambiguous") cntAmbiguous += 1;
@@ -463,6 +652,27 @@ async function refreshHeatmapTab() {
     }
     maxIntensity = Math.max(maxIntensity, plate.get(adminId).w);
   }
+
+  // Bổ sung POI chưa có log để map/tab luôn hiện đủ tất cả địa điểm.
+  for (const p of poisHeat) {
+    const adminId = Number(p?.id ?? p?.Id);
+    if (!Number.isFinite(adminId) || adminId <= 0) continue;
+    if (plate.has(adminId)) continue;
+    const c = poiCoordPick(p);
+    if (!c) continue;
+    const nm = String(p?.nameVi ?? p?.NameVi ?? "").trim();
+    plate.set(adminId, {
+      lat: c.lat,
+      lng: c.lng,
+      w: 1,
+      scans: 0,
+      recentGps: 0,
+      qrToday: 0,
+      vnd: 0,
+      name: nm
+    });
+    maxIntensity = Math.max(maxIntensity, 1);
+  }
   const heatPoints = [...plate.values()].map((v) => [v.lat, v.lng, v.w]);
 
   const hintParts = [];
@@ -472,25 +682,54 @@ async function refreshHeatmapTab() {
   if (cntNoCoord > 0) hintParts.push(`${cntNoCoord} POI thiếu lat/lng hợp lệ`);
   const hintMissing = hintParts.length ? ` (${hintParts.join("; ")}.)` : "";
 
-  summaryEl.textContent =
-    heatPoints.length === 0
-      ? `Tổng ${totalScans} lượt quét/mở POI (QR) — chưa vẽ được điểm nào.${hintMissing || " Kiểm tra /api/pois có lat/lng và tên trùng log."} Doanh thu: ${grand.toLocaleString("vi-VN")}đ. Bảng: GPS ${heatWin}′ · QR ngày UTC ${qrDayUtc}.`
-      : `${heatPoints.length} điểm trên bản đồ (độ nóng = max QR tích lũy, GPS ${heatWin}′+QR ngày; ${cntId} theo Id${cntName ? `, ${cntName} theo tên` : ""}). Tổng ${totalScans} lượt QR (log) · ${grand.toLocaleString("vi-VN")}đ.${hintMissing}`;
+  // Ẩn dòng summary dài phía trên heatmap theo yêu cầu UI hiện tại.
+  summaryEl.textContent = "";
 
   const mapEl = byId("heatmapMap");
   if (!mapEl) return;
 
   if (!heatmapMap) {
-    heatmapMap = L.map(mapEl, { scrollWheelZoom: true }).setView([16.05, 108.2], 6);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
+    heatmapMap = L.map(mapEl, {
+      // Wheel zoom do bindHeatmapWheelZoomFix (passive:false); Leaflet scrollWheelZoom hay fail trong khối cuộn.
+      scrollWheelZoom: false,
+      doubleClickZoom: true,
+      boxZoom: true,
+      keyboard: true,
+      zoomControl: true,
+      minZoom: 3,
+      maxZoom: HEATMAP_MAX_ZOOM
+    }).setView([16.05, 108.2], 6);
+    heatmapBaseTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: HEATMAP_MAX_ZOOM,
+      maxNativeZoom: HEATMAP_TILE_NATIVE_ZOOM,
       attribution: "&copy; OpenStreetMap"
     }).addTo(heatmapMap);
+    const hc = heatmapMap.getContainer();
+    if (typeof L !== "undefined" && L.DomEvent) {
+      L.DomEvent.disableScrollPropagation(hc);
+      // Không gọi disableClickPropagation — dễ làm nút zoom mặc định của Leaflet “không ăn”.
+    }
+    bindHeatmapWheelZoomFix(heatmapMap);
+  } else {
+    try {
+      heatmapMap.scrollWheelZoom.disable();
+    } catch { /* ignore */ }
+    heatmapApplyExtendedZoomCapabilities(heatmapMap);
+    if (!heatmapBaseTiles) {
+      heatmapMap.eachLayer((ly) => {
+        if (!heatmapBaseTiles && ly instanceof L.TileLayer) heatmapBaseTiles = ly;
+      });
+    }
+    bindHeatmapWheelZoomFix(heatmapMap);
   }
 
   if (heatmapLayer) {
     heatmapMap.removeLayer(heatmapLayer);
     heatmapLayer = null;
+  }
+  if (heatmapGeofenceLayer) {
+    heatmapMap.removeLayer(heatmapGeofenceLayer);
+    heatmapGeofenceLayer = null;
   }
   if (heatmapMarkers) {
     heatmapMap.removeLayer(heatmapMarkers);
@@ -498,38 +737,108 @@ async function refreshHeatmapTab() {
   }
 
   if (heatPoints.length > 0) {
+    heatmapEnsureHeatmapPanes(heatmapMap);
     heatmapLayer = L.heatLayer(heatPoints, {
-      radius: 32,
-      blur: 28,
-      maxZoom: 17,
+      // Giảm blur để các quầng nhiệt ít “ăn” vào nhau; radius vừa đủ nhìn.
+      radius: 26,
+      blur: 14,
+      maxZoom: HEATMAP_MAX_ZOOM,
       max: maxIntensity,
       gradient: { 0.4: "blue", 0.55: "cyan", 0.7: "lime", 0.85: "yellow", 1: "red" }
     }).addTo(heatmapMap);
 
+    const latlngs = heatPoints.map(([la, lo]) => L.latLng(la, lo));
+    heatmapLastFitLatLngs = latlngs.slice();
+    try {
+      heatmapMap.fitBounds(L.latLngBounds(latlngs), { padding: [28, 28], maxZoom: 17 });
+    } catch { /* ignore */ }
+    try {
+      heatmapMap.invalidateSize(false);
+    } catch { /* ignore */ }
+
+    const plateArr = [...plate.values()];
+    const pts = plateArr.map((v) => ({
+      v,
+      ll: L.latLng(v.lat, v.lng),
+      pt: heatmapMap.latLngToContainerPoint(L.latLng(v.lat, v.lng))
+    }));
+
+    const gapPx = 8;
+    const rMin = 10;
+    const rMaxSingle = 30;
+    const rMaxDense = 26;
+
     heatmapMarkers = L.layerGroup();
-    for (const v of plate.values()) {
+    for (let i = 0; i < pts.length; i++) {
+      const { v, ll } = pts[i];
+      let minNeighborPx = Infinity;
+      for (let j = 0; j < pts.length; j++) {
+        if (i === j) continue;
+        const dx = pts[i].pt.x - pts[j].pt.x;
+        const dy = pts[i].pt.y - pts[j].pt.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 0.5 && d < minNeighborPx) minNeighborPx = d;
+      }
+      if (pts.length <= 1) minNeighborPx = Infinity;
+
+      const desired = 13 + Math.min(22, Math.sqrt(Math.max(1, v.w)) * 2.2);
+      const radius = heatmapCircleRadiusPx(
+        desired,
+        minNeighborPx,
+        gapPx,
+        rMin,
+        pts.length <= 1 ? rMaxSingle : rMaxDense
+      );
+
       const nameVi = String(v.name || "");
-      const m = L.circleMarker([v.lat, v.lng], {
-        radius: 6 + Math.min(14, Math.sqrt(v.w) * 1.6),
+      const m = L.circleMarker(ll, {
+        pane: "tgHeatDots",
+        radius,
         stroke: true,
-        weight: 1,
-        color: "rgba(15,23,42,0.45)",
+        weight: 2,
+        color: "rgba(15,23,42,0.58)",
         fillColor: "#0d9488",
-        fillOpacity: 0.35
+        fillOpacity: 0.45
       });
       m.bindPopup(
         `<strong>${escCell(nameVi)}</strong><br><span class="hint">(Có thể gộp nhiều PoiId trong log về cùng POI)</span><br>Lượt quét QR (tích lũy, cộng): <b>${v.scans.toLocaleString("vi-VN")}</b><br>GPS ${heatWin}′: <b>${v.recentGps.toLocaleString("vi-VN")}</b> · QR ngày UTC ${escCell(qrDayUtc)}: <b>${v.qrToday.toLocaleString("vi-VN")}</b><br>Độ nhiệt bản đồ: <b>${v.w.toLocaleString("vi-VN")}</b><br>Doanh thu (cộng): ${v.vnd.toLocaleString("vi-VN")}đ`
       );
+      if (nameVi) m.bindTooltip(nameVi, { sticky: true, direction: "top" });
       m.addTo(heatmapMarkers);
     }
     heatmapMarkers.addTo(heatmapMap);
-
-    const latlngs = heatPoints.map(([la, lo]) => L.latLng(la, lo));
-    try {
-      heatmapMap.fitBounds(L.latLngBounds(latlngs), { padding: [36, 36], maxZoom: 14 });
-    } catch { /* ignore */ }
   } else {
+    heatmapLastFitLatLngs = null;
     heatmapMap.setView([16.05, 108.2], 6);
+  }
+
+  // Vòng tròn geofence (mét): khoảng cách từ tâm POI mà app có thể bắt đầu thuyết minh (sau debounce trong app).
+  if (Array.isArray(poisHeat) && poisHeat.length > 0) {
+    heatmapEnsureHeatmapPanes(heatmapMap);
+    heatmapGeofenceLayer = L.layerGroup();
+    for (const p of poisHeat) {
+      const c = poiCoordPick(p);
+      if (!c) continue;
+      const rM = poiRadiusMeters(p);
+      const ll = L.latLng(c.lat, c.lng);
+      const nameVi = String(p?.nameVi ?? p?.NameVi ?? "").trim() || `POI #${p?.id ?? ""}`;
+      const ring = L.circle(ll, {
+        pane: "tgHeatGeofence",
+        radius: rM,
+        stroke: true,
+        color: "#6d28d9",
+        weight: 2,
+        dashArray: "8 7",
+        fillColor: "#a855f7",
+        fillOpacity: 0.06
+      });
+      ring.bindTooltip(`Vùng thuyết minh: ${rM.toLocaleString("vi-VN")} m — ${nameVi}`, { sticky: true });
+      ring.bindPopup(
+        `<strong>${escCell(nameVi)}</strong><br>Bán kính geofence: <b>${rM.toLocaleString("vi-VN")} m</b><br><span class="hint">App coi là “trong điểm” khi GPS nằm trong vòng này (còn debounce ~3 giây và cooldown trong GeofenceEngine).</span>`
+      );
+      ring.addTo(heatmapGeofenceLayer);
+    }
+    heatmapGeofenceLayer.addTo(heatmapMap);
   }
 
   requestAnimationFrame(() => {
@@ -538,7 +847,7 @@ async function refreshHeatmapTab() {
     } catch { /* ignore */ }
   });
 
-  const tableRows = heatmapBuildAggregatedTableRows(pois, nameLookup, revRows, heatmapQrTodayPick);
+  const tableRows = heatmapBuildAggregatedTableRows(poisHeat, nameLookup, revRows, heatmapQrTodayPick);
   const sorted = [...tableRows].sort((a, b) => {
     if (b.gps !== a.gps) return b.gps - a.gps;
     if (b.qr !== a.qr) return b.qr - a.qr;
@@ -548,7 +857,7 @@ async function refreshHeatmapTab() {
   if (sorted.length === 0) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
+    td.colSpan = 2;
     td.className = "hint";
     td.textContent = "Chưa có dòng thống kê theo POI trong log.";
     tr.appendChild(td);
@@ -557,7 +866,7 @@ async function refreshHeatmapTab() {
   }
   for (const r of sorted) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${escCell(r.label)}</td><td>${r.gps.toLocaleString("vi-VN")}</td><td>${r.qr.toLocaleString("vi-VN")}</td>`;
+    tr.innerHTML = `<td>${escCell(r.label)}</td><td>${r.gps.toLocaleString("vi-VN")}</td>`;
     tbody.appendChild(tr);
   }
 }
@@ -634,7 +943,7 @@ function renderVisitHistoryExplorer(historyRows) {
   ensureVisitHistoryEventsBound();
   const rows = buildVisitHistoryRows(historyRows);
 
-  const users = [...new Set(rows.map((r) => r.user).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const users = [...new Set(rows.map((r) => r.device).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const userSelect = byId("vhUserFilter");
   if (userSelect) {
     const selected = visitHistoryState.userFilter;
@@ -667,7 +976,7 @@ function renderVisitHistoryExplorer(historyRows) {
   const view = filtered.slice(start, start + pageSize);
 
   const result = byId("vhResultCount");
-  if (result) result.textContent = `${total} kết quả`;
+  if (result) result.textContent = `${total} phiên`;
 
   const tbody = byId("vhTbody");
   if (tbody) {
@@ -689,7 +998,7 @@ function renderVisitHistoryExplorer(historyRows) {
   if (pageInfo) {
     const from = total === 0 ? 0 : start + 1;
     const to = Math.min(start + pageSize, total);
-    pageInfo.textContent = `Hiển thị ${from}–${to} / ${total} dòng`;
+    pageInfo.textContent = `Hiển thị ${from}–${to} / ${total} phiên`;
   }
 
   const pageBtns = byId("vhPageBtns");
@@ -735,15 +1044,16 @@ function buildRefreshTokenRows(tokens) {
     const id = String(touristPick(x, "id", "Id") ?? "");
     const user = String(touristPick(x, "username", "Username") ?? "");
     const device = String(touristPick(x, "deviceId", "DeviceId") || "");
-    const expiresRaw = touristPick(x, "expiresAtUtc", "ExpiresAtUtc");
-    const revokedRaw = touristPick(x, "revokedAtUtc", "RevokedAtUtc");
+    let expiresRaw = touristPick(x, "expiresAtUtc", "ExpiresAtUtc");
+    let revokedRaw = touristPick(x, "revokedAtUtc", "RevokedAtUtc");
+    if (expiresRaw === undefined || expiresRaw === null) expiresRaw = touristPick(x, "expiresAtUTC", "ExpiresAtUTC");
     const expiresTs = expiresRaw ? new Date(expiresRaw).getTime() : 0;
     const revokedTs = revokedRaw ? new Date(revokedRaw).getTime() : 0;
     const status = revokedRaw ? "revoked" : (expiresTs > now ? "active" : "expired");
     return {
       id,
       user,
-      device: device || "—",
+      device: device || user || "—",
       status,
       statusLabel: status === "active" ? "Đang hiệu lực" : (status === "revoked" ? "Đã revoke" : "Hết hạn"),
       expires: fmtDate(expiresRaw),
@@ -798,7 +1108,7 @@ function renderRefreshTokenExplorer(tokens) {
   const userSelect = byId("rtUserFilter");
   if (userSelect) {
     const selected = refreshTokenState.userFilter;
-    userSelect.innerHTML = `<option value="">Tất cả user</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
+    userSelect.innerHTML = `<option value="">Tất cả device</option>${users.map((u) => `<option value="${escCell(u)}">${escCell(u)}</option>`).join("")}`;
     userSelect.value = users.includes(selected) ? selected : "";
     refreshTokenState.userFilter = userSelect.value;
   }
@@ -806,7 +1116,8 @@ function renderRefreshTokenExplorer(tokens) {
   const q = refreshTokenState.query.trim().toLowerCase();
   let filtered = rows.filter((r) => {
     const matchQ = !q || r.id.toLowerCase().includes(q) || r.user.toLowerCase().includes(q) || r.device.toLowerCase().includes(q);
-    const matchU = !refreshTokenState.userFilter || r.user === refreshTokenState.userFilter;
+    const uf = refreshTokenState.userFilter;
+    const matchU = !uf || r.user === uf || r.device === uf;
     return matchQ && matchU;
   });
 
@@ -835,12 +1146,11 @@ function renderRefreshTokenExplorer(tokens) {
       ? view.map((r) => `
         <tr>
           <td class="vh-id">${escCell(r.id)}</td>
-          <td><span class="vh-user-badge ${visitHistoryUserClass(r.user)}">${escCell(r.user)}</span></td>
           <td class="vh-poi">${escCell(r.device)}</td>
           <td class="vh-occurred">${escCell(r.expires)}</td>
           <td class="vh-occurred">${escCell(r.revoked)}</td>
         </tr>`).join("")
-      : `<tr><td colspan="5" class="vh-no-data">Không có dữ liệu</td></tr>`;
+      : `<tr><td colspan="4" class="vh-no-data">Không có dữ liệu</td></tr>`;
   }
 
   const pageInfo = byId("rtPageInfo");
@@ -887,29 +1197,6 @@ function renderRefreshTokenExplorer(tokens) {
 /** GET /api/pois — render bảng + select bản dịch */
 async function loadPois() {
   pois = await api("/api/pois");
-  if (!qrBackfillAttempted) {
-    qrBackfillAttempted = true;
-    const missingQrIds = pois
-      .filter(p => !String(p.qrImagePath || "").trim())
-      .map(p => Number(p.id))
-      .filter(id => Number.isFinite(id) && id > 0);
-    if (missingQrIds.length > 0 && !qrBackfillRunning) {
-      qrBackfillRunning = true;
-      let hasAnyUpdated = false;
-      for (const id of missingQrIds) {
-        try {
-          const res = await api(`/api/pois/${id}/qrcode`, { method: "POST" });
-          if (String(res?.qrImagePath || "").trim()) hasAnyUpdated = true;
-        } catch {
-          // Bỏ qua từng POI lỗi để vẫn xử lý các POI còn lại.
-        }
-      }
-      qrBackfillRunning = false;
-      if (hasAnyUpdated) {
-        pois = await api("/api/pois");
-      }
-    }
-  }
   byId("statPoi").textContent = String(pois.length);
   byId("statAudio").textContent = String(pois.filter(p => (p.audioUrl || "").trim() !== "").length);
   byId("statTranslation").textContent = String(pois.filter(p =>
@@ -930,14 +1217,6 @@ async function loadPois() {
         ? `<button type="button" class="secondary" data-approve="${p.id}">Duyệt</button>
            <button type="button" class="secondary danger" data-reject="${p.id}">Từ chối</button>`
         : "";
-    const qrRaw = (p.qrImagePath || "").trim();
-    let qrCell = "—";
-    if (qrRaw) {
-      const showImg = /^https?:\/\//i.test(qrRaw) || qrRaw.startsWith("/");
-      qrCell = showImg
-        ? `<img class="poi-qr-thumb" src="${qrRaw.replace(/"/g, "&quot;")}" alt="" loading="lazy" />`
-        : `<span class="poi-qr-path">${qrRaw.replace(/</g, "&lt;")}</span>`;
-    }
     tr.innerHTML = `
       <td>${p.id}</td>
       <td>${p.nameVi}</td>
@@ -945,7 +1224,6 @@ async function loadPois() {
       <td>${Number(p.price || 0).toLocaleString("vi-VN")}</td>
       <td>${p.priority ?? 0}</td>
       <td title="${(statusLabel + rejectHint).replaceAll('"', "'")}">${statusLabel}</td>
-      <td class="poi-qr-cell">${qrCell}</td>
       <td>${p.audioUrl || ""}</td>
       <td>${p.latitude}, ${p.longitude}</td>
       <td class="poi-actions"><div class="action-btns">
@@ -1143,11 +1421,222 @@ function renderVisitHistoryTopPoisLineChart(dashboard) {
   });
 }
 
+function getUtcMondayMs(d = new Date()) {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (x.getUTCDay() + 6) % 7;
+  x.setUTCDate(x.getUTCDate() - day);
+  x.setUTCHours(0, 0, 0, 0);
+  return x.getTime();
+}
+
+function ymdUtcFromMondayMs(ms) {
+  const x = new Date(ms);
+  const y = x.getUTCFullYear();
+  const mo = x.getUTCMonth() + 1;
+  const d = x.getUTCDate();
+  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function utcMidnightMsFromYmd(ymd) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || "").trim());
+  if (!m) return getUtcMondayMs();
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function mondayUtcFromYW(year, week) {
+  const jan4 = Date.UTC(year, 0, 4);
+  const dow = (new Date(jan4).getUTCDay() + 6) % 7;
+  const monW1 = jan4 - dow * 86400000;
+  return monW1 + (week - 1) * 7 * 86400000;
+}
+
+function touristWeekInputFromMondayMs(mondayMs) {
+  const thuMs = mondayMs + 3 * 86400000;
+  const yGuess = new Date(thuMs).getUTCFullYear();
+  for (const tryY of [yGuess, yGuess - 1, yGuess + 1]) {
+    for (let w = 1; w <= 53; w++) {
+      if (mondayUtcFromYW(tryY, w) === mondayMs) {
+        return `${tryY}-W${String(w).padStart(2, "0")}`;
+      }
+    }
+  }
+  return `${yGuess}-W01`;
+}
+
+function touristMondayMsFromWeekInput(val) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(String(val || "").trim());
+  if (!m) return getUtcMondayMs();
+  return mondayUtcFromYW(Number(m[1]), Number(m[2]));
+}
+
+function touristWeekVisitCountsForRange(historyRows, mondayUtcMs) {
+  const counts = [0, 0, 0, 0, 0, 0, 0];
+  const start = mondayUtcMs;
+  const end = mondayUtcMs + 7 * 86400000;
+  const arr = Array.isArray(historyRows) ? historyRows : [];
+  for (const x of arr) {
+    const raw = touristPick(x, "occurredAtUtc", "OccurredAtUtc");
+    if (!raw) continue;
+    const t = new Date(raw).getTime();
+    if (!Number.isFinite(t) || t < start || t >= end) continue;
+    const idx = Math.floor((t - start) / 86400000);
+    if (idx >= 0 && idx < 7) counts[idx] += 1;
+  }
+  return counts;
+}
+
+function touristWeekVisitAxisLabels(mondayMs) {
+  return TOURIST_WEEK_VISIT_DAYS.map((label, i) => {
+    const d = new Date(mondayMs + i * 86400000);
+    return `${label} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
+  });
+}
+
+function touristWeekVisitTitleLine(mondayMs) {
+  const wk = touristWeekInputFromMondayMs(mondayMs);
+  const wNum = wk.split("-W")[1];
+  const y = wk.split("-W")[0];
+  const d0 = new Date(mondayMs);
+  const d6 = new Date(mondayMs + 6 * 86400000);
+  const first = `${d0.getUTCDate()}/${d0.getUTCMonth() + 1}`;
+  const last = `${d6.getUTCDate()}/${d6.getUTCMonth() + 1}`;
+  return `Tuần ${wNum} · ${first} – ${last}/${y}`;
+}
+
+function ensureTouristWeekVisitsEventsBound() {
+  const root = byId("touristDashboardExtra");
+  if (!root || root.dataset.twvBound === "1") return;
+  root.dataset.twvBound = "1";
+  root.addEventListener("click", (e) => {
+    if (e.target.closest("#twvPrev")) {
+      const ms = (touristWeekVisitsMondayMs ?? getUtcMondayMs()) - 7 * 86400000;
+      touristWeekChartMondayParam = ymdUtcFromMondayMs(ms);
+      loadTouristOverview().catch((err) => alert(err?.message || String(err)));
+    } else if (e.target.closest("#twvNext")) {
+      const ms = (touristWeekVisitsMondayMs ?? getUtcMondayMs()) + 7 * 86400000;
+      touristWeekChartMondayParam = ymdUtcFromMondayMs(ms);
+      loadTouristOverview().catch((err) => alert(err?.message || String(err)));
+    }
+  });
+  root.addEventListener("change", (e) => {
+    if (e.target?.id !== "twvWeekPick") return;
+    const v = e.target.value;
+    if (!v) return;
+    touristWeekChartMondayParam = ymdUtcFromMondayMs(touristMondayMsFromWeekInput(v));
+    loadTouristOverview().catch((err) => alert(err?.message || String(err)));
+  });
+}
+
+function renderTouristWeekVisitsChart(historyRows, mondayMs, serverWeek) {
+  if (typeof Chart === "undefined") return;
+  const canvas = byId("twvCanvas");
+  const labelEl = byId("twvLabel");
+  const weekPick = byId("twvWeekPick");
+  if (!canvas || !labelEl || !weekPick) return;
+
+  const sw = serverWeek ?? null;
+  let curMonday = Number(mondayMs);
+  if (!Number.isFinite(curMonday)) curMonday = getUtcMondayMs();
+
+  let curr;
+  let prev;
+  if (
+    sw &&
+    Array.isArray(sw.currentWeek) &&
+    sw.currentWeek.length === 7 &&
+    Array.isArray(sw.previousWeek) &&
+    sw.previousWeek.length === 7
+  ) {
+    curr = sw.currentWeek.map((n) => Number(n) || 0);
+    prev = sw.previousWeek.map((n) => Number(n) || 0);
+    const wmu = sw.weekMondayUtc ?? sw.WeekMondayUtc;
+    if (wmu) {
+      curMonday = utcMidnightMsFromYmd(wmu);
+      touristWeekVisitsMondayMs = curMonday;
+    }
+  } else {
+    touristWeekVisitsMondayMs = curMonday;
+    const prevMonday = curMonday - 7 * 86400000;
+    curr = touristWeekVisitCountsForRange(historyRows, curMonday);
+    prev = touristWeekVisitCountsForRange(historyRows, prevMonday);
+  }
+
+  const labels = touristWeekVisitAxisLabels(curMonday);
+
+  labelEl.textContent = touristWeekVisitTitleLine(curMonday);
+  try {
+    weekPick.value = touristWeekInputFromMondayMs(curMonday);
+  } catch { /* ignore */ }
+
+  if (touristWeekVisitsChart) {
+    touristWeekVisitsChart.destroy();
+    touristWeekVisitsChart = null;
+  }
+
+  touristWeekVisitsChart = new Chart(canvas.getContext("2d"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Tuần này",
+          data: curr,
+          borderColor: "#185FA5",
+          backgroundColor: "rgba(24,95,165,0.08)",
+          borderWidth: 2,
+          pointBackgroundColor: "#185FA5",
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: 0.35
+        },
+        {
+          label: "Tuần trước",
+          data: prev,
+          borderColor: "#B4B2A9",
+          backgroundColor: "transparent",
+          borderWidth: 1.5,
+          pointBackgroundColor: "#B4B2A9",
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          fill: false,
+          tension: 0.35,
+          borderDash: [4, 3]
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (c) => ` ${c.dataset.label}: ${c.parsed.y} lượt`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(136,135,128,0.1)" },
+          ticks: { font: { size: 12 }, color: "#888", autoSkip: false }
+        },
+        y: {
+          grid: { color: "rgba(136,135,128,0.1)" },
+          ticks: { font: { size: 12 }, color: "#888" },
+          beginAtZero: true
+        }
+      }
+    }
+  });
+}
+
 function touristLiveSessionsHtml(live) {
   if (!live.length) {
     return `<div class="tourist-empty-state tourist-empty-state--sessions" role="status">
       <p class="tourist-empty-state__title">Chưa có phiên gần đây</p>
-      <p class="tourist-empty-state__desc">Hiển thị khi có tài khoản mở app với refresh token còn hạn và có tín hiệu hoạt động trong ~2 phút gần nhất.</p>
+      <p class="tourist-empty-state__desc">Hiển thị khi có người dùng mở app với phiên đăng nhập còn hạn và có tín hiệu hoạt động trong ~2 phút gần nhất.</p>
     </div>`;
   }
   const rows = live.map((s) => {
@@ -1169,7 +1658,7 @@ function touristLiveSessionsHtml(live) {
   }).join("");
   return `<div class="tourist-live-table" role="table" aria-label="Phiên gần đây">
     <div class="tourist-live-row tourist-live-row--head" role="row">
-      <div role="columnheader">Tài khoản</div>
+      <div role="columnheader">Người dùng</div>
       <div role="columnheader">Tier</div>
       <div role="columnheader">Route</div>
       <div role="columnheader">Hoạt động</div>
@@ -1365,6 +1854,8 @@ async function loadTouristOverview() {
   const params = new URLSearchParams();
   if (visitHistoryChartState.customWeekStart)
     params.set("visitHistoryChartWeekStart", visitHistoryChartState.customWeekStart);
+  if (touristWeekChartMondayParam)
+    params.set("touristWeekChartMonday", touristWeekChartMondayParam);
   const overviewUrl = params.toString() ? `/api/tourists/overview?${params.toString()}` : "/api/tourists/overview";
   const [oRes] = await Promise.allSettled([
     api(overviewUrl)
@@ -1373,21 +1864,29 @@ async function loadTouristOverview() {
   touristOverview = oRes.value;
 
   const hisArr = touristArray(touristOverview, "visitHistory", "VisitHistory");
+  window.__tgVisitHistoryForWeekChart = hisArr;
   const dash = touristOverview.dashboard ?? touristOverview.Dashboard ?? {};
   const statsLine = byId("touristLoginStatsLine");
   if (statsLine) {
     const sessions = Number(touristPick(dash, "activeLoginSessions", "ActiveLoginSessions") ?? 0).toLocaleString("vi-VN");
     const accounts = Number(touristPick(dash, "activeLoginAccounts", "ActiveLoginAccounts") ?? 0).toLocaleString("vi-VN");
     statsLine.textContent =
-      `Phiên đăng nhập còn hiệu lực (mỗi phiên ~ một máy đăng nhập): ${sessions} · Tài khoản đang có ít nhất một phiên: ${accounts}`;
+      `Phiên đăng nhập còn hiệu lực (mỗi phiên ~ một máy đăng nhập): ${sessions} · Lượt truy cập đang có ít nhất một phiên: ${accounts}`;
   }
 
   const dashExtra = byId("touristDashboardExtra");
   if (dashExtra) {
+    if (touristWeekVisitsChart) {
+      try {
+        touristWeekVisitsChart.destroy();
+      } catch { /* ignore */ }
+      touristWeekVisitsChart = null;
+    }
     const online = Number(touristPick(dash, "onlineCount", "OnlineCount") ?? 0).toLocaleString("vi-VN");
     const totalAcc = Number(touristPick(dash, "totalAccounts", "TotalAccounts") ?? 0).toLocaleString("vi-VN");
     const activated = Number(touristPick(dash, "activatedCount", "ActivatedCount") ?? 0).toLocaleString("vi-VN");
     const sessToday = Number(touristPick(dash, "sessionsToday", "SessionsToday") ?? 0).toLocaleString("vi-VN");
+    const manualNarrationToday = Number(touristPick(dash, "manualNarrationToday", "ManualNarrationToday") ?? 0).toLocaleString("vi-VN");
     const actSess = Number(touristPick(dash, "activeLoginSessions", "ActiveLoginSessions") ?? 0).toLocaleString("vi-VN");
     const actAcc = Number(touristPick(dash, "activeLoginAccounts", "ActiveLoginAccounts") ?? 0).toLocaleString("vi-VN");
     let live = dash.liveSessions ?? dash.LiveSessions;
@@ -1397,9 +1896,10 @@ async function loadTouristOverview() {
     dashExtra.innerHTML = `
       <div class="tourist-dash-kpis" aria-label="Chỉ số nhanh">
         ${pill(online, "Trực tuyến (~2′)", "tourist-dash-pill--tone-sky")}
-        ${pill(totalAcc, "Tài khoản", "tourist-dash-pill--tone-slate")}
+        ${pill(totalAcc, "Lượt truy cập", "tourist-dash-pill--tone-slate")}
         ${pill(activated, "Đã kích hoạt / Premium", "tourist-dash-pill--tone-emerald")}
         ${pill(sessToday, "Visit history (hôm nay)", "tourist-dash-pill--tone-amber")}
+        ${pill(manualNarrationToday, "Nghe thuyết minh (hôm nay)", "tourist-dash-pill--tone-indigo")}
       </div>
       <section class="tourist-dash-sessions" aria-labelledby="tourist-live-heading">
         <div class="tourist-dash-sessions__head">
@@ -1408,7 +1908,36 @@ async function loadTouristOverview() {
         </div>
         ${touristLiveSessionsHtml(live)}
       </section>
+      <section class="tourist-week-visits-card" id="touristWeekVisitsCard" aria-labelledby="tourist-week-visits-heading">
+        <h4 id="tourist-week-visits-heading" class="tourist-week-visits-title">Biểu đồ lượt truy cập tuần</h4>
+        <p class="hint tourist-week-visits-sub">Tổng lượt (VisitHistory + log QR) theo ngày lịch UTC; server gom đủ dữ liệu DB cho tuần chọn. Bảng Visit history bên dưới vẫn chỉ hiện tối đa 300 dòng gần nhất.</p>
+        <div class="tourist-week-visits-nav">
+          <button type="button" class="secondary tourist-week-visits-nav-btn" id="twvPrev" aria-label="Tuần trước">←</button>
+          <div class="tourist-week-visits-nav-center">
+            <span class="tourist-week-visits-label" id="twvLabel"></span>
+            <input type="week" id="twvWeekPick" class="tourist-week-visits-week-input">
+          </div>
+          <button type="button" class="secondary tourist-week-visits-nav-btn" id="twvNext" aria-label="Tuần sau">→</button>
+        </div>
+        <div class="tourist-week-visits-chart-wrap">
+          <canvas id="twvCanvas" height="260"></canvas>
+        </div>
+        <div class="tourist-week-visits-legend">
+          <span><span class="tourist-week-visits-leg-dot" style="background:#185FA5"></span>Tuần này</span>
+          <span><span class="tourist-week-visits-leg-dot" style="background:#B4B2A9"></span>Tuần trước</span>
+        </div>
+      </section>
     `;
+    ensureTouristWeekVisitsEventsBound();
+    const weekVis = dash.weekVisitChart ?? dash.WeekVisitChart;
+    const wmuChart = weekVis?.weekMondayUtc ?? weekVis?.WeekMondayUtc;
+    if (wmuChart) {
+      touristWeekVisitsMondayMs = utcMidnightMsFromYmd(wmuChart);
+      touristWeekChartMondayParam = String(wmuChart);
+    } else if (touristWeekVisitsMondayMs == null) {
+      touristWeekVisitsMondayMs = getUtcMondayMs();
+    }
+    renderTouristWeekVisitsChart(hisArr, touristWeekVisitsMondayMs, weekVis);
   }
   const chartMeta = dash?.visitHistoryTopPoisChart ?? dash?.VisitHistoryTopPoisChart;
   const chartYear = chartMeta?.year ?? chartMeta?.Year;
@@ -1431,7 +1960,7 @@ async function loadTouristOverview() {
     if (el) el.textContent = text;
   };
   setMeta("touristMetaUsers", usersArr.length ? `(hiển thị ${usersArr.length})` : "(0)");
-  setMeta("touristMetaTokens", `(hiển thị ${tokArr.length} / tối đa 500)`);
+  setMeta("touristMetaTokens", `(đang hiển thị ${tokArr.length} / tối đa 500 phiên)`);
   setMeta("touristMetaVisits", `(hiển thị ${hisArr.length} / tối đa 300)`);
 
   const userBody = byId("touristUserTbody") || byId("touristUserTable")?.querySelector("tbody");
@@ -1459,7 +1988,7 @@ async function loadTouristOverview() {
         </td>
       </tr>`;
         }).join("")
-      : touristEmptyRow(8, "Chưa có tài khoản du khách.");
+      : touristEmptyRow(8, "Chưa có lượt truy cập du khách.");
   }
 
   renderRefreshTokenExplorer(tokArr);
@@ -1567,6 +2096,7 @@ byId("loginForm").addEventListener("submit", async (e) => {
     byId("appSection").classList.remove("hidden");
     applyRoleChrome();
     await loadPois();
+    await loadApkPublicDistribution();
     await loadAccounts();
     await loadComments();
     await loadTouristOverview();
@@ -1603,6 +2133,7 @@ document.querySelectorAll(".tab").forEach(btn => {
           setTimeout(() => {
             try {
               heatmapMap?.invalidateSize();
+              heatmapMap?.getContainer?.()?.focus?.({ preventScroll: true });
             } catch { /* ignore */ }
           }, 220);
         })
@@ -1624,12 +2155,44 @@ byId("heatmapRefreshBtn")?.addEventListener("click", () => {
     .catch((err) => alert(err?.message || String(err)));
 });
 
+byId("heatmapZoomInBtn")?.addEventListener("click", () => {
+  heatmapRunWhenReady(() => {
+    try {
+      heatmapApplyExtendedZoomCapabilities(heatmapMap);
+      heatmapMap.zoomIn();
+    } catch { /* ignore */ }
+  });
+});
+
+byId("heatmapZoomOutBtn")?.addEventListener("click", () => {
+  heatmapRunWhenReady(() => {
+    try {
+      heatmapMap.zoomOut();
+    } catch { /* ignore */ }
+  });
+});
+
+byId("heatmapFitBtn")?.addEventListener("click", () => {
+  heatmapRunWhenReady(() => {
+    try {
+      if (!heatmapLastFitLatLngs?.length) return;
+      heatmapMap.fitBounds(L.latLngBounds(heatmapLastFitLatLngs), { padding: [28, 28], maxZoom: 17 });
+      heatmapMap.invalidateSize();
+    } catch { /* ignore */ }
+  });
+});
+
 byId("audioTableWrap")?.addEventListener("click", async (e) => {
   const uploadBtn = e.target.closest(".audio-upload-btn");
   if (uploadBtn && !uploadBtn.disabled) {
     const id = Number(uploadBtn.dataset.poiId);
     const row = uploadBtn.closest("tr");
     if (!id || !row) return;
+    const lang = row.querySelector(".audio-lang-select")?.value?.trim() || "";
+    if (!lang) {
+      alert("Vui lòng chọn ngôn ngữ trước khi upload audio.");
+      return;
+    }
     const input = row.querySelector(".audio-file-input");
     const file = input?.files?.[0];
     if (!file) {
@@ -1647,7 +2210,7 @@ byId("audioTableWrap")?.addEventListener("click", async (e) => {
 
       const inAudio = row.querySelector(".audio-src-input");
       if (inAudio) inAudio.value = audioUrl;
-      alert(`Upload thành công: ${audioUrl}\nBấm 'Lưu' để cập nhật vào POI.`);
+      alert(`Upload audio (${lang.toUpperCase()}) thành công: ${audioUrl}\nBấm 'Lưu' để cập nhật vào POI.`);
     } catch (err) {
       alert(`Upload audio thất bại: ${err?.message || String(err)}`);
     } finally {
@@ -2009,6 +2572,7 @@ byId("commentList")?.addEventListener("click", async (e) => {
     app.classList.remove("hidden");
     applyRoleChrome();
     loadPois()
+      .then(() => loadApkPublicDistribution())
       .then(() => loadAccounts())
       .then(() => loadComments())
       .then(() => loadTouristOverview())

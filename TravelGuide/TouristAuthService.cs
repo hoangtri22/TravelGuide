@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net;
-using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using Microsoft.Maui.Devices;
 using TravelGuide.Models;
@@ -15,6 +14,7 @@ public sealed class TouristAuthService
     private const string TokenKey = "tourist_token";
     private const string UsernameKey = "tourist_username";
     private const string TierKey = "tourist_account_tier";
+    private const string DeviceInstallIdKey = "tg_device_install_id";
 
     public TouristAuthService(HttpClient httpClient)
     {
@@ -96,104 +96,144 @@ public sealed class TouristAuthService
         TrySetApiBaseUrl($"{scheme}://10.0.2.2:{port}", out _, out _);
     }
 
-    public async Task<(bool Ok, string Message)> RegisterAsync(string username, string password, string displayName, string accountTier)
+    private static string GetOrCreateDeviceInstallId()
+    {
+        var existing = Preferences.Get(DeviceInstallIdKey, string.Empty);
+        if (!string.IsNullOrWhiteSpace(existing))
+            return existing;
+
+        var generated = Guid.NewGuid().ToString("N");
+        Preferences.Set(DeviceInstallIdKey, generated);
+        return generated;
+    }
+
+    private static string GetDeviceDisplayName()
+    {
+        var name = (DeviceInfo.Current.Name ?? string.Empty).Trim();
+        if (name.Length > 0) return name;
+
+        var model = (DeviceInfo.Current.Model ?? string.Empty).Trim();
+        if (model.Length > 0) return model;
+
+        return $"{DeviceInfo.Current.Platform}-{DeviceInfo.Current.Idiom}";
+    }
+
+    private async Task<(bool Ok, string Token, string Username, string AccountTier, string Message)> LoginByDeviceAsync()
     {
         try
         {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/register";
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/device-login";
             using var cts = new CancellationTokenSource(ApiTimeout);
-            var response = await _httpClient.PostAsJsonAsync(url, new
+            var payload = new
             {
-                username,
-                password,
-                displayName,
-                accountTier
-            }, cts.Token);
+                deviceId = GetOrCreateDeviceInstallId(),
+                deviceName = GetDeviceDisplayName(),
+                appPlatform = DeviceInfo.Current.Platform.ToString()
+            };
+            using var response = await _httpClient.PostAsJsonAsync(url, payload, cts.Token);
             if (!response.IsSuccessStatusCode)
             {
                 var error = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, string.IsNullOrWhiteSpace(error) ? "Đăng ký thất bại." : error);
+                RecordHttpError($"POST {url} -> {(int)response.StatusCode} {response.StatusCode}. {error}");
+                return (false, string.Empty, string.Empty, string.Empty, string.IsNullOrWhiteSpace(error) ? "Không thể khởi tạo phiên thiết bị." : error);
             }
-            return (true, "Đăng ký thành công.");
+
+            var dto = await response.Content.ReadFromJsonAsync<DeviceLoginResponse>();
+            if (dto is null || string.IsNullOrWhiteSpace(dto.Token))
+                return (false, string.Empty, string.Empty, string.Empty, "Phản hồi phiên thiết bị không hợp lệ.");
+
+            var username = string.IsNullOrWhiteSpace(dto.Username) ? GetDeviceDisplayName() : dto.Username.Trim();
+            var tier = string.IsNullOrWhiteSpace(dto.AccountTier) ? "free" : dto.AccountTier.Trim();
+
+            await SecureStorage.Default.SetAsync(TokenKey, dto.Token.Trim());
+            Preferences.Set(UsernameKey, username);
+            Preferences.Set(TierKey, tier);
+            return (true, dto.Token.Trim(), username, tier, string.Empty);
         }
         catch (OperationCanceledException)
         {
             var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Request timeout when calling API ({baseUrl}).");
+            RecordHttpError($"POST {baseUrl}/api/tourist/auth/device-login -> timeout");
+            return (false, string.Empty, string.Empty, string.Empty, $"Request timeout when calling API ({baseUrl}).");
         }
         catch (Exception ex)
         {
             var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
+            RecordHttpError($"POST {baseUrl}/api/tourist/auth/device-login -> {ex.Message}");
+            return (false, string.Empty, string.Empty, string.Empty, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
         }
     }
 
-    public async Task<(bool Ok, string Message)> LoginAsync(string username, string password)
+    private async Task<(bool Ok, string Token, string Username, string AccountTier, string Message)> EnsureTokenAsync()
     {
-        try
+        var token = await SecureStorage.Default.GetAsync(TokenKey);
+        if (!string.IsNullOrWhiteSpace(token))
         {
-            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/login";
-            using var cts = new CancellationTokenSource(ApiTimeout);
-            var response = await _httpClient.PostAsJsonAsync(url, new { username, password }, cts.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = (await response.Content.ReadAsStringAsync()).Trim();
-                return (false, string.IsNullOrWhiteSpace(error) ? "Đăng nhập thất bại." : error);
-            }
+            var username = Preferences.Get(UsernameKey, GetDeviceDisplayName());
+            var tier = Preferences.Get(TierKey, "free");
+            return (true, token.Trim(), username, tier, string.Empty);
+        }
 
-            var dto = await response.Content.ReadFromJsonAsync<TouristLoginResponse>();
-            if (dto is null || string.IsNullOrWhiteSpace(dto.Token))
-                return (false, "Phản hồi đăng nhập không hợp lệ.");
-
-            await SecureStorage.Default.SetAsync(TokenKey, dto.Token);
-            Preferences.Set(UsernameKey, dto.Username ?? username);
-            Preferences.Set(TierKey, string.IsNullOrWhiteSpace(dto.AccountTier) ? "free" : dto.AccountTier);
-            return (true, "Đăng nhập thành công.");
-        }
-        catch (OperationCanceledException)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Request timeout when calling API ({baseUrl}).");
-        }
-        catch (Exception ex)
-        {
-            var baseUrl = GetCurrentApiBaseUrl().TrimEnd('/');
-            return (false, $"Cannot connect to API ({baseUrl}). Error: {ex.Message}");
-        }
+        return await LoginByDeviceAsync();
     }
 
     public async Task<bool> IsLoggedInAsync()
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        return !string.IsNullOrWhiteSpace(token);
+        var me = await GetMeAsync();
+        return me.Ok;
     }
 
     public async Task<(bool Ok, string Username, string AccountTier)> GetMeAsync()
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
+        var ensured = await EnsureTokenAsync();
+        if (!ensured.Ok)
             return (false, "", "");
 
         try
         {
             var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/auth/me";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ensured.Token);
             using var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode && response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                SecureStorage.Default.Remove(TokenKey);
+                var relogin = await LoginByDeviceAsync();
+                if (!relogin.Ok) return (false, "", "");
+
+                using var retryReq = new HttpRequestMessage(HttpMethod.Get, url);
+                retryReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", relogin.Token);
+                using var retryResponse = await _httpClient.SendAsync(retryReq);
+                if (!retryResponse.IsSuccessStatusCode)
+                    return (false, "", "");
+
+                var retryDto = await retryResponse.Content.ReadFromJsonAsync<TouristMeResponse>();
+                if (retryDto is null) return (false, "", "");
+                var retryUsername = retryDto.Username ?? relogin.Username;
+                var retryTier = retryDto.AccountTier ?? relogin.AccountTier;
+                Preferences.Set(UsernameKey, retryUsername);
+                Preferences.Set(TierKey, retryTier);
+                return (true, retryUsername, retryTier);
+            }
+
             if (!response.IsSuccessStatusCode)
+            {
+                RecordHttpError($"GET {url} -> {(int)response.StatusCode} {response.StatusCode}");
                 return (false, "", "");
+            }
 
             var dto = await response.Content.ReadFromJsonAsync<TouristMeResponse>();
             if (dto is null) return (false, "", "");
 
-            var username = dto.Username ?? Preferences.Get(UsernameKey, "");
-            var tier = dto.AccountTier ?? Preferences.Get(TierKey, "free");
+            var username = dto.Username ?? ensured.Username;
+            var tier = dto.AccountTier ?? ensured.AccountTier;
             Preferences.Set(UsernameKey, username);
             Preferences.Set(TierKey, tier);
             return (true, username, tier);
         }
         catch
         {
+            RecordHttpError($"GET /api/tourist/auth/me -> exception");
             return (false, "", "");
         }
     }
@@ -244,9 +284,9 @@ public sealed class TouristAuthService
     /// <summary>Kích hoạt Premium bằng mã trong QR (sau khi người dùng xác nhận thanh toán mô phỏng trên app).</summary>
     public async Task<(bool Ok, string Message)> RedeemPremiumClaimAsync(string claimCode, decimal amountVnd)
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
-            return (false, "Vui lòng đăng nhập du khách trước.");
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, auth.Message);
 
         try
         {
@@ -255,7 +295,7 @@ public sealed class TouristAuthService
             {
                 Content = JsonContent.Create(new { claimCode, amountVnd })
             };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             var text = (await response.Content.ReadAsStringAsync()).Trim();
             if (!response.IsSuccessStatusCode)
@@ -272,18 +312,21 @@ public sealed class TouristAuthService
 
     public async Task<(bool Ok, bool HasAccess, bool RequiresPurchase, decimal PriceVnd, string Message)> GetPoiAccessAsync(int poiId)
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
-            return (false, false, true, 0, "Chưa đăng nhập.");
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, false, true, 0, auth.Message);
 
         try
         {
             var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/pois/{poiId}/access";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             if (!response.IsSuccessStatusCode)
+            {
+                RecordHttpError($"GET {url} -> {(int)response.StatusCode} {response.StatusCode}");
                 return (false, false, true, 0, "Không kiểm tra được quyền truy cập.");
+            }
 
             var dto = await response.Content.ReadFromJsonAsync<PoiAccessResponse>();
             if (dto is null) return (false, false, true, 0, "Phản hồi không hợp lệ.");
@@ -291,15 +334,16 @@ public sealed class TouristAuthService
         }
         catch (Exception ex)
         {
+            RecordHttpError($"GET /api/tourist/pois/{poiId}/access -> {ex.Message}");
             return (false, false, true, 0, ex.Message);
         }
     }
 
     public async Task<(bool Ok, string Message)> ConfirmPoiPurchaseAsync(int poiId, decimal amountVnd)
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
-            return (false, "Vui lòng đăng nhập.");
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, auth.Message);
 
         try
         {
@@ -308,7 +352,7 @@ public sealed class TouristAuthService
             {
                 Content = JsonContent.Create(new { amountVnd })
             };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             var text = (await response.Content.ReadAsStringAsync()).Trim();
             if (!response.IsSuccessStatusCode)
@@ -331,8 +375,8 @@ public sealed class TouristAuthService
         string? deviceModel,
         string? appPlatform)
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token)) return;
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok) return;
 
         try
         {
@@ -350,7 +394,7 @@ public sealed class TouristAuthService
                     appPlatform
                 })
             };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             _ = await response.Content.ReadAsStringAsync();
         }
@@ -363,15 +407,15 @@ public sealed class TouristAuthService
     /// <summary>Lấy lịch quét (POI đã mở qua QR) để mở lại không cần quét.</summary>
     public async Task<(bool Ok, IReadOnlyList<MyScanHistoryRow> Items, string Message)> GetMyScanHistoryAsync()
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
-            return (false, Array.Empty<MyScanHistoryRow>(), "Chưa đăng nhập.");
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, Array.Empty<MyScanHistoryRow>(), auth.Message);
 
         try
         {
             var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/pois/my-scan-history";
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             if (!response.IsSuccessStatusCode)
             {
@@ -388,6 +432,35 @@ public sealed class TouristAuthService
         }
     }
 
+    /// <summary>Lấy dữ liệu heatmap GPS-only theo POI (eventType: poi_gps_inside).</summary>
+    public async Task<(bool Ok, IReadOnlyList<GpsHeatmapRow> Items, string Message)> GetGpsHeatmapAsync(int minutes = 90)
+    {
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, Array.Empty<GpsHeatmapRow>(), auth.Message);
+
+        try
+        {
+            var clamped = Math.Clamp(minutes, 1, 1440);
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/pois/gps-heatmap?minutes={clamped}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.Token);
+            using var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode)
+            {
+                var text = (await response.Content.ReadAsStringAsync()).Trim();
+                return (false, Array.Empty<GpsHeatmapRow>(), string.IsNullOrWhiteSpace(text) ? "Không tải được heatmap GPS." : text);
+            }
+
+            var items = await response.Content.ReadFromJsonAsync<List<GpsHeatmapRow>>();
+            return (true, items ?? new List<GpsHeatmapRow>(), "");
+        }
+        catch (Exception ex)
+        {
+            return (false, Array.Empty<GpsHeatmapRow>(), ex.Message);
+        }
+    }
+
     public sealed class MyScanHistoryRow
     {
         [JsonPropertyName("poiId")] public int PoiId { get; set; }
@@ -397,11 +470,18 @@ public sealed class TouristAuthService
         [JsonPropertyName("lastScannedAtUtc")] public DateTime LastScannedAtUtc { get; set; }
     }
 
+    public sealed class GpsHeatmapRow
+    {
+        [JsonPropertyName("poiId")] public int PoiId { get; set; }
+        [JsonPropertyName("poiNameVi")] public string? PoiNameVi { get; set; }
+        [JsonPropertyName("gpsHits")] public int GpsHits { get; set; }
+    }
+
     public async Task<(bool Ok, string Message)> SubmitPlaceReviewAsync(int poiId, string? poiNameVi, int rating, string content)
     {
-        var token = await SecureStorage.Default.GetAsync(TokenKey);
-        if (string.IsNullOrWhiteSpace(token))
-            return (false, "Vui lòng đăng nhập.");
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return (false, auth.Message);
 
         try
         {
@@ -416,7 +496,7 @@ public sealed class TouristAuthService
                     content
                 })
             };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Token);
             using var response = await _httpClient.SendAsync(req);
             var text = (await response.Content.ReadAsStringAsync()).Trim();
             if (!response.IsSuccessStatusCode)
@@ -601,37 +681,18 @@ public sealed class TouristAuthService
         return false;
     }
 
-    /// <summary>
-    /// Người dùng đôi khi paste bị dính chuỗi LAN cũ ngay sau tunnel URL (vd: ...trycloudflare.com192.168.1.115:5096).
-    /// Ưu tiên tách lấy tunnel URL hợp lệ đầu tiên để tránh kết nối sai host.
-    /// </summary>
     private static string NormalizeApiBaseUrlInput(string input)
     {
-        if (string.IsNullOrWhiteSpace(input))
-            return input;
-
-        var patterns = new[]
-        {
-            @"https?://[a-zA-Z0-9.-]+\.trycloudflare\.com",
-            @"https?://[a-zA-Z0-9.-]+\.ngrok-free\.app",
-            @"https?://[a-zA-Z0-9.-]+\.ngrok\.io"
-        };
-
-        foreach (var pattern in patterns)
-        {
-            var m = Regex.Match(input, pattern, RegexOptions.IgnoreCase);
-            if (m.Success)
-                return m.Value;
-        }
-
         return input;
     }
 
-    private sealed class TouristLoginResponse
+    private static void RecordHttpError(string message) => DemoDiagnostics.RecordHttpError(message);
+
+    private sealed class DeviceLoginResponse
     {
-        public string? Token { get; set; }
-        public string? Username { get; set; }
-        public string? AccountTier { get; set; }
+        [JsonPropertyName("token")] public string? Token { get; set; }
+        [JsonPropertyName("username")] public string? Username { get; set; }
+        [JsonPropertyName("accountTier")] public string? AccountTier { get; set; }
     }
 
     private sealed class TouristMeResponse

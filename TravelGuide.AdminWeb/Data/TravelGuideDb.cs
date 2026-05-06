@@ -31,6 +31,23 @@ public sealed class TravelGuideDb
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Chỉ giữ tài khoản du khách theo cơ chế đăng nhập thiết bị mới:
+    /// username có tiền tố <c>device_</c> hoặc hậu tố id thiết bị dài sau dấu gạch dưới.
+    /// </summary>
+    private static bool IsDeviceManagedTouristUsername(string? username)
+    {
+        var u = (username ?? string.Empty).Trim().ToLowerInvariant();
+        if (u.Length == 0) return false;
+        if (u.StartsWith("device_", StringComparison.Ordinal)) return true;
+
+        var splitAt = u.LastIndexOf('_');
+        if (splitAt <= 0 || splitAt >= u.Length - 1) return false;
+        var suffix = u[(splitAt + 1)..];
+        if (suffix.Length < 12 || suffix.Length > 48) return false;
+        return suffix.All(char.IsLetterOrDigit);
+    }
+
     /// <summary>Chuỗi kết nối SQL Server (localdb mặc định nếu không cấu hình biến môi trường).</summary>
     public TravelGuideDb()
     {
@@ -1028,8 +1045,8 @@ public sealed class TravelGuideDb
     {
         var seed = new[]
         {
-            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
-            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
+            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.761918, 106.701914, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
+            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.761025393958171, 106.7032226711829, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
             new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "Quán Nước")
         };
 
@@ -1165,16 +1182,36 @@ public sealed class TravelGuideDb
     /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật và so sánh NameVi/DescVi.</summary>
     private sealed record PoiRow(int Id, string Status, int OwnerUserId, string NameVi, string DescVi);
 
-    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null)
+    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null, DateOnly? touristWeekChartMonday = null)
     {
         // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
-        var users = await SafeTouristQuery(GetTouristUsersAsync);
-        var refreshTokens = await SafeTouristQuery(GetTouristRefreshTokensAsync);
-        var favorites = await SafeTouristQuery(GetTouristFavoritesAsync);
-        var visitHistory = await SafeTouristQuery(GetTouristVisitHistoryAsync);
-        var payments = await SafeTouristQuery(GetPaymentTransactionsAsync);
-        var (activeLoginSessions, activeLoginAccounts) = await CountActiveTouristLoginStatsAsync();
-        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart);
+        var usersAll = await SafeTouristQuery(GetTouristUsersAsync);
+        var refreshTokensAll = await SafeTouristQuery(GetTouristRefreshTokensAsync);
+        var favoritesAll = await SafeTouristQuery(GetTouristFavoritesAsync);
+        var visitHistoryAll = await SafeTouristQuery(GetTouristVisitHistoryAsync);
+        var paymentsAll = await SafeTouristQuery(GetPaymentTransactionsAsync);
+
+        var users = usersAll
+            .Where(u => IsDeviceManagedTouristUsername(u.Username))
+            .ToList();
+        var allowedUserIds = users.Select(u => u.Id).ToHashSet();
+        var refreshTokens = refreshTokensAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var favorites = favoritesAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var visitHistory = visitHistoryAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var payments = paymentsAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+
+        var nowUtc = DateTime.UtcNow;
+        var activeLoginSessions = refreshTokens.Count(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc);
+        var activeLoginAccounts = refreshTokens
+            .Where(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc)
+            .Select(x => x.TouristUserId)
+            .Distinct()
+            .Count();
+
+        var weekMondayResolved = touristWeekChartMonday ?? UtcCalendarMondayContaining(DateOnly.FromDateTime(DateTime.UtcNow));
+        var weekVisitChart = await BuildWeekVisitChartAsync(allowedUserIds, weekMondayResolved);
+
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart, weekVisitChart);
         return new
         {
             users,
@@ -1186,6 +1223,127 @@ public sealed class TravelGuideDb
         };
     }
 
+    /// <summary>Thứ Hai (lịch UTC) của tuần chứa <paramref name="day"/> — T2…CN.</summary>
+    private static DateOnly UtcCalendarMondayContaining(DateOnly day)
+    {
+        var utcMidnight = DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var dow = ((int)utcMidnight.DayOfWeek + 6) % 7;
+        return DateOnly.FromDateTime(utcMidnight.AddDays(-dow));
+    }
+
+    private async Task<object> BuildWeekVisitChartAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var empty = Enumerable.Repeat(0, 7).ToArray();
+        if (allowedUserIds.Count == 0)
+        {
+            return new
+            {
+                weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+                currentWeek = empty,
+                previousWeek = empty
+            };
+        }
+
+        var current = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, weekMonday);
+        var prevMonday = weekMonday.AddDays(-7);
+        var previous = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, prevMonday);
+        return new
+        {
+            weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+            currentWeek = current,
+            previousWeek = previous
+        };
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        if (allowedUserIds.Count == 0)
+            return new int[7];
+
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetVisitDayCountsForUtcWeekSqlServerAsync(allowedUserIds, weekMonday);
+
+        return await GetVisitDayCountsForUtcWeekSqliteAsync(allowedUserIds, weekMonday);
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekSqlServerAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var counts = new int[7];
+        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var endUtc = startUtc.AddDays(7);
+        var ids = string.Join(",", allowedUserIds.Order());
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                             WITH ev AS (
+                               SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM dbo.TouristVisitHistory h
+                               UNION ALL
+                               SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM dbo.TouristPoiQrScanLog l
+                             )
+                             SELECT DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) AS Di,
+                                    COUNT_BIG(*) AS Cnt
+                             FROM ev v
+                             WHERE v.Ts >= @weekStart AND v.Ts < @weekEnd
+                               AND v.TouristUserId IN ({ids})
+                               AND DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) BETWEEN 0 AND 6
+                             GROUP BY DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE))
+                             """;
+        cmd.Parameters.AddWithValue("@weekStart", startUtc);
+        cmd.Parameters.AddWithValue("@weekEnd", endUtc);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var di = reader.GetInt32(0);
+            var cnt = (int)reader.GetInt64(1);
+            if (di is >= 0 and < 7)
+                counts[di] = cnt;
+        }
+
+        return counts;
+    }
+
+    private async Task<int[]> GetVisitDayCountsForUtcWeekSqliteAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var counts = new int[7];
+        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var endUtc = startUtc.AddDays(7);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            SELECT v.TouristUserId, v.Ts FROM (
+                              SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM TouristVisitHistory h
+                              UNION ALL
+                              SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM TouristPoiQrScanLog l
+                            ) v
+                            WHERE v.Ts >= $start AND v.Ts < $end
+                            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var uid = reader.GetInt32(0);
+            if (!allowedUserIds.Contains(uid))
+                continue;
+            var ts = reader.GetDateTime(1);
+            if (ts.Kind == DateTimeKind.Unspecified)
+                ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
+            if (ts < startUtc || ts >= endUtc)
+                continue;
+            var idx = (int)Math.Floor((ts - startUtc).TotalDays);
+            if (idx is >= 0 and < 7)
+                counts[idx]++;
+        }
+
+        return counts;
+    }
+
     /// <summary>Thống kê nhanh + dữ liệu LIVE/sparkline cho tab Dữ liệu du khách.</summary>
     private static object BuildTouristDashboard(
         List<TouristUserDto> users,
@@ -1193,7 +1351,8 @@ public sealed class TravelGuideDb
         List<TouristVisitHistoryDto> visitHistory,
         int activeLoginSessions,
         int activeLoginAccounts,
-        DateOnly? visitHistoryChartWeekStart)
+        DateOnly? visitHistoryChartWeekStart,
+        object weekVisitChart)
     {
         var now = DateTime.UtcNow;
         var today = now.Date;
@@ -1250,6 +1409,10 @@ public sealed class TravelGuideDb
         var totalAccounts = users.Count;
 
         var sessionsToday = visitHistory.Count(h => h.OccurredAtUtc >= today && h.OccurredAtUtc < today.AddDays(1));
+        var manualNarrationToday = visitHistory.Count(h =>
+            h.OccurredAtUtc >= today
+            && h.OccurredAtUtc < today.AddDays(1)
+            && string.Equals((h.EventType ?? string.Empty).Trim(), "poi_manual_narration", StringComparison.OrdinalIgnoreCase));
 
         var hourly = new int[24];
         foreach (var h in visitHistory.Where(x => x.OccurredAtUtc >= windowStart))
@@ -1295,11 +1458,13 @@ public sealed class TravelGuideDb
             totalAccounts,
             activatedCount,
             sessionsToday,
+            manualNarrationToday,
             hourlyActivity = hourly,
             visitHistoryTopPoisChart = BuildVisitHistoryTopPoisChart(visitHistory, now, visitHistoryChartWeekStart),
             liveSessions,
             activeLoginSessions,
-            activeLoginAccounts
+            activeLoginAccounts,
+            weekVisitChart
         };
     }
 
@@ -1768,18 +1933,19 @@ public sealed class TravelGuideDb
     private async Task<List<PoiQrScanLogDto>> GetPoiQrScanLogsAsync()
     {
         var result = new List<PoiQrScanLogDto>();
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT TOP 500 Id, TouristUserId, Username, PoiId, PoiNameVi, EventType, AmountVnd,
                                  DeviceId, DeviceModel, AppPlatform, CreatedAtUtc
-                          FROM TouristPoiQrScanLog
+                          FROM dbo.TouristPoiQrScanLog
                           ORDER BY Id DESC;
                           """;
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var amt = reader.IsDBNull(6) ? 0m : reader.GetDecimal(6);
             result.Add(new PoiQrScanLogDto(
                 reader.GetInt64(0),
                 reader.GetInt32(1),
@@ -1787,7 +1953,7 @@ public sealed class TravelGuideDb
                 reader.GetInt32(3),
                 reader.GetString(4),
                 reader.GetString(5),
-                Convert.ToDecimal(reader.GetDouble(6)),
+                amt,
                 reader.IsDBNull(7) ? null : reader.GetString(7),
                 reader.IsDBNull(8) ? null : reader.GetString(8),
                 reader.IsDBNull(9) ? null : reader.GetString(9),
@@ -1804,34 +1970,35 @@ public sealed class TravelGuideDb
         var dayStartUtc = DateTime.UtcNow.Date;
         var nextDayUtc = dayStartUtc.AddDays(1);
         var gpsEt = TouristPoiGpsInsideEventType;
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT PoiId,
                                  MAX(PoiNameVi) AS PoiNameVi,
                                  SUM(AmountVnd) AS TotalVnd,
-                                 SUM(CASE WHEN LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
-                                 SUM(CASE WHEN CreatedAtUtc >= $sinceUtc AND LOWER(TRIM(COALESCE(EventType, ''))) = LOWER($gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
-                                 SUM(CASE WHEN CreatedAtUtc >= $dayStartUtc AND CreatedAtUtc < $nextDayUtc AND LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
-                          FROM TouristPoiQrScanLog
+                                 SUM(CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
+                                 SUM(CASE WHEN CreatedAtUtc >= @sinceUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) = LOWER(@gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
+                                 SUM(CASE WHEN CreatedAtUtc >= @dayStartUtc AND CreatedAtUtc < @nextDayUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
+                          FROM dbo.TouristPoiQrScanLog
                           GROUP BY PoiId
                           ORDER BY TotalVnd DESC;
                           """;
-        cmd.Parameters.AddWithValue("$sinceUtc", sinceUtc);
-        cmd.Parameters.AddWithValue("$dayStartUtc", dayStartUtc);
-        cmd.Parameters.AddWithValue("$nextDayUtc", nextDayUtc);
-        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
+        cmd.Parameters.AddWithValue("@sinceUtc", sinceUtc);
+        cmd.Parameters.AddWithValue("@dayStartUtc", dayStartUtc);
+        cmd.Parameters.AddWithValue("@nextDayUtc", nextDayUtc);
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
+            var totalVnd = reader.IsDBNull(2) ? 0m : Convert.ToDecimal(reader.GetValue(2));
             result.Add(new PoiQrScanRevenueDto(
                 reader.GetInt32(0),
-                reader.GetString(1),
-                Convert.ToDecimal(reader.GetDouble(2)),
-                reader.GetInt32(3),
-                reader.GetInt32(4),
-                reader.GetInt32(5)));
+                reader.IsDBNull(1) ? "" : reader.GetString(1),
+                totalVnd,
+                reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt32(5)));
         }
 
         return result;
@@ -1840,14 +2007,14 @@ public sealed class TravelGuideDb
     private async Task<int> GetPoiQrScanTotalCountAsync()
     {
         var gpsEt = TouristPoiGpsInsideEventType;
-        await using var connection = new SqliteConnection(_connectionString);
+        await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                            SELECT COUNT(*) FROM TouristPoiQrScanLog
-                            WHERE LOWER(TRIM(COALESCE(EventType, ''))) <> LOWER($gpsEt);
+                            SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog
+                            WHERE LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt);
                             """;
-        cmd.Parameters.AddWithValue("$gpsEt", gpsEt);
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
         var raw = await cmd.ExecuteScalarAsync();
         if (raw is null || raw == DBNull.Value) return 0;
         return Convert.ToInt32(raw);
@@ -1899,7 +2066,8 @@ public sealed class TravelGuideDb
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
-                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + IFNULL((SELECT COUNT(*) FROM TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
                                  IFNULL((SELECT COUNT(*) FROM RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > $nowUtc), 0) AS activeSessions
                           FROM TouristUser u
                           ORDER BY u.Id DESC;
@@ -1928,7 +2096,8 @@ public sealed class TravelGuideDb
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           SELECT TOP 500 u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
-                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0) AS visitCount,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + ISNULL((SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
                                  ISNULL((SELECT COUNT(*) FROM dbo.RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > SYSUTCDATETIME()), 0) AS activeSessions
                           FROM dbo.TouristUser u
                           ORDER BY u.Id DESC;
@@ -2014,6 +2183,127 @@ public sealed class TravelGuideDb
     {
         var normalized = (tier ?? "free").Trim().ToLowerInvariant();
         return normalized == "premium" ? "premium" : "free";
+    }
+
+    /// <summary>
+    /// Xóa vật lý toàn bộ tài khoản du khách cũ (không theo chuẩn đăng nhập bằng thiết bị)
+    /// cùng dữ liệu liên quan (token, lịch sử, favorite, giao dịch, comment, log QR).
+    /// </summary>
+    public async Task<object> PurgeLegacyTouristUsersAsync()
+    {
+        var allUsers = await GetTouristUsersAsync();
+        var legacyUsers = allUsers
+            .Where(u => !IsDeviceManagedTouristUsername(u.Username))
+            .Select(u => (u.Id, u.Username))
+            .ToList();
+
+        if (legacyUsers.Count == 0)
+        {
+            return new
+            {
+                removedUsers = 0,
+                removedRefreshTokens = 0,
+                removedFavorites = 0,
+                removedVisitHistory = 0,
+                removedPayments = 0,
+                removedComments = 0,
+                removedPoiScanLogs = 0
+            };
+        }
+
+        return LooksLikeSqlServerConnection(_connectionString)
+            ? await PurgeLegacyTouristUsersSqlServerAsync(legacyUsers)
+            : await PurgeLegacyTouristUsersSqliteAsync(legacyUsers);
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqliteAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqliteAsync(connection, "DELETE FROM RefreshToken WHERE TouristUserId = $id;", id);
+            removedFavorites += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristFavorite WHERE TouristUserId = $id;", id);
+            removedVisitHistory += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristVisitHistory WHERE TouristUserId = $id;", id);
+            removedPayments += await ExecDeleteSqliteAsync(connection, "DELETE FROM PaymentTransaction WHERE TouristUserId = $id;", id);
+            removedComments += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristComment WHERE TouristUserId = $id;", id);
+            removedPoiScanLogs += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristPoiQrScanLog WHERE TouristUserId = $id;", id);
+            removedUsers += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristUser WHERE Id = $id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqliteAsync(SqliteConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$id", userId);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqlServerAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.RefreshToken WHERE TouristUserId = @id;", id);
+            removedFavorites += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristFavorite WHERE TouristUserId = @id;", id);
+            removedVisitHistory += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristVisitHistory WHERE TouristUserId = @id;", id);
+            removedPayments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.PaymentTransaction WHERE TouristUserId = @id;", id);
+            removedComments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristComment WHERE TouristUserId = @id;", id);
+            removedPoiScanLogs += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristPoiQrScanLog WHERE TouristUserId = @id;", id);
+            removedUsers += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristUser WHERE Id = @id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqlServerAsync(SqlConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@id", userId);
+        return await cmd.ExecuteNonQueryAsync();
     }
 
     private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()

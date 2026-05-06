@@ -319,6 +319,7 @@ public class DatabaseService
                 if (!resp.IsSuccessStatusCode)
                 {
                     System.Diagnostics.Debug.WriteLine($"[API] GET {url} → HTTP {(int)resp.StatusCode}");
+                    DemoDiagnostics.RecordHttpError($"GET {url} -> {(int)resp.StatusCode} {resp.StatusCode}");
                     return (false, new List<TouristPlace>());
                 }
 
@@ -335,6 +336,7 @@ public class DatabaseService
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[API] Load POI failed: {ex.Message}");
+                DemoDiagnostics.RecordHttpError($"GET /api/public/pois -> {ex.Message}");
                 return (false, new List<TouristPlace>());
             }
         }

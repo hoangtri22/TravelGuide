@@ -134,13 +134,6 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
 
     private async Task HandlePremiumClaimFlowAsync(string claimCode)
     {
-        var me = await _authService.GetMeAsync();
-        if (!me.Ok)
-        {
-            await DisplayAlert("Đăng nhập", "Vui lòng đăng nhập tài khoản du khách trước khi kích hoạt Premium.", "OK");
-            return;
-        }
-
         var fee = TouristPricing.PremiumActivationVnd;
         var confirm = await DisplayAlert(
             "Kích hoạt Premium",
@@ -161,18 +154,7 @@ public partial class QrScannerPage : ContentPage, IQueryAttributable
     {
         var me = await _authService.GetMeAsync();
         if (!me.Ok)
-        {
-            if (_isSimulatedScanFlow)
-            {
-                await OpenPlaceDetailWithoutLogAsync(place);
-                return;
-            }
-            await DisplayAlert(
-                "Đăng nhập",
-                "Đăng nhập du khách để xác nhận thanh toán và xem địa điểm (tài khoản Premium xem miễn phí).",
-                "OK");
-            return;
-        }
+            me = (true, "device", "free");
 
         // Luồng từ nút QR trong chi tiết POI: luôn ghi nhận một lượt quét có doanh thu mô phỏng
         // để bảng doanh thu trên Admin Web tăng ngay theo mỗi lần thao tác.

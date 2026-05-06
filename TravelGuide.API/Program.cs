@@ -6,6 +6,13 @@ using TravelGuide.API.Models;
 using TravelGuide.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+void ApplySharedSqlConnection(IConfiguration cfg)
+{
+    var fromCfg = (cfg["ConnectionStrings:TravelGuideSqlServer"] ?? string.Empty).Trim();
+    if (string.IsNullOrWhiteSpace(fromCfg)) return;
+    Environment.SetEnvironmentVariable("TRAVELGUIDE_SQLSERVER", fromCfg, EnvironmentVariableTarget.Process);
+}
+ApplySharedSqlConnection(builder.Configuration);
 builder.Services.AddSingleton<TouristDb>();
 builder.Services.AddSingleton<PoiPublicReader>();
 builder.Services.AddSingleton<AuthStore>();
@@ -63,45 +70,43 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 app.MapGet("/", () => Results.Ok(new { service = "TravelGuide.API", status = "ok" }));
 
-app.MapPost("/api/tourist/auth/register", async (TouristRegisterRequest request, TouristDb db) =>
+string ResolveApkFilePathFromApiHost()
 {
-    var username = TouristDb.NormalizeUsername(request.Username);
-    var password = (request.Password ?? string.Empty).Trim();
-    var displayName = (request.DisplayName ?? string.Empty).Trim();
-
-    if (username.Length < 3) return Results.BadRequest("Username tối thiểu 3 ký tự.");
-    if (password.Length < 6) return Results.BadRequest("Password tối thiểu 6 ký tự.");
-    if (displayName.Length < 2) return Results.BadRequest("Display name tối thiểu 2 ký tự.");
-
-    var tier = TouristDb.NormalizeAccountTier(request.AccountTier);
-    if (string.Equals(tier, "premium", StringComparison.OrdinalIgnoreCase))
-        return Results.BadRequest("Premium chỉ kích hoạt bằng mã QR (quét mã và xác nhận).");
-
-    var created = await db.CreateUserAsync(username, password, displayName, tier);
-    if (!created) return Results.BadRequest("Username đã tồn tại.");
-    return Results.Ok(new
+    var candidates = new[]
     {
-        message = "Đăng ký thành công.",
-        accountTier = tier
-    });
+        Path.Combine(Directory.GetCurrentDirectory(), "TravelGuide.AdminWeb", "WEB", "apk", "travelguide-latest.apk"),
+        Path.Combine(Directory.GetCurrentDirectory(), "WEB", "apk", "travelguide-latest.apk"),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "TravelGuide.AdminWeb", "WEB", "apk", "travelguide-latest.apk")),
+        Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "WEB", "apk", "travelguide-latest.apk"))
+    };
+    return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
+}
+
+app.MapGet("/download/apk", (HttpContext context) =>
+{
+    var apkPath = ResolveApkFilePathFromApiHost();
+    if (!File.Exists(apkPath))
+        return Results.NotFound("APK file not found. Put file at TravelGuide.AdminWeb/WEB/apk/travelguide-latest.apk");
+
+    context.Response.Headers["Content-Disposition"] = "attachment; filename=\"app.apk\"";
+    return Results.File(apkPath, "application/vnd.android.package-archive", "app.apk");
 });
 
-app.MapPost("/api/tourist/auth/login", async (TouristLoginRequest request, TouristDb db, AuthStore authStore) =>
+app.MapPost("/api/tourist/auth/device-login", async (TouristDeviceLoginRequest request, TouristDb db, AuthStore authStore) =>
 {
-    var username = TouristDb.NormalizeUsername(request.Username);
-    var user = await db.GetUserByUsernameAsync(username);
-    var passwordTry = (request.Password ?? string.Empty).Trim();
-    if (user is null || user.PasswordHash != PasswordTools.Hash(passwordTry))
-        return Results.Json(new { message = "Sai tài khoản hoặc mật khẩu." }, statusCode: 401);
+    var deviceId = (request.DeviceId ?? string.Empty).Trim();
+    if (deviceId.Length < 6)
+        return Results.BadRequest("DeviceId không hợp lệ.");
 
+    var user = await db.GetOrCreateDeviceUserAsync(deviceId, request.DeviceName);
     var token = authStore.CreateToken(user);
     try
     {
-        await db.RecordLoginSessionAsync(user.Id, token);
+        await db.RecordLoginSessionAsync(user.Id, token, request.DeviceId);
     }
     catch
     {
-        // Bảng RefreshToken / quyền DB — vẫn trả token để app đăng nhập được
+        // Vẫn trả token để app hoạt động ngay cả khi DB phiên chưa sẵn sàng.
     }
 
     return Results.Ok(new
@@ -235,6 +240,14 @@ app.MapGet("/api/tourist/pois/my-scan-history", async (HttpContext context, Auth
     if (principal is null) return Results.Unauthorized();
     var rows = await db.GetMyPoiScanHistoryAsync(principal.UserId, 200);
     return Results.Ok(rows);
+});
+
+app.MapGet("/api/tourist/pois/gps-heatmap", async (HttpContext context, AuthStore authStore, TouristDb db, int minutes = 90) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    var rows = await db.GetGpsHeatmapByPoiAsync(minutes);
+    return Results.Ok(rows.Select(x => new { poiId = x.PoiId, poiNameVi = x.PoiNameVi, gpsHits = x.GpsHits }));
 });
 
 app.MapPost("/api/tourist/comments", async (HttpContext context, TouristCommentCreateRequest request, AuthStore authStore, TouristDb db) =>

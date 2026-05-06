@@ -1,13 +1,16 @@
 @startuml
 title SE Admin ChinhTierDuKhach
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
 actor Admin as A
-participant "TravelGuide.AdminWeb/WEB/app.js byId(\"touristUserTable\")?.addEventListener(\"click\", ...)" as FE
-participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
-participant "TravelGuide.AdminWeb/Program.cs MapPut(\"/api/tourists/{id}/tier\")" as API
-database "TravelGuideDb.UpdateTouristUserTierAsync()" as DB
-participant "TravelGuide.AdminWeb/WEB/app.js async function loadTouristOverview()" as REFRESH
+participant "app.js\ntouristUserTable click" as FE
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nPUT /api/tourists/{id}/tier" as API
+database "TravelGuideDb\nUpdateTouristUserTierAsync()" as DB
+participant "app.js\nloadTouristOverview()" as REFRESH
 A -> FE : Click nút [data-save-tier-id]
-FE -> APIJS : await api(`/api/tourists/${userId}/tier`, { method: \"PUT\", body: JSON.stringify({ accountTier }) })
+FE -> APIJS : await api(`/api/tourists/${userId}/tier`, { method: PUT, body: JSON.stringify({ accountTier }) })
 APIJS -> API : PUT handler
 API -> DB : await UpdateTouristUserTierAsync(touristUserId, accountTier)
 DB --> API : bool

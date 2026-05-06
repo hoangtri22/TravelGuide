@@ -29,7 +29,7 @@ partition "Đã đăng nhập — theo tab sidebar" {
     :Bảng POI từ GET /api/pois;\nExport → GET /api/export/extra_places.json;\nSửa → poi-create.html?id=…;
     :Duyệt/từ chối → PUT /api/pois/{id}/approve|reject;\nXóa → DELETE /api/pois/{id};
   elseif (Quản lí bình luận — admin)
-    :loadComments → GET /api/comments?…;\nTrạng thái → PUT …/status;\nTrả lời → PUT …/reply;\nXóa → DELETE …/comments/{id};
+    :loadComments → GET /api/comments?…;\nTrạng thái → PUT /api/comments/{id}/status;\nTrả lời → PUT /api/comments/{id}/reply;\nXóa → DELETE /api/comments/{id};
     note right
       SPA **không** gọi POST /api/comments (endpoint có trên server, dành tạo bình luận từ client khác nếu cần).
     end note
