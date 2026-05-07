@@ -1,7 +1,7 @@
 @startuml
-title ACT DuKhach
+title ACT DuKhach — TravelGuide (MAUI)
 start
-:Mở app;
+:Mở app TravelGuide;
 if (Đã có token hợp lệ?) then (Không)
   :TouristAuthService.EnsureTokenAsync()\n-> LoginByDeviceAsync() -> POST /api/tourist/auth/device-login;
   if (Tạo phiên thành công?) then (Không)
@@ -10,8 +10,10 @@ if (Đã có token hợp lệ?) then (Không)
   endif
 endif
 :HomePage.OnAppearing() -> LoadPlacesAsync() -> DatabaseService.GetPlacesAsync();
+:Timer ~5s: HomePage.RefreshPlacesIfChangedAsync()\nDatabaseService.TryGetFromApiAsync GET /api/public/pois;
 if (Chọn chức năng?) then (Map)
   :MapPage.OnAppearing() -> LoadMap() + GpsBackgroundService.StartAsync();
+  :Timer ~5s: MapPage.RefreshMapIfPoiChangedAsync();
   :GeofenceEngine.ProcessLocationAsync(location);
   if (Vào vùng POI?) then (Có)
     :NarrationEngine.SpeakAsync(poi);

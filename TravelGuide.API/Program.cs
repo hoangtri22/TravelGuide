@@ -168,6 +168,14 @@ app.MapPost("/api/tourist/auth/logout", async (HttpContext context, AuthStore au
     return Results.Ok(new { message = "Đã đăng xuất." });
 });
 
+app.MapPost("/api/tourist/analytics/app-open", async (HttpContext context, AuthStore authStore, TouristDb db) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    await db.RecordAppOpenAsync(principal.UserId);
+    return Results.Ok(new { ok = true });
+});
+
 app.MapPost("/api/tourist/premium/redeem", async (HttpContext context, PremiumRedeemRequest body, AuthStore authStore, TouristDb db, IConfiguration configuration) =>
 {
     var principal = AuthHelper.Authenticate(context, authStore);

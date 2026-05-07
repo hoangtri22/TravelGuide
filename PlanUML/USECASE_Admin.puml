@@ -5,19 +5,20 @@ skinparam monochrome true
 actor Admin
 
 rectangle "Admin Web (TravelGuide.AdminWeb/WEB/index.html)" {
-  usecase "Đăng nhập (JWT + sessionStorage)" as U1
-  usecase "Quản lý POI\n(tạo/sửa/xóa/duyệt)" as U2
-  usecase "Duyệt POI" as U3
-  usecase "Từ chối POI" as U4
-  usecase "Form POI riêng\npoi-create.html" as U5
-  usecase "Quản lý bản dịch\n+ tạo lại máy (regenerate)" as U6
-  usecase "Xuất extra_places.json" as U7
-  usecase "Quản lý tài khoản web\n+ duyệt đăng ký chủ quán" as U8
+  usecase "Đăng nhập (JWT + sessionStorage)\nPOST /api/auth/login" as U1
+  usecase "Quản lý POI\n(tạo/sửa/xóa/duyệt)\nGET/POST/PUT/DELETE /api/pois" as U2
+  usecase "Duyệt POI\nPUT /api/pois/{id}/approve" as U3
+  usecase "Từ chối POI\nPUT /api/pois/{id}/reject" as U4
+  usecase "Form POI riêng\nTravelGuide.AdminWeb/WEB/poi-create.html\n+ POST /api/upload/poi-image (ảnh)\n+ POST /api/upload/audio" as U5
+  usecase "Quản lý bản dịch\n+ regenerate\nGET/PUT /api/translations/{id}\nPOST .../regenerate" as U6
+  usecase "Xuất extra_places.json\nGET /api/export/extra_places.json" as U7
+  usecase "Quản lý tài khoản web\n+ duyệt đăng ký chủ quán\n/api/accounts" as U8
   usecase "Duyệt / từ chối\nđăng ký chủ quán" as U9
-  usecase "Dữ liệu du khách\n(KPI, lịch sử, tier)" as U10
-  usecase "Quản lý bình luận\nPOI" as U11
-  usecase "Heatmap\n(admin)" as U12
-  usecase "Tab Nguồn audio\n+ map link POI" as U13
+  usecase "Dữ liệu du khách\n/api/tourists/overview\n/api/tourists/poi-scan-dashboard" as U10
+  usecase "Quản lý bình luận\nGET/PUT/DELETE /api/comments" as U11
+  usecase "Heatmap (Leaflet)\nGET /api/tourists/poi-scan-dashboard" as U12
+  usecase "Tab Nguồn audio + map link\nPOST /api/upload/audio\nPUT /api/pois/{id}" as U13
+  usecase "QR / link tải APK (tĩnh)\nWEB/apk-qr.html\nGET /api/download/apk-info\nappsettings ApkPublic:DownloadUrl\nTRAVELGUIDE_PUBLIC_APK_URL" as U14
 }
 
 U1 -[hidden]down- U2
@@ -31,6 +32,7 @@ U5 -[hidden]down- U9
 U10 -[hidden]down- U11
 U11 -[hidden]down- U12
 U12 -[hidden]down- U13
+U13 -[hidden]down- U14
 
 Admin --> U1
 Admin --> U2
@@ -41,6 +43,7 @@ Admin --> U10
 Admin --> U11
 Admin --> U12
 Admin --> U13
+Admin --> U14
 U3 .> U2 : <<extend>>
 U4 .> U2 : <<extend>>
 U2 .> U5 : <<include>>

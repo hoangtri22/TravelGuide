@@ -11,7 +11,9 @@
 
         <ScrollView Grid.Row="0">
             <VerticalStackLayout Spacing="0" Padding="0,0,0,20">
-                <Image x:Name="ImgPlace" HeightRequest="230" Aspect="AspectFill"/>
+                <Grid HeightRequest="230" BackgroundColor="#E8ECF0">
+                    <Image x:Name="ImgPlace" Aspect="AspectFill"/>
+                </Grid>
 
                 <Border BackgroundColor="White"
                         StrokeThickness="0"

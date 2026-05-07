@@ -50,10 +50,10 @@ public class TouristPlace
     /// <summary>Đánh dấu người dùng đã đến POI này.</summary>
     public bool IsVisited { get; set; }
 
+    /// <summary>Chuỗi cho <c>Image.Source</c>; null khi không có ảnh (không dùng file placeholder.png — file không tồn tại trong project).</summary>
     [Ignore]
-    public string ImageSource => string.IsNullOrEmpty(ImagePath)
-        ? "placeholder.png"
-        : ImagePath;
+    public string? ImageSource =>
+        string.IsNullOrWhiteSpace(ImagePath) ? null : ImagePath.Trim();
 
     [Ignore]
     public string Name => GetByLanguage(NameVi, NameEn, NameJa, NameKo, NameZh);

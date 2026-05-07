@@ -15,6 +15,8 @@ public sealed class TouristAuthService
     private const string UsernameKey = "tourist_username";
     private const string TierKey = "tourist_account_tier";
     private const string DeviceInstallIdKey = "tg_device_install_id";
+    private const string LastAppOpenReportMsKey = "tourist_last_app_open_report_ms";
+    private const int AppOpenReportThrottleMs = 3 * 60 * 1000;
 
     public TouristAuthService(HttpClient httpClient)
     {
@@ -362,6 +364,39 @@ public sealed class TouristAuthService
         catch (Exception ex)
         {
             return (false, ex.Message);
+        }
+    }
+
+    /// <summary>Gửi tối đa một lần / ~3 phút để admin đếm lượt mở app (không chặn UX).</summary>
+    public void ReportAppOpenIfNeeded()
+    {
+        _ = ReportAppOpenIfNeededCoreAsync();
+    }
+
+    private async Task ReportAppOpenIfNeededCoreAsync()
+    {
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var lastMs = Preferences.Get(LastAppOpenReportMsKey, 0L);
+        if (nowMs - lastMs < AppOpenReportThrottleMs)
+            return;
+
+        var auth = await EnsureTokenAsync();
+        if (!auth.Ok)
+            return;
+
+        try
+        {
+            using var cts = new CancellationTokenSource(ApiTimeout);
+            var url = $"{GetCurrentApiBaseUrl().TrimEnd('/')}/api/tourist/analytics/app-open";
+            using var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.Token);
+            using var response = await _httpClient.SendAsync(req, cts.Token);
+            if (response.IsSuccessStatusCode)
+                Preferences.Set(LastAppOpenReportMsKey, nowMs);
+        }
+        catch
+        {
+            // ignore — thống kê không chặn app
         }
     }
 

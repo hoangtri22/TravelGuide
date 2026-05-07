@@ -1,7 +1,7 @@
 @startuml
 title ACT Admin — luồng thực tế theo TravelGuide.AdminWeb (index.html + app.js + Program.cs)
 start
-:Mở WEB/index.html;
+:Mở TravelGuide.AdminWeb/WEB/index.html;
 
 partition "Chưa đăng nhập" {
   if (Đăng ký chủ quán?) then (Có)
@@ -26,8 +26,10 @@ partition "Chưa đăng nhập" {
 
 partition "Đã đăng nhập — theo tab sidebar" {
   if (Tab / hành động?) then (Quản lý địa điểm)
-    :Bảng POI từ GET /api/pois;\nExport → GET /api/export/extra_places.json;\nSửa → poi-create.html?id=…;
+    :Bảng POI từ GET /api/pois;\nExport → GET /api/export/extra_places.json;\nSửa → TravelGuide.AdminWeb/WEB/poi-create.html?id=…;
+    :poi-create.js Lưu: có imageFile → **POST /api/upload/poi-image**;\ncó audioFile → **POST /api/upload/audio**;\n→ POST /api/pois hoặc PUT /api/pois/{id};
     :Duyệt/từ chối → PUT /api/pois/{id}/approve|reject;\nXóa → DELETE /api/pois/{id};
+    :Tuỳ chọn: mở **WEB/apk-qr.html** hoặc tab APK;\nGET /api/download/apk-info + ApkPublic:DownloadUrl;
   elseif (Quản lí bình luận — admin)
     :loadComments → GET /api/comments?…;\nTrạng thái → PUT /api/comments/{id}/status;\nTrả lời → PUT /api/comments/{id}/reply;\nXóa → DELETE /api/comments/{id};
     note right

@@ -48,6 +48,8 @@ function resetEmptyForm() {
   const form = byId("poiForm");
   if (!form) return;
   form.reset();
+  const imgIn = byId("imageFile");
+  if (imgIn) imgIn.value = "";
   byId("poiId").value = "";
   byId("price").value = "1000";
   byId("tag").value = "Địa Điểm Du Lịch";
@@ -149,6 +151,17 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
       existing = null;
     }
   }
+  let resolvedImagePath = (byId("imagePath").value || "").trim();
+  const selectedImage = byId("imageFile")?.files?.[0];
+  if (selectedImage) {
+    const fdImg = new FormData();
+    fdImg.append("file", selectedImage);
+    const imgRes = await apiMultipart("/api/upload/poi-image", fdImg);
+    resolvedImagePath = String(imgRes?.imagePath || "").trim();
+    if (!resolvedImagePath) throw new Error("Upload ảnh không trả về đường dẫn.");
+    byId("imagePath").value = resolvedImagePath;
+  }
+
   let resolvedAudioUrl = (byId("audioUrl").value || "").trim();
   const selectedAudio = byId("audioFile")?.files?.[0];
   if (selectedAudio) {
@@ -179,7 +192,7 @@ byId("poiForm")?.addEventListener("submit", async (e) => {
     price: Number(byId("price").value || 0),
     tag: byId("tag").value || "Địa Điểm Du Lịch",
     mapLink: byId("mapLink").value || "",
-    imagePath: byId("imagePath").value,
+    imagePath: resolvedImagePath,
     audioUrl: resolvedAudioUrl
   };
   const id = payload.id;

@@ -109,13 +109,39 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
-string ResolveApkPublicUrl()
+/// <summary>Google Drive "xem file" không cho tải APK trực tiếp — đổi sang link uc?export=download.</summary>
+static string NormalizePublicApkUrl(string url)
 {
+    url = url.Trim();
+    const string marker = "/file/d/";
+    var i = url.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+    if (i < 0) return url;
+    var start = i + marker.Length;
+    var slash = url.IndexOf('/', start);
+    var id = slash < 0 ? url[start..] : url.Substring(start, slash - start);
+    if (string.IsNullOrWhiteSpace(id)) return url;
+    return $"https://drive.google.com/uc?export=download&id={id}";
+}
+
+/// <summary>
+/// Thứ tự: nếu có WEB/apk/travelguide-latest.apk → URL cục bộ /download/apk (LAN/đồng bộ bản build);
+/// không có file → biến môi trường → appsettings (Drive phải là link uc?export=download hoặc để server tự đổi).
+/// </summary>
+string? ResolveApkDownloadUrl(HttpContext context)
+{
+    var apkPath = GetApkFilePath();
+    if (File.Exists(apkPath))
+        return $"{context.Request.Scheme}://{context.Request.Host}/download/apk";
+
     var fromEnv = (Environment.GetEnvironmentVariable("TRAVELGUIDE_PUBLIC_APK_URL") ?? string.Empty).Trim();
     if (!string.IsNullOrWhiteSpace(fromEnv))
-        return fromEnv;
+        return NormalizePublicApkUrl(fromEnv);
+
     var fromCfg = (builder.Configuration["ApkPublic:DownloadUrl"] ?? string.Empty).Trim();
-    return fromCfg;
+    if (!string.IsNullOrWhiteSpace(fromCfg))
+        return NormalizePublicApkUrl(fromCfg);
+
+    return null;
 }
 
 string GetApkFilePath()
@@ -194,9 +220,10 @@ app.MapGet("/download/apk", (HttpContext context) =>
 
 app.MapGet("/api/download/apk-info", (HttpContext context) =>
 {
-    var publicApkUrl = ResolveApkPublicUrl();
+    var publicApkUrl = ResolveApkDownloadUrl(context);
     if (string.IsNullOrWhiteSpace(publicApkUrl))
-        return Results.BadRequest("Missing TRAVELGUIDE_PUBLIC_APK_URL (or ApkPublic:DownloadUrl).");
+        return Results.BadRequest(
+            "Chưa cấp link APK: đặt ApkPublic:DownloadUrl hoặc TRAVELGUIDE_PUBLIC_APK_URL, hoặc đặt file WEB/apk/travelguide-latest.apk để dùng /download/apk.");
 
     var qrPath = EnsureStaticApkQr(publicApkUrl);
     var absoluteQr = $"{context.Request.Scheme}://{context.Request.Host}{qrPath}";
@@ -238,6 +265,38 @@ static async Task<string?> SaveUploadedAudioAsync(IFormFile file, IWebHostEnviro
     await using var fs = File.Create(fullPath);
     await file.CopyToAsync(fs, cancellationToken);
     return $"audio/{finalName}";
+}
+
+static async Task<string?> SaveUploadedPoiImageAsync(IFormFile file, IWebHostEnvironment env, CancellationToken cancellationToken)
+{
+    if (file.Length <= 0) return null;
+
+    var ext = Path.GetExtension(file.FileName ?? string.Empty).Trim().ToLowerInvariant();
+    var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".webp", ".gif"
+    };
+    if (!allowed.Contains(ext))
+        throw new InvalidOperationException("Định dạng ảnh không hỗ trợ. Chỉ cho phép: .jpg, .jpeg, .png, .webp, .gif");
+
+    var root = string.IsNullOrWhiteSpace(env.WebRootPath)
+        ? Path.Combine(AppContext.BaseDirectory, "WEB")
+        : env.WebRootPath;
+    var imgDir = Path.Combine(root, "images");
+    Directory.CreateDirectory(imgDir);
+
+    var safeName = Path.GetFileNameWithoutExtension(file.FileName ?? string.Empty);
+    safeName = string.Join("-", safeName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries)).Trim();
+    if (safeName.Length == 0) safeName = "poi";
+    if (safeName.Length > 50) safeName = safeName[..50];
+
+    var stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
+    var finalName = $"{safeName}-{stamp}{ext}";
+    var fullPath = Path.Combine(imgDir, finalName);
+
+    await using var fs = File.Create(fullPath);
+    await file.CopyToAsync(fs, cancellationToken);
+    return $"images/{finalName}";
 }
 
 app.MapPost("/api/auth/login", async (LoginRequest request, TravelGuideDb db, AuthStore authStore) =>
@@ -363,6 +422,29 @@ app.MapPost("/api/upload/audio", async (HttpContext context, AuthStore authStore
         if (string.IsNullOrWhiteSpace(relativePath))
             return Results.BadRequest("File audio rỗng.");
         return Results.Ok(new { audioUrl = relativePath });
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(ex.Message);
+    }
+});
+
+app.MapPost("/api/upload/poi-image", async (HttpContext context, AuthStore authStore, IWebHostEnvironment env) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+    if (!context.Request.HasFormContentType) return Results.BadRequest("Thiếu dữ liệu multipart/form-data.");
+
+    var form = await context.Request.ReadFormAsync(context.RequestAborted);
+    var file = form.Files["file"];
+    if (file is null) return Results.BadRequest("Không tìm thấy file ảnh.");
+
+    try
+    {
+        var relativePath = await SaveUploadedPoiImageAsync(file, env, context.RequestAborted);
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return Results.BadRequest("File ảnh rỗng.");
+        return Results.Ok(new { imagePath = relativePath });
     }
     catch (InvalidOperationException ex)
     {
