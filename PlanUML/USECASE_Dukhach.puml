@@ -1,0 +1,47 @@
+@startuml
+left to right direction
+skinparam shadowing false
+skinparam monochrome true
+actor "Du khách" as U
+rectangle "APP TravelGuide (TravelGuide/*.xaml.cs)" {
+  usecase "Khởi tạo phiên thiết bị\nTouristAuthService.EnsureTokenAsync\nPOST /api/tourist/auth/device-login\n(TravelGuide.API)" as A1
+  usecase "Xem tìm kiếm lọc POI\nHomePage LoadPlacesAsync\nDatabaseService.GetPlacesAsync" as A2
+  usecase "Đồng bộ POI định kỳ ~5s\nHomePage.RefreshPlacesIfChangedAsync\nMapPage.RefreshMapIfPoiChangedAsync\nDatabaseService.TryGetFromApiAsync" as A2b
+  usecase "Bản đồ Leaflet + OSM\nMapPage BuildLeafletHtml" as A3
+  usecase "Geofence\nGeofenceEngine.ProcessLocationAsync" as A4
+  usecase "Thuyết minh TTS\nNarrationEngine.SpeakAsync\nTextToSpeech.Default" as A5
+  usecase "Quét QR\nQrScannerPage" as A8
+  usecase "Mở khóa POI (tier)\nConfirmPoiPurchaseAsync" as A9
+  usecase "Kích hoạt Premium\nRedeemPremiumClaimAsync\nPOST /api/tourist/premium/redeem" as A10
+  usecase "Lịch sử quét\nQrScanHistoryPage GetMyScanHistoryAsync" as A11
+  usecase "Đánh giá POI\nPlaceDetailPage AddPlaceReviewAsync\nSubmitPlaceReviewAsync" as A12
+}
+
+note bottom of A5
+  **TouristPlace.AudioUrl**
+  Field có trong DB/CMS; **chưa** phát file MP3 từ URL trong app.
+  NarrationEngine + AudioPage: **chỉ TTS** (không MediaElement phát AudioUrl).
+end note
+
+A1 -[hidden]down- A2
+A2 -[hidden]down- A2b
+A2b -[hidden]down- A3
+A3 -[hidden]down- A8
+A8 -[hidden]down- A11
+A11 -[hidden]down- A12
+A4 -[hidden]right- A5
+A8 -[hidden]right- A9
+A9 -[hidden]down- A10
+
+U --> A1
+U --> A2
+U --> A2b
+U --> A3
+U --> A8
+U --> A11
+U --> A12
+A3 .> A4 : <<include>>
+A4 .> A5 : <<include>>
+A9 .> A8 : <<extend>>
+A10 .> A8 : <<extend>>
+@enduml

@@ -1,0 +1,55 @@
+@startuml
+title SE DuKhach XemChiTietPOI
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+
+actor "Du khách" as U
+participant "Entry\n(Home/Map/History)" as ENTRY
+participant "DatabaseService\nGetPlacesAsync()" as DB
+participant "PlaceDetailPage\nLoadPlace()" as LOAD
+participant "PlaceDetailPage\nOnAppearing()" as APPEAR
+participant "PlaceDetailPage\nRefreshReviewsAsync()" as REV
+participant "TouristAuthService\nGetPlaceReviewsWithAdminReplyAsync()" as CMT
+participant "TouristAuthService\nTryFetchCommentsFromAdminPublicAsync()" as PUB
+participant "TravelGuide.API\nGET /api/tourist/comments/{poiId}" as API
+participant "AdminWeb Public\nGET /api/public/tourist-comments/{poiId}" as APUB
+participant "NarrationEngine\nSpeakAsync()" as NAR
+participant "MiniPlayerView\nAttach()" as MINI
+
+alt Mở từ Home/Map
+  U -[hidden]-> ENTRY
+  LOAD -[hidden]-> MINI
+  U -> ENTRY : Chọn 1 POI từ HomePage/MapPage
+  ENTRY -> DB : await GetPlacesAsync()
+  DB --> ENTRY : List<TouristPlace>
+  ENTRY -> LOAD : detailPage.LoadPlace(place)
+  ENTRY -> ENTRY : await Navigation.PushAsync(detailPage)
+else Mở từ lịch sử quét
+  U -[hidden]-> ENTRY
+  LOAD -[hidden]-> MINI
+  U -> ENTRY : Chọn 1 dòng trong QrScanHistoryPage
+  ENTRY -> DB : await GetPlacesAsync()
+  DB --> ENTRY : List<TouristPlace>
+  ENTRY -> LOAD : detailPage.LoadPlace(place)
+  ENTRY -> ENTRY : await Navigation.PushAsync(detailPage)
+end
+
+LOAD -> LOAD : Gán _currentPlace + cập nhật UI (tên, mô tả, ảnh, map link)
+LOAD -> MINI : Attach(_narrationEngine)
+LOAD -> APPEAR : OnAppearing()
+APPEAR -> REV : await RefreshReviewsAsync()
+REV -> CMT : await GetPlaceReviewsWithAdminReplyAsync(poiId, take)
+CMT -> API : GET /api/tourist/comments/{poiId}
+CMT -> PUB : TryFetchCommentsFromAdminPublicAsync(poiId, take)
+PUB -> APUB : GET /api/public/tourist-comments/{poiId}
+REV --> APPEAR : cập nhật danh sách bình luận
+
+opt Người dùng bấm "Nghe thuyết minh"
+  U -[hidden]-> ENTRY
+  LOAD -[hidden]-> MINI
+  U -> LOAD : OnSpeakClicked()
+  LOAD -> NAR : await SpeakAsync(_currentPlace)
+end
+
+@enduml

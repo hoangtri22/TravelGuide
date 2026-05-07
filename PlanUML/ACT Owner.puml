@@ -1,0 +1,26 @@
+@startuml
+title ACT Owner — TravelGuide.AdminWeb (role owner)
+start
+:Mở TravelGuide.AdminWeb/WEB/index.html;
+:byId("loginForm").addEventListener("submit", ...);
+if (POST /api/auth/login OK?) then (Có)
+  :sessionStorage.setItem(...token/role...);
+  :applyRoleChrome() role=owner;
+  if (Chọn module?) then (Quản lý POI quán)
+    :loadPois() -> GET /api/pois (owner scope);
+    :Mở WEB/poi-create.html?id=...;
+    :poi-create.js: imageFile → POST /api/upload/poi-image;\naudioFile → POST /api/upload/audio;\nsubmit → POST /api/pois hoặc PUT /api/pois/{id};
+  elseif (Bản dịch)
+    :loadTranslation(id) -> GET /api/translations/{id}?lang=...;
+    :translationForm submit -> PUT /api/translations/{id};
+    :Tạo lại máy -> POST /api/translations/{id}/regenerate?lang=...;
+  else (Audio/Map)
+    :renderAudioSources();
+    :Upload file -> POST /api/upload/audio;
+    :audio-save-btn click -> PUT /api/pois/{id} (audioUrl,mapLink);
+  endif
+else (Không)
+  :Thông báo lỗi / chờ duyệt / bị khóa;
+endif
+stop
+@enduml

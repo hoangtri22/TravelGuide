@@ -1,0 +1,5 @@
+﻿{
+  "androidPhysicalApiBaseUrl": "https://bcxjs1p8-7149.asse.devtunnels.ms",
+  "androidPhysicalAdminWebBaseUrl": "https://bcxjs1p8-7149.asse.devtunnels.ms",
+  "notes": "Set from Dev Tunnel URL. Re-run this script whenever tunnel URL changes."
+}

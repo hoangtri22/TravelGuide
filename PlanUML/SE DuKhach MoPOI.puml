@@ -1,0 +1,43 @@
+@startuml
+title SE DuKhach MoPOI
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor "Du khách" as U
+participant "QrScannerPage\nHandlePoiAfterScanAsync()" as HANDLE
+participant "TouristAuthService\nGetMeAsync()" as ME
+participant "TouristAuthService\nGetPoiAccessAsync()" as ACCESS
+participant "Tourist API\nGET /api/tourist/pois/{id}/access" as API1
+participant "TouristAuthService\nConfirmPoiPurchaseAsync()" as BUY
+participant "Tourist API\nPOST /api/tourist/pois/{id}/purchase-confirm" as API2
+database "TouristDb\nConfirmPoiUnlockAsync()" as DB
+participant "QrScannerPage\nOpenPlaceDetailAsync()" as OPEN
+participant "TouristAuthService\nLogPoiQrScanAsync()" as LOG
+participant "Tourist API\nPOST /api/tourist/pois/scan-log" as SCANLOG
+participant "PlaceDetailPage\nLoadPlace()" as DETAIL
+U -> HANDLE : Sau quét / xác nhận thanh toán mô phỏng
+HANDLE -> ME : await GetMeAsync()
+alt chưa đăng nhập (luồng thường)
+  U -[hidden]-> HANDLE
+  OPEN -[hidden]-> DETAIL
+  HANDLE --> U : DisplayAlert đăng nhập
+else đã đăng nhập
+  U -[hidden]-> HANDLE
+  OPEN -[hidden]-> DETAIL
+  HANDLE -> ACCESS : await GetPoiAccessAsync(place.Id)
+  ACCESS -> API1 : GET .../access + Bearer
+  API1 --> ACCESS : HasAccess, RequiresPurchase, PriceVnd
+  alt RequiresPurchase + user xác nhận
+    U -[hidden]-> HANDLE
+    OPEN -[hidden]-> DETAIL
+    HANDLE -> BUY : await ConfirmPoiPurchaseAsync(place.Id, price)
+    BUY -> API2 : POST purchase-confirm + amountVnd
+    API2 -> DB : ConfirmPoiUnlockAsync(principal.UserId, id, amount)
+  end
+  HANDLE -> OPEN : await OpenPlaceDetailAsync(place, amountVnd, eventType)
+  OPEN -> LOG : await LogPoiQrScanAsync(poiId, poiNameVi, eventType, amountVnd, deviceId, deviceModel, appPlatform)
+  LOG -> SCANLOG : HttpClient SendAsync POST /api/tourist/pois/scan-log
+  OPEN -> DETAIL : detailPage.LoadPlace(place)
+  OPEN -> OPEN : await Navigation.PushAsync(detailPage)
+end
+@enduml

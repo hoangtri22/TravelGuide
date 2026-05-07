@@ -1,0 +1,29 @@
+@startuml
+title SE Owner QuanLyPOI
+skinparam shadowing false
+skinparam monochrome true
+actor "Chủ quán" as O
+participant "WEB/app.js\nloadPois + UI owner" as FE
+participant "api(url, options)" as APIJS
+participant "Program.cs\nGET /api/pois" as GET
+database "TravelGuideDb.GetPoisOwnedByUserAsync(ownerUserId)" as DB
+participant "Program.cs\nPOST /api/pois" as POST
+participant "Program.cs\nPUT /api/pois/{id}" as PUT
+O -> FE : Tab POI
+FE -> APIJS : await api(/api/pois)
+APIJS -> GET : GET handler
+GET -> DB : await GetPoisOwnedByUserAsync(principal.UserId)
+GET --> FE : danh sách POI của owner
+O -> FE : Chỉnh sửa / lưu
+alt tạo POI mới (poi-create.html)
+  O -[hidden]-> FE
+  APIJS -[hidden]-> PUT
+  FE -> APIJS : await api(/api/pois, { method: POST, ... })
+  APIJS -> POST : tạo POI mới
+else sửa POI hiện có
+  O -[hidden]-> FE
+  APIJS -[hidden]-> PUT
+  FE -> APIJS : await api(`/api/pois/${id}`, { method: PUT, ... })
+  APIJS -> PUT : cập nhật POI
+end
+@enduml

@@ -1,0 +1,26 @@
+@startuml
+title SE DuKhach KhoiTaoPhienThietBi
+skinparam shadowing false
+skinparam monochrome true
+actor "Du khách" as U
+participant "TouristAuthService.EnsureTokenAsync()" as SVC
+participant "TouristAuthService.LoginByDeviceAsync() // private" as DEV
+participant "TravelGuide.API Program.cs MapPost(/api/tourist/auth/device-login)" as API
+database "TouristDb.GetOrCreateDeviceUserAsync() + RecordLoginSessionAsync()" as DB
+collections "SecureStorage.Default + Preferences" as STORE
+U -> SVC : Mở app / cần gọi API có auth
+SVC -> STORE : SecureStorage.GetAsync(TokenKey)
+alt chưa có token
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
+  SVC -> DEV : LoginByDeviceAsync()
+  DEV -> API : POST /api/tourist/auth/device-login\n{ deviceId, deviceName, appPlatform }
+  API -> DB : GetOrCreateDeviceUserAsync + RecordLoginSessionAsync
+  API --> DEV : token + username + accountTier
+  DEV -> STORE : SetAsync(TokenKey) + Preferences username/tier
+else đã có token
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
+  SVC --> U : Dùng token hiện có
+end
+@enduml

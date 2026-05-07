@@ -1,4 +1,5 @@
 ﻿using TravelGuide.Models;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace TravelGuide;
 
@@ -8,11 +9,35 @@ namespace TravelGuide;
 public partial class MiniPlayerView : ContentView
 {
     private NarrationEngine? _engine;
+    private bool _isAttached;
 
     /// <summary>Khởi tạo XAML.</summary>
     public MiniPlayerView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object? sender, EventArgs e)
+    {
+        if (_isAttached) return;
+        var engine = Handler?.MauiContext?.Services.GetService<NarrationEngine>();
+        if (engine is null) return;
+        Attach(engine);
+        _isAttached = true;
+    }
+
+    private void OnUnloaded(object? sender, EventArgs e)
+    {
+        if (_engine != null)
+        {
+            _engine.OnStartedPlaying -= OnStarted;
+            _engine.OnStoppedPlaying -= OnStopped;
+            _engine = null;
+        }
+
+        _isAttached = false;
     }
 
     /// <summary>Gỡ/bật handler cũ, subscribe sự kiện engine và đồng bộ trạng thái đang phát.</summary>
@@ -30,7 +55,7 @@ public partial class MiniPlayerView : ContentView
         if (_engine.IsSpeaking && _engine.CurrentPlace != null)
             OnStarted(_engine.CurrentPlace);
         else
-            PlayerBar.IsVisible = false;
+            _ = HidePlayerAsync();
     }
 
     /// <summary>Callback <see cref="NarrationEngine.OnStartedPlaying"/>: hiện thanh và cập nhật nhãn.</summary>
@@ -48,7 +73,7 @@ public partial class MiniPlayerView : ContentView
                 _ => "Đang phát..."
             };
             StatusDot.Fill = new SolidColorBrush(Color.FromArgb("#22C55E"));
-            PlayerBar.IsVisible = true;
+            _ = ShowPlayerAsync();
         });
     }
 
@@ -57,8 +82,25 @@ public partial class MiniPlayerView : ContentView
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            PlayerBar.IsVisible = false;
+            _ = HidePlayerAsync();
         });
+    }
+
+    private async Task ShowPlayerAsync()
+    {
+        IsVisible = true;
+        PlayerBar.IsVisible = true;
+        this.TranslationY = 8;
+        await this.FadeTo(1, 120, Easing.CubicOut);
+        await this.TranslateTo(0, 0, 120, Easing.CubicOut);
+    }
+
+    private async Task HidePlayerAsync()
+    {
+        await this.FadeTo(0, 100, Easing.CubicIn);
+        PlayerBar.IsVisible = false;
+        IsVisible = false;
+        this.TranslationY = 0;
     }
 
     /// <summary>Người dùng chạm dừng → <see cref="NarrationEngine.StopAsync"/>.</summary>

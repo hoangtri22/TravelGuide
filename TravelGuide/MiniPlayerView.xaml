@@ -4,7 +4,9 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:loc="clr-namespace:LocalizationResourceManager.Maui;assembly=LocalizationResourceManager.Maui"
              x:Class="TravelGuide.MiniPlayerView"
-             x:Name="this">
+             x:Name="this"
+             IsVisible="False"
+             Opacity="0">
 
     <Border x:Name="PlayerBar" BackgroundColor="#0F172A" StrokeThickness="0" IsVisible="False">
         <Border.Shadow>

@@ -1,0 +1,26 @@
+@startuml
+title SE DuKhach XemBanDo
+skinparam shadowing false
+skinparam monochrome true
+actor "Du khách" as U
+participant "MapPage.OnAppearing()" as MP
+participant "MapPage.LoadMap()" as LOAD
+participant "MapPage.BuildLeafletHtml(...) // private" as HTML
+participant "MapPage mapView (WebView)" as WV
+participant "GpsBackgroundService.StartAsync()" as GPS
+participant "GpsBackgroundService.RunLoopAsync()" as LOOP
+participant "GeofenceEngine.ProcessLocationAsync()" as GEO
+U -> MP : Mở MapPage
+MP -> LOAD : LoadMap()
+LOAD -> LOAD : Geolocation.GetLastKnownLocationAsync / GetLocationAsync
+LOAD -> LOAD : DatabaseService.GetPlacesAsync()
+LOAD -> HTML : BuildLeafletHtml(center, markersJs, adminWebBaseJson)
+LOAD -> WV : mapView.Source = HtmlWebViewSource { Html = ... }
+MP -> GPS : await StartAsync()
+GPS -> GPS : Permissions.RequestAsync<Permissions.LocationWhenInUse>()
+GPS -> LOOP : _ = RunLoopAsync(token)
+LOOP -> LOOP : Geolocation.Default.GetLocationAsync(...)
+LOOP -> GEO : await _geofenceEngine.ProcessLocationAsync(location)
+LOOP -> LOOP : WeakReferenceMessenger.Default.Send(new LocationMessage(location))
+note over WV : MapPage nhận LocationMessage và mapView.EvaluateJavaScriptAsync(updateLocation(...))
+@enduml

@@ -1,0 +1,29 @@
+@startuml
+title SE DuKhach KiemTraPhienHienTai
+skinparam shadowing false
+skinparam monochrome true
+actor "Du khách" as U
+participant "TouristAuthService.GetMeAsync()" as SVC
+participant "TravelGuide.API Program.cs MapGet(/api/tourist/auth/me)" as API
+participant "TravelGuide.API Program.cs MapPost(/api/tourist/auth/device-login)" as DEVAPI
+database "AuthStore.GetPrincipal() + TouristDb.GetUserByUsernameAsync()" as DB
+collections "SecureStorage.Default + Preferences" as STORE
+U -> SVC : Mở app / gọi tính năng cần xác thực
+SVC -> STORE : EnsureTokenAsync()
+SVC -> API : GET /api/tourist/auth/me + Bearer
+API -> DB : GetPrincipal + GetUserByUsernameAsync
+alt token hết hạn / 401
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
+  SVC -> STORE : Remove(TokenKey)
+  SVC -> DEVAPI : POST /api/tourist/auth/device-login
+  DEVAPI --> SVC : token mới + profile
+  SVC -> STORE : SetAsync(TokenKey) + Preferences
+  SVC -> API : Retry GET /api/tourist/auth/me
+else token hợp lệ
+  U -[hidden]-> SVC
+  SVC -[hidden]-> STORE
+  API --> SVC : username + accountTier
+  SVC -> STORE : cập nhật Preferences
+end
+@enduml

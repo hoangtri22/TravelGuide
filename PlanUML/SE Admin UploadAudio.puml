@@ -1,0 +1,35 @@
+@startuml
+title SE Admin UploadAudio
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor "Admin hoặc chủ quán" as U
+participant "poi-create.js\npoiForm submit" as POIFORM
+participant "poi-create.js\napiMultipart()" as POIMULTI
+participant "app.js\naudioTableWrap click" as AUDIOWRAP
+participant "app.js\napiMultipart()" as APPMULTI
+participant "Program.cs\nPOST /api/upload/audio" as API
+participant "AuthHelper\nAuthenticate()" as AUTH
+participant "Program.cs\nSaveUploadedAudioAsync()" as SAVE
+alt upload khi submit poi-create (có audioFile)
+  U -[hidden]-> POIFORM
+  API -[hidden]-> SAVE
+  U -> POIFORM : submit (đoạn await apiMultipart trong handler)
+  POIFORM -> POIMULTI : await apiMultipart(/api/upload/audio, fd)
+  POIMULTI -> API : POST multipart field file
+  API -> AUTH : AuthHelper.Authenticate(context, authStore)
+  API -> SAVE : await SaveUploadedAudioAsync(file, env, context.RequestAborted)
+  SAVE --> API : relativePath
+  API --> POIMULTI : { audioUrl }
+else upload từ tab Audio (click .audio-upload-btn)
+  U -[hidden]-> POIFORM
+  API -[hidden]-> SAVE
+  U -> AUDIOWRAP : handler upload branch
+  AUDIOWRAP -> APPMULTI : await apiMultipart(/api/upload/audio, fd)
+  APPMULTI -> API : POST multipart field file
+  API -> AUTH : AuthHelper.Authenticate(context, authStore)
+  API -> SAVE : await SaveUploadedAudioAsync(file, env, context.RequestAborted)
+  SAVE --> API : relativePath
+  API --> APPMULTI : { audioUrl }
+end
+@enduml

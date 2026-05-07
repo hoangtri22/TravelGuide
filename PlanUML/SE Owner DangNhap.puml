@@ -1,0 +1,16 @@
+@startuml
+title SE Owner DangNhap
+skinparam shadowing false
+skinparam monochrome true
+actor "Chủ quán" as O
+participant "TravelGuide.AdminWeb/WEB/app.js byId(loginForm).addEventListener(submit, ...)" as FE
+participant "TravelGuide.AdminWeb/WEB/app.js const api = async (url, options)" as APIJS
+participant "TravelGuide.AdminWeb/Program.cs MapPost(/api/auth/login)" as API
+database "TravelGuideDb.GetUserByUsernameAsync()" as DB
+O -> FE : submit loginForm
+FE -> APIJS : await api(/api/auth/login, ...)
+APIJS -> API : HTTP POST
+API -> DB : await GetUserByUsernameAsync(...)
+API --> FE : token + role=owner hoặc lỗi
+FE -> FE : applyRoleChrome()
+@enduml

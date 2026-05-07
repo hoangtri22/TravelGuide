@@ -1,0 +1,44 @@
+@startuml
+title SE Admin QuanLyTaiKhoan
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor Admin as A
+participant "app.js\nloadAccounts()" as FE
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nGET /api/accounts" as GET
+participant "Program.cs\nPOST /api/accounts" as POST
+participant "Program.cs\nPUT /api/accounts/{id}/lock" as LOCK
+participant "Program.cs\nPUT /api/accounts/{id}/approve-registration" as APPROVE
+participant "Program.cs\nPUT /api/accounts/{id}/reject-registration" as REJECT
+participant "Program.cs\nDELETE /api/accounts/{id}" as DELETE
+database "TravelGuideDb\nGetUsersAsync()" as DB
+A -> FE : Tab account
+FE -> APIJS : await api(/api/accounts)
+APIJS -> GET : GET /api/accounts
+GET -> DB : await GetUsersAsync()
+GET --> FE : JSON users
+alt tạo account
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DB
+  FE -> APIJS : await api(/api/accounts, { method: POST, ... })
+  APIJS -> POST : MapPost
+else khóa / mở khóa
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DB
+  FE -> APIJS : await api(`/api/accounts/${id}/lock`, { method: PUT, ... })
+  APIJS -> LOCK : MapPut lock
+else duyệt / từ chối đăng ký owner
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DB
+  FE -> APIJS : await api(`/api/accounts/${id}/approve-registration`, { method: PUT })
+  APIJS -> APPROVE : MapPut
+  FE -> APIJS : await api(`/api/accounts/${id}/reject-registration`, { method: PUT })
+  APIJS -> REJECT : MapPut
+else xóa account
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DB
+  FE -> APIJS : await api(`/api/accounts/${id}`, { method: DELETE })
+  APIJS -> DELETE : MapDelete
+end
+@enduml

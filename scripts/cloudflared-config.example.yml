@@ -1,0 +1,7 @@
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: C:\Users\YOUR_USER\.cloudflared\00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  - hostname: app-download.your-domain.com
+    service: http://localhost:5280
+  - service: http_status:404

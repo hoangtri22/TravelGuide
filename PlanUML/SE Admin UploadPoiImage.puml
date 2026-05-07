@@ -1,0 +1,26 @@
+﻿@startuml
+title SE Admin UploadPoiImage (ảnh POI)
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor "Admin hoặc chủ quán" as U
+participant "TravelGuide.AdminWeb/WEB/poi-create.js\npoiForm submit" as POIFORM
+participant "poi-create.js\napiMultipart()" as POIMULTI
+participant "TravelGuide.AdminWeb/Program.cs\nPOST /api/upload/poi-image" as API
+participant "AuthHelper.Authenticate()" as AUTH
+participant "Program.cs\nSaveUploadedPoiImageAsync()" as SAVE
+
+U -> POIFORM : submit (có imageFile trong FormData)
+POIFORM -> POIMULTI : await apiMultipart("/api/upload/poi-image", fd)
+POIMULTI -> API : POST multipart field **file** (jpg/jpeg/png/webp/gif)
+API -> AUTH : AuthHelper.Authenticate(context, authStore)
+API -> SAVE : await SaveUploadedPoiImageAsync(file, env, ct)
+SAVE --> API : relativePath ví dụ **images/ten-2026....jpg**
+API --> POIMULTI : JSON { imagePath }
+POIMULTI --> POIFORM : điền imagePath → body POST /api/pois hoặc PUT /api/pois/{id}
+
+note right of SAVE
+  File lưu dưới **WebRootPath/WEB/images/**
+  Static file: GET {host}/images/...
+end note
+@enduml

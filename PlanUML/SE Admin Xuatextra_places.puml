@@ -1,0 +1,18 @@
+@startuml
+title SE Admin Xuatextra_places
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor Admin as A
+participant "app.js\nexportBtn click" as FE
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nGET /api/export/extra_places.json" as API
+database "TravelGuideDb\nGetExportPlacesAsync()" as DB
+A -> FE : Click Export
+FE -> APIJS : await api(/api/export/extra_places.json)
+APIJS -> API : GET (Bearer admin)
+API -> DB : await GetExportPlacesAsync()
+DB --> API : List<ExportPoi>
+API --> FE : JSON
+FE -> FE : Blob + a.download = extra_places.json
+@enduml

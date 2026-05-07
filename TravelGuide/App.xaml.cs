@@ -19,6 +19,10 @@ public partial class App : Application
         InitializeComponent();
         _dbService = dbService;
         _narrationEngine = narrationEngine;
+        var savedTheme = Preferences.Get("app_theme", "light");
+        Current!.UserAppTheme = string.Equals(savedTheme, "dark", StringComparison.OrdinalIgnoreCase)
+            ? AppTheme.Dark
+            : AppTheme.Light;
 
         // Gọi nạp dữ liệu từ file JSON vào SQLite khi khởi động
         Task.Run(async () => await _dbService.SeedDataAsync());

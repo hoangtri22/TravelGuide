@@ -11,12 +11,19 @@
 		<UseMaui>true</UseMaui>
 		<UseMauiMaps>true</UseMauiMaps>
 		<SingleProject>true</SingleProject>
+		<ApplicationTitle>TravelGo</ApplicationTitle>
+		<ApplicationDisplayVersion>1.0.2</ApplicationDisplayVersion>
+		<ApplicationVersion>3</ApplicationVersion>
 
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
 	</PropertyGroup>
+
+	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+		<AndroidEnvironment Include="Platforms\Android\environment.txt" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
@@ -29,17 +36,17 @@
 
 	<ItemGroup>
 		<PackageReference Include="LocalizationResourceManager.Maui" Version="1.2.2" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.0" />
-		<PackageReference Include="Microsoft.Maui.Maps" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Maui.Controls" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Maui.Controls.Maps" Version="9.0.40" />
+		<PackageReference Include="Microsoft.Maui.Maps" Version="9.0.40" />
 
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
 
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 
-		<PackageReference Include="Plugin.Maui.Audio" Version="4.0.0" />
+		<PackageReference Include="ZXing.Net.Maui.Controls" Version="0.6.0" />
 
 		<PackageReference Include="sqlite-net-pcl" Version="1.9.172" />
 	</ItemGroup>
@@ -77,4 +84,14 @@
 			<Generator>MSBuild:Compile</Generator>
 		</MauiXaml>
 	</ItemGroup>
+
+	<!-- Tự động cập nhật endpoint cho Android máy thật từ IP LAN của PC host ở mỗi lần build trên Windows. -->
+	<Target Name="AutoUpdateAndroidPhysicalEndpoint"
+	        BeforeTargets="PrepareForBuild"
+	        Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(EnableAutoEndpointUpdate)' == 'true' and '$(Configuration)' != 'Release'">
+		<Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\scripts\update-device-endpoints.ps1&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot; -ApiPort 5096"
+		      ConsoleToMSBuild="true" />
+	</Target>
+
+	<ProjectExtensions><VisualStudio><UserProperties resources_4raw_4extra_3places_1json__JsonSchema="C:\Users\nhiph\AppData\Local\Microsoft\VisualStudio\18.0_1f482b63\OpenFolder\CMakePresets_schema.json" /></VisualStudio></ProjectExtensions>
 </Project>

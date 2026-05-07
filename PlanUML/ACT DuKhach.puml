@@ -1,0 +1,39 @@
+@startuml
+title ACT DuKhach — TravelGuide (MAUI)
+start
+:Mở app TravelGuide;
+if (Đã có token hợp lệ?) then (Không)
+  :TouristAuthService.EnsureTokenAsync()\n-> LoginByDeviceAsync() -> POST /api/tourist/auth/device-login;
+  if (Tạo phiên thành công?) then (Không)
+    :Hiển thị lỗi kết nối API;
+    stop
+  endif
+endif
+:HomePage.OnAppearing() -> LoadPlacesAsync() -> DatabaseService.GetPlacesAsync();
+:Timer ~5s: HomePage.RefreshPlacesIfChangedAsync()\nDatabaseService.TryGetFromApiAsync GET /api/public/pois;
+if (Chọn chức năng?) then (Map)
+  :MapPage.OnAppearing() -> LoadMap() + GpsBackgroundService.StartAsync();
+  :Timer ~5s: MapPage.RefreshMapIfPoiChangedAsync();
+  :GeofenceEngine.ProcessLocationAsync(location);
+  if (Vào vùng POI?) then (Có)
+    :NarrationEngine.SpeakAsync(poi);
+  endif
+elseif (QR)
+  :QrScannerPage.OnBarcodesDetected() -> HandleQrPayloadAsync(raw);
+  if (Mã premium?) then (Có)
+    :HandlePremiumClaimFlowAsync() -> RedeemPremiumClaimAsync();
+  else
+    :HandlePoiAfterScanAsync(place);
+    if (requiresPurchase?) then (Có)
+      :ConfirmPoiPurchaseAsync(poiId, amountVnd);
+    endif
+  endif
+else (History/Audio)
+  :QrScanHistoryPage.ReloadAsync() -> GetMyScanHistoryAsync();
+  if (Mở chi tiết POI và đánh giá?) then (Có)
+    :PlaceDetailPage.OnSubmitReviewClicked();
+    :DatabaseService.AddPlaceReviewAsync()\n-> TouristAuthService.SubmitPlaceReviewAsync();
+  endif
+endif
+stop
+@enduml

@@ -1,6 +1,7 @@
 # 📍 Travel Guide — Ứng dụng khám phá phố ẩm thực Vĩnh Khánh
 
 > **Đồ án môn học: Ngôn ngữ lập trình C# (841423)**
+
 > Lớp: DCT123C2
 
 
@@ -14,16 +15,21 @@
 
 ## 📖 Giới thiệu
 
-**Travel Guide** là ứng dụng di động **.NET MAUI Native** phục vụ du khách khám phá **Phố Ẩm Thực Vĩnh Khánh (Quận 4, TP. HCM)**: bản đồ **Mapbox GL** trong WebView, thuyết minh (TTS và/hoặc audio URL), geofence GPS và giao diện đa ngôn ngữ.
+**Travel Guide** là ứng dụng di động **.NET MAUI Native** phục vụ du khách khám phá **Phố Ẩm Thực Vĩnh Khánh (Quận 4, TP. HCM)**: bản đồ **Leaflet + OpenStreetMap** trong WebView, thuyết minh (TTS và/hoặc audio URL), geofence GPS, quét QR, lịch sử quét và giao diện đa ngôn ngữ.
 
-Kèm theo là **TravelGuide.AdminWeb** — trang quản trị chạy trên trình duyệt (**ASP.NET Core Minimal API** + một SPA nhỏ trong `wwwroot`: `index.html`, `app.js`, `styles.css`). Admin/owner đăng nhập bằng tài khoản lưu trong **SQLite** (`travelguide-admin.db`), chỉnh sửa POI (tên, mô tả, tọa độ, ảnh, link bản đồ ngoài, URL audio, mức ưu tiên geofence), duyệt/từ chối bài đăng, sửa bản dịch, quản lý user (gồm **khóa/mở khóa** đăng nhập) và **xuất `extra_places.json`** để đồng bộ với app. App mobile gọi API public/sync tương ứng để tải dữ liệu đã cấu hình.
+Hệ thống gồm 3 phần chạy cùng nhau:
+- **TravelGuide** (MAUI mobile app)
+- **TravelGuide.API** (ASP.NET Core Minimal API cho du khách: phiên thiết bị tự động, premium, unlock POI, scan-log, public POI)
+- **TravelGuide.AdminWeb** (ASP.NET Core Minimal API + SPA tĩnh trong thư mục `WEB`: `index.html`, `app.js`, `styles.css`)
+
+Admin/owner đăng nhập và quản trị dữ liệu trên **SQL Server**: chỉnh sửa POI (tên, mô tả, tọa độ, ảnh, link bản đồ ngoài, URL audio, mức ưu tiên geofence), duyệt/từ chối bài đăng, sửa bản dịch, quản lý user (gồm **khóa/mở khóa** đăng nhập) và **xuất `extra_places.json`** để đồng bộ với app.
 
 
 ## ✨ Tính năng chính
 
-### 🗺️ Bản đồ tương tác (WebView + Mapbox GL)
-- Bản đồ vector **Mapbox GL JS** (style streets), không dùng Leaflet/OSM làm mặc định
-- Token Mapbox: `Preferences`, biến môi trường `MAPBOX_ACCESS_TOKEN`, hoặc file local `Resources/Raw/mapbox_token.secret.txt` (một dòng `pk...`, đã khai báo trong `.gitignore` — **không commit token**)
+### 🗺️ Bản đồ tương tác (WebView + Leaflet + OpenStreetMap)
+- Bản đồ **Leaflet + OpenStreetMap** chạy trong WebView
+- Dữ liệu marker và highlight geofence do app đẩy qua JS bridge
 - Hiển thị POI trên bản đồ, màu marker theo bán kính; popup và nút định vị
 - Highlight địa điểm khi vào vùng geofence; đồng bộ vị trí người dùng
 
@@ -57,7 +63,7 @@ Kèm theo là **TravelGuide.AdminWeb** — trang quản trị chạy trên trìn
 - **Bản dịch**: chỉnh tên/mô tả EN, JA, KO, ZH từng POI; có thể bổ sung dịch gợi ý qua MyMemory (server)
 - **Tài khoản** (admin): tạo user, xóa (không xóa `admin`), **khóa / mở khóa** — user bị khóa không đăng nhập được
 - **Xuất** file JSON `extra_places.json` định dạng phù hợp app offline/seed
-- **Công nghệ**: SQLite một file cạnh thư mục chạy API, không có Razor/Blazor — API REST + file tĩnh
+- **Công nghệ**: SQL Server + API REST + file tĩnh trong `WEB` (không có Razor/Blazor)
 
 ---
 
@@ -66,10 +72,11 @@ Kèm theo là **TravelGuide.AdminWeb** — trang quản trị chạy trên trìn
 | Thành phần       | Công nghệ                                              |
 |------------------|--------------------------------------------------------|
 | Framework app    | .NET 9.0 MAUI (Native)                                 |
-| Bản đồ           | WebView + Mapbox GL JS                                 |
+| Bản đồ           | WebView + Leaflet + OpenStreetMap                      |
 | Âm thanh         | Plugin.Maui.Audio + MAUI TextToSpeech                  |
 | Cơ sở dữ liệu app| sqlite-net-pcl                                         |
-| Web admin        | ASP.NET Core 9 Minimal API + static `wwwroot` + SQLite  |
+| Tourist API      | ASP.NET Core 9 Minimal API + SQL Server                |
+| Web admin        | ASP.NET Core 9 Minimal API + static `WEB` + SQL Server |
 | Dịch thuật (CMS) | MyMemory API (trong AdminWeb)                          |
 | Đa ngôn ngữ UI   | LocalizationResourceManager.Maui + `.resx`             |
 | Messaging        | CommunityToolkit.Mvvm (WeakReferenceMessenger)         |
@@ -83,9 +90,11 @@ Kèm theo là **TravelGuide.AdminWeb** — trang quản trị chạy trên trìn
 TravelGuide/                                 # Thư mục gốc solution
 ├── TravelGuide.sln
 ├── README.md
+├── AUDIO/                                   # Audio mẫu / tài nguyên media ngoài app
 ├── TravelGuide/                             # Project ứng dụng MAUI
 │   ├── Models/
 │   │   ├── LocationMessage.cs
+│   │   ├── TouristPlaceReview.cs
 │   │   └── TouristPlace.cs
 │   ├── Platforms/
 │   │   ├── Android/   (Manifest, MainActivity, LocationService, …)
@@ -97,34 +106,47 @@ TravelGuide/                                 # Thư mục gốc solution
 │   │   └── Raw/
 │   │       ├── AboutAssets.txt
 │   │       ├── extra_places.json          # Seed địa điểm ban đầu
-│   │       └── mapbox_token.secret.txt    # (tự tạo, local) token Mapbox pk…
+│   │       └── mapbox_token.secret.txt    # (tuỳ chọn/legacy; hiện map dùng Leaflet + OSM)
 │   ├── AppResources*.resx                 # Chuỗi UI đa ngôn ngữ
 │   ├── App.xaml / AppShell.xaml
 │   ├── MainPage.xaml / .cs                  # Chọn ngôn ngữ, tiền tệ
 │   ├── HomePage.xaml / .cs                  # Trang chủ, danh sách địa điểm
-│   ├── MapPage.xaml / .cs                   # WebView Mapbox, GPS, geofence UI
+│   ├── MapPage.xaml / .cs                   # WebView Leaflet+OSM, GPS, geofence UI
 │   ├── PlaceDetailPage.xaml / .cs
 │   ├── AudioPage.xaml / .cs
 │   ├── MiniPlayerView.xaml / .cs
+│   ├── QrScannerPage.xaml / .cs
+│   ├── QrScanHistoryPage.xaml / .cs
 │   ├── DatabaseService.cs
 │   ├── GeofenceEngine.cs
 │   ├── GpsBackgroundService.cs
 │   ├── NarrationEngine.cs
 │   ├── TranslationService.cs
+│   ├── TouristAuthService.cs
+│   ├── EndpointResolver.cs
 │   ├── MapboxConfig.cs
 │   ├── MapboxTokenBootstrap.cs
 │   └── MauiProgram.cs
 │
+├── TravelGuide.API/                         # API cho du khách
+│   ├── Program.cs
+│   └── Data/TouristDb.cs
+│
 ├── TravelGuide.AdminWeb/                    # CMS: API + SPA
 │   ├── Program.cs                           # Minimal API, static files
-│   ├── Data/TravelGuideDb.cs                # SQLite admin (POI, UserAccount, khóa TK…)
+│   ├── Data/TravelGuideDb.cs                # SQL Server admin (POI, UserAccount, khóa TK…)
 │   ├── Models/Dtos.cs
 │   ├── Auth/
-│   ├── wwwroot/                             # index.html, app.js, styles.css
+│   ├── WEB/
+│   │   ├── index.html / app.js / styles.css
+│   │   ├── poi-create.html / poi-create.js  # Form tạo/sửa POI
+│   │   ├── audio/                           # audio upload từ admin
+│   │   └── ...
 │   └── Properties/launchSettings.json       # http://localhost:5280
 │
-├── Diagrams/
-├── PRD_TravelGuide_Standard.md
+├── Diagrams/                                # Sơ đồ UML / quy trình
+├── TravelGuide.sql
+├── SCAN_HISTORY_IMPLEMENTATION_NOTES.md
 └── TravelGuide_PRD.docx
 ```
 
@@ -142,7 +164,7 @@ TravelGuide/                                 # Thư mục gốc solution
 
 **1. Tải mã nguồn**
 ```
-https://github.com/hoangtri22/demo-git
+https://github.com/hoangtri22/TravelGuide
 ```
 Nhấn **Code → Download ZIP** → Giải nén ra thư mục
 
@@ -155,7 +177,6 @@ Nhấn **Code → Download ZIP** → Giải nén ra thư mục
 - Hoặc: `dotnet restore`
 
 **4. Chạy ứng dụng**
-- **Mapbox:** tạo `TravelGuide/Resources/Raw/mapbox_token.secret.txt` (một dòng token `pk…` từ [Mapbox](https://account.mapbox.com/access-tokens/)) — file đã `.gitignore`, **không commit**; sau đó **Clean + Rebuild**
 - **Startup project**: `TravelGuide` (không chọn AdminWeb khi chạy app điện thoại/emulator)
 - Chọn **Android Emulator** (hoặc máy thật), nhấn **F5**
 
@@ -172,15 +193,80 @@ Nhấn **Code → Download ZIP** → Giải nén ra thư mục
 
 ### Chạy Web Admin
 ```bash
-cd D:\Project\TravelGuide
+cd <duong-dan-toi-thu-muc-TravelGuide>
 dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj" --launch-profile http
 ```
 - URL: **`http://localhost:5280`**
 - Mặc định: **`admin` / `admin123`**
-- Demo owner: **`chuquan1`**, **`chuquan2`** / **`chuquan123`**
-- Sáu chủ quán phố (nếu có trong DB): **`owner_oc_oanh`**, **`owner_oc_dao_2`**, **`owner_sui_cao_tan_tong_loi`**, **`owner_lau_bo_khu_nha_chay`**, **`owner_oc_vu`**, **`owner_oc_linh`** — cùng mật khẩu **`VkQuan@123`** (hash được đồng bộ mỗi lần khởi động Admin Web)
+- Demo owner:  **`owner_oc_oanh`**, **`owner_oc_dao_2`**, **`owner_sui_cao_tan_tong_loi`**, **`owner_lau_bo_khu_nha_chay`**, **`owner_oc_vu`**, **`owner_oc_linh`** — cùng mật khẩu **`VkQuan@123`** (hash được đồng bộ mỗi lần khởi động Admin Web)
 - Nếu build báo **file .exe đang bị khóa**: đang có tiến trình `TravelGuide.AdminWeb` chạy — tắt cửa sổ `dotnet run` cũ hoặc `taskkill /F /IM TravelGuide.AdminWeb.exe`, rồi chạy lại
 - **Quản lý tài khoản**: admin có thể **khóa / mở khóa** user (trừ tài khoản `admin`); user bị khóa không đăng nhập được
+
+### Chạy Tourist API (cho app du khách)
+```bash
+cd <duong-dan-toi-thu-muc-TravelGuide>
+dotnet run --project "TravelGuide.API/TravelGuide.API.csproj"
+```
+- Swagger (mặc định profile `https`): `https://localhost:7149/swagger`
+- Có thể dùng HTTP: `http://localhost:5096/swagger`
+- Cấu hình giá mô phỏng: `TravelGuide.API/appsettings.json` (`TouristPricing`)
+
+### Dùng Dev Tunnel (devtunnels.ms) cho máy thật
+Mục tiêu luồng: `App điện thoại -> https://*.devtunnels.ms -> localhost trên máy dev`.
+
+1. Chạy backend local trước:
+   - Tourist API: `dotnet run --project "TravelGuide.API/TravelGuide.API.csproj"`
+   - (tuỳ chọn) AdminWeb: `dotnet run --project "TravelGuide.AdminWeb/TravelGuide.AdminWeb.csproj" --launch-profile http`
+2. Trong Visual Studio mở **Dev Tunnels** và forward đúng port:
+   - API: `5096` (Public)
+   - AdminWeb: `5280` (Public, nếu cần các endpoint web/admin)
+3. Start tunnel, chờ trạng thái `Running`, copy URL public.
+4. Ghi URL tunnel vào app config:
+   - 1 URL chung cho cả API + AdminWeb:
+     - `powershell -ExecutionPolicy Bypass -File .\scripts\set-devtunnel-endpoints.ps1 -ApiTunnelUrl "https://abc123.devtunnels.ms"`
+   - 2 URL riêng:
+     - `powershell -ExecutionPolicy Bypass -File .\scripts\set-devtunnel-endpoints.ps1 -ApiTunnelUrl "https://api-abc123.devtunnels.ms" -AdminTunnelUrl "https://admin-abc123.devtunnels.ms"`
+5. Build lại app MAUI và cài APK lên máy thật.
+
+Ghi chú:
+- File được cập nhật: `TravelGuide/Resources/Raw/device_endpoints.json`.
+- Nếu tunnel URL đổi, chạy lại script rồi build lại app.
+- Nếu tunnel đang `Stopped` hoặc chưa forward port, app sẽ không gọi được API.
+
+### Tải APK từ internet bằng URL public cố định (QR dùng lâu dài)
+1. Chuẩn bị URL tải APK public (có thể là domain tunnel hoặc link Google Drive direct download).
+2. Tạo tunnel cố định bằng Cloudflare Tunnel (named tunnel + DNS route):
+   - `cloudflared tunnel create travelguide-adminweb`
+   - `cloudflared tunnel route dns travelguide-adminweb app-download.your-domain.com`
+   - Cấu hình ingress theo mẫu `scripts/cloudflared-config.example.yml`.
+3. Cấu hình URL public cho AdminWeb (ưu tiên một trong hai cách):
+   - `TravelGuide.AdminWeb/appsettings.json`:
+     - `ApkPublic:DownloadUrl=https://...`
+   - hoặc biến môi trường:
+     - `TRAVELGUIDE_PUBLIC_APK_URL=https://...`
+   - `TRAVELGUIDE_CLOUDFLARE_TUNNEL_NAME=travelguide-adminweb`
+4. Chạy script tự động server + tunnel:
+   - `powershell -ExecutionPolicy Bypass -File .\scripts\start-public-apk-tunnel.ps1`
+5. Trong AdminWeb (tab POI), khối **Tải APK qua QR (Tunnel Public)** sẽ hiển thị:
+   - QR tĩnh: `/qrcodes/apk-download-static.png`
+   - Nút **Tải APP** trực tiếp
+6. Có thể mở trang public chứa QR (không cần vào dashboard admin):
+   - `/apk-qr.html`
+   - Ví dụ qua tunnel: `https://<admin-tunnel-url>/apk-qr.html`
+   - Trang này hiển thị QR tĩnh + nút tải/copy link từ server (không có phần nhập link thủ công).
+
+Ghi chú:
+- Endpoint tải trực tiếp: `GET /download/apk`
+- API metadata QR: `GET /api/download/apk-info`
+- QR chỉ regenerate khi `TRAVELGUIDE_PUBLIC_APK_URL` đổi, nên có thể in dùng lâu dài.
+
+### Build APK Release (file signed)
+```bash
+cd <duong-dan-toi-thu-muc-TravelGuide>
+dotnet build "TravelGuide/TravelGuide.csproj" -f net9.0-android -c Release -t:SignAndroidPackage
+```
+- File APK signed sau khi build:
+  - `TravelGuide/bin/Release/net9.0-android/TravelGuide.TravelGuide-Signed.apk`
 
 ## 🔄 Luồng hoạt động
 
@@ -190,7 +276,7 @@ Khởi động app
     → HomePage — danh sách, tìm kiếm, lối tới Bản đồ / Âm thanh / Gần đây
 
 Khi mở MapPage
-    → GPS cập nhật vị trí; WebView Mapbox hiển thị POI
+    → GPS cập nhật vị trí; WebView Leaflet + OSM hiển thị POI
     → GeofenceEngine so khớp vị trí với POI (debounce + priority + cooldown)
     → Phát audio URL hoặc TTS; MiniPlayer hiển thị đáy màn hình
 
@@ -202,5 +288,3 @@ Khi đổi ngôn ngữ
 
 - Ứng dụng tập trung khu vực **Phố Ẩm Thực Vĩnh Khánh, Quận 4, TP. HCM**
 - Dữ liệu: seed `extra_places.json` + quản lý qua **Admin Web** (CRUD POI, duyệt, bản dịch, export JSON cho app)
-- **Không commit** token Mapbox; nếu lộ token nên rotate trên dashboard Mapbox
-- PRD: `PRD_TravelGuide_Standard.md`, `TravelGuide_PRD.docx`

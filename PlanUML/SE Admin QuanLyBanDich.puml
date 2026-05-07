@@ -1,0 +1,37 @@
+@startuml
+title SE Admin QuanLyBanDich
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor Admin as A
+participant "app.js\nloadTranslation(id)" as FE
+participant "app.js\nsubmit translationForm" as SUB
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nGET /api/translations/{id}" as GET
+participant "Program.cs\nPUT /api/translations/{id}" as PUT
+participant "Program.cs\nPOST /api/translations/{id}/regenerate" as REG
+database "TravelGuideDb\nEnsureAutoTranslationsAsync()" as AUTO
+database "TravelGuideDb\nUpdateTranslationsAsync()" as DB
+database "TravelGuideDb\nClearTranslationsAsync()" as CLR
+A -> FE : Chọn POI / await loadTranslation(id)
+FE -> APIJS : await api(`/api/translations/${id}?lang=...`)
+APIJS -> GET : GET handler
+GET -> AUTO : await EnsureAutoTranslationsAsync(httpClient, id, lang)
+GET -> GET : await GetPoiAsync(id)
+GET --> FE : PoiDto JSON
+A -> SUB : submit translationForm
+SUB -> APIJS : await api(`/api/translations/${id}`, { method: PUT, body: ... })
+APIJS -> PUT : MapPut handler
+PUT -> DB : await UpdateTranslationsAsync(id, request)
+PUT --> FE : 200/404
+alt nút Tạo lại / regenerate (app.js)
+  A -[hidden]-> FE
+  APIJS -[hidden]-> REG
+  A -> FE : bấm Tạo lại (ngôn ngữ đang chọn)
+  FE -> APIJS : await api(`/api/translations/${id}/regenerate?lang=...`, { method: POST })
+  APIJS -> REG : MapPost handler
+  REG -> CLR : ClearTranslationsAsync(id, lang)
+  REG -> AUTO : EnsureAutoTranslationsAsync rồi GetPoiAsync
+  REG --> FE : PoiDto JSON mới
+end
+@enduml

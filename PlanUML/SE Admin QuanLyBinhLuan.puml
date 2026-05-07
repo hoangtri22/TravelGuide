@@ -1,0 +1,42 @@
+@startuml
+title SE Admin QuanLyBinhLuan
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor Admin as A
+participant "app.js\nloadComments()" as FE
+participant "app.js\napi(url, options)" as APIJS
+participant "Program.cs\nGET /api/comments" as GET
+participant "Program.cs\nPUT /api/comments/{id}/status" as STATUS
+participant "Program.cs\nPUT /api/comments/{id}/reply" as REPLY
+participant "Program.cs\nDELETE /api/comments/{id}" as DEL
+database "TravelGuideDb\nGetCommentsAsync()" as DBGET
+database "TravelGuideDb\nUpdateCommentStatusAsync()" as DBST
+database "TravelGuideDb\nReplyCommentAsync()" as DBRP
+database "TravelGuideDb\nDeleteCommentAsync()" as DBDL
+A -> FE : Tab bình luận / filter / phân trang
+FE -> APIJS : await api(`/api/comments?status=...&search=...&page=...`)
+APIJS -> GET : GET handler
+GET -> DBGET : await GetCommentsAsync(status, search, page, pageSize)
+GET --> FE : CommentListResponseDto
+alt đổi trạng thái
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DEL
+  FE -> APIJS : await api(`/api/comments/${id}/status`, { method: PUT, ... })
+  APIJS -> STATUS : MapPut
+  STATUS -> DBST : await UpdateCommentStatusAsync(id, status, reason)
+else trả lời
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DEL
+  FE -> APIJS : await api(`/api/comments/${id}/reply`, { method: PUT, ... })
+  APIJS -> REPLY : MapPut
+  REPLY -> DBRP : await ReplyCommentAsync(id, reply)
+else xóa
+  A -[hidden]-> FE
+  APIJS -[hidden]-> DEL
+  FE -> APIJS : await api(`/api/comments/${id}`, { method: DELETE })
+  APIJS -> DEL : MapDelete
+  DEL -> DBDL : await DeleteCommentAsync(id)
+end
+FE -> FE : await loadComments()
+@enduml

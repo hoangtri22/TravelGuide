@@ -100,6 +100,54 @@
 	<data name="ViewDetail">
 		<value>Xem chi tiết ></value>
 	</data>
+	<data name="HomeGreeting">
+		<value>Xin chào, Traveler! 👋</value>
+	</data>
+	<data name="HomeGreetingSub">
+		<value>📍 Hà Nội, Việt Nam • Hôm nay có nhiều điểm gần bạn</value>
+	</data>
+	<data name="HomeFeaturedTitle">
+		<value>🔥 Điểm nổi bật</value>
+	</data>
+	<data name="HomeHotBadge">
+		<value>🔥 Hot</value>
+	</data>
+	<data name="HomeMapSectionTitle">
+		<value>🗺️ Bản đồ du lịch</value>
+	</data>
+	<data name="HomeExpand">
+		<value>Mở rộng →</value>
+	</data>
+	<data name="HomeNearbyTitle">
+		<value>📍 Địa điểm gần bạn</value>
+	</data>
+	<data name="HomeFullScreen">
+		<value>Toàn màn hình</value>
+	</data>
+	<data name="NavTabAudio">
+		<value>Âm thanh</value>
+	</data>
+	<data name="NavTabSaved">
+		<value>Đã lưu</value>
+	</data>
+	<data name="NavTabProfile">
+		<value>Hồ sơ</value>
+	</data>
+	<data name="NavTabScanHistory">
+		<value>Lịch quét</value>
+	</data>
+	<data name="ScanHistoryTitle">
+		<value>Lịch quét</value>
+	</data>
+	<data name="ScanHistoryEmpty">
+		<value>Chưa có địa điểm mở qua QR. Quét mã để lưu vào đây.</value>
+	</data>
+	<data name="ScanHistoryLoginRequired">
+		<value>Đăng nhập tài khoản du khách để xem lịch quét.</value>
+	</data>
+	<data name="ScanHistoryPlaceMissing">
+		<value>Địa điểm không còn trong danh sách công khai.</value>
+	</data>
 
 	<!-- MapPage -->
 	<data name="MapTitle">

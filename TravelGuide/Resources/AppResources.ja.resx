@@ -100,6 +100,54 @@
 	<data name="ViewDetail">
 		<value>詳細を見る ></value>
 	</data>
+	<data name="HomeGreeting">
+		<value>こんにちは、トラベラー！👋</value>
+	</data>
+	<data name="HomeGreetingSub">
+		<value>📍 ハノイ、ベトナム • 今日は近くのスポットがたくさんあります</value>
+	</data>
+	<data name="HomeFeaturedTitle">
+		<value>🔥 注目スポット</value>
+	</data>
+	<data name="HomeHotBadge">
+		<value>🔥 人気</value>
+	</data>
+	<data name="HomeMapSectionTitle">
+		<value>🗺️ 旅行マップ</value>
+	</data>
+	<data name="HomeExpand">
+		<value>拡大 →</value>
+	</data>
+	<data name="HomeNearbyTitle">
+		<value>📍 近くのスポット</value>
+	</data>
+	<data name="HomeFullScreen">
+		<value>全画面</value>
+	</data>
+	<data name="NavTabAudio">
+		<value>オーディオ</value>
+	</data>
+	<data name="NavTabSaved">
+		<value>保存</value>
+	</data>
+	<data name="NavTabProfile">
+		<value>プロフィール</value>
+	</data>
+	<data name="NavTabScanHistory">
+		<value>スキャン履歴</value>
+	</data>
+	<data name="ScanHistoryTitle">
+		<value>スキャン履歴</value>
+	</data>
+	<data name="ScanHistoryEmpty">
+		<value>QRで開いたスポットはまだありません。</value>
+	</data>
+	<data name="ScanHistoryLoginRequired">
+		<value>スキャン履歴を見るにはログインしてください。</value>
+	</data>
+	<data name="ScanHistoryPlaceMissing">
+		<value>このスポットは公開リストにありません。</value>
+	</data>
 
 	<!-- MapPage -->
 	<data name="MapTitle">

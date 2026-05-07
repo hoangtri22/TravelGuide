@@ -1,5 +1,7 @@
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using TravelGuide.AdminWeb.Models;
 using TravelGuide.AdminWeb.Services;
@@ -7,12 +9,13 @@ using TravelGuide.AdminWeb.Services;
 namespace TravelGuide.AdminWeb.Data;
 
 /// <summary>
-/// Truy cập SQLite <c>travelguide-admin.db</c>: bảng Poi, UserAccount; seed admin/POI; dịch tự động MyMemory.
+/// Truy cập SQL Server: bảng Poi, UserAccount; seed admin/POI; dịch tự động MyMemory.
 /// </summary>
 public sealed class TravelGuideDb
 {
     private readonly string _connectionString;
     private readonly SemaphoreSlim _translationLock = new(1, 1);
+    private static readonly JsonSerializerOptions CaseInsensitiveJson = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>Bỏ khoảng trắng đầu/cuối và ký tự zero-width hay gặp khi copy từ Word/Excel.</summary>
     public static string NormalizeLoginUsername(string? username)
@@ -28,11 +31,29 @@ public sealed class TravelGuideDb
         return sb.ToString();
     }
 
-    /// <summary>Chuỗi kết nối tới file DB trong thư mục chạy ứng dụng.</summary>
+    /// <summary>
+    /// Chỉ giữ tài khoản du khách theo cơ chế đăng nhập thiết bị mới:
+    /// username có tiền tố <c>device_</c> hoặc hậu tố id thiết bị dài sau dấu gạch dưới.
+    /// </summary>
+    private static bool IsDeviceManagedTouristUsername(string? username)
+    {
+        var u = (username ?? string.Empty).Trim().ToLowerInvariant();
+        if (u.Length == 0) return false;
+        if (u.StartsWith("device_", StringComparison.Ordinal)) return true;
+
+        var splitAt = u.LastIndexOf('_');
+        if (splitAt <= 0 || splitAt >= u.Length - 1) return false;
+        var suffix = u[(splitAt + 1)..];
+        if (suffix.Length < 12 || suffix.Length > 48) return false;
+        return suffix.All(char.IsLetterOrDigit);
+    }
+
+    /// <summary>Chuỗi kết nối SQL Server (localdb mặc định nếu không cấu hình biến môi trường).</summary>
     public TravelGuideDb()
     {
-        var dbPath = Path.Combine(AppContext.BaseDirectory, "travelguide-admin.db");
-        _connectionString = $"Data Source={dbPath}";
+        _connectionString =
+            Environment.GetEnvironmentVariable("TRAVELGUIDE_SQLSERVER")
+            ?? "Server=(localdb)\\MSSQLLocalDB;Database=TravelGuideDb;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=True";
     }
 
     /// <summary>Tạo bảng/cột nếu thiếu, seed admin + POI mẫu khi DB trống.</summary>
@@ -42,39 +63,141 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
 
         var sql = """
-                  CREATE TABLE IF NOT EXISTS Poi(
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    NameVi TEXT NOT NULL,
-                    NameEn TEXT NOT NULL DEFAULT '',
-                    NameJa TEXT NOT NULL DEFAULT '',
-                    NameKo TEXT NOT NULL DEFAULT '',
-                    NameZh TEXT NOT NULL DEFAULT '',
-                    DescVi TEXT NOT NULL,
-                    DescEn TEXT NOT NULL DEFAULT '',
-                    DescJa TEXT NOT NULL DEFAULT '',
-                    DescKo TEXT NOT NULL DEFAULT '',
-                    DescZh TEXT NOT NULL DEFAULT '',
-                    Latitude REAL NOT NULL,
-                    Longitude REAL NOT NULL,
-                    Radius REAL NOT NULL DEFAULT 50,
-                    ImagePath TEXT NOT NULL DEFAULT '',
-                    AudioUrl TEXT NOT NULL DEFAULT '',
-                    Status TEXT NOT NULL DEFAULT 'published',
-                    RejectReason TEXT NOT NULL DEFAULT '',
-                    OwnerUserId INTEGER NOT NULL DEFAULT 0,
-                    Priority INTEGER NOT NULL DEFAULT 0,
-                    MapLink TEXT NOT NULL DEFAULT ''
-                  );
+                  IF OBJECT_ID(N'dbo.Poi', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.Poi(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      NameVi NVARCHAR(300) NOT NULL,
+                      NameEn NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameJa NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameKo NVARCHAR(300) NOT NULL DEFAULT N'',
+                      NameZh NVARCHAR(300) NOT NULL DEFAULT N'',
+                      DescVi NVARCHAR(MAX) NOT NULL,
+                      DescEn NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescJa NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescKo NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      DescZh NVARCHAR(MAX) NOT NULL DEFAULT N'',
+                      Latitude FLOAT NOT NULL,
+                      Longitude FLOAT NOT NULL,
+                      Radius FLOAT NOT NULL DEFAULT 50,
+                      ImagePath NVARCHAR(500) NOT NULL DEFAULT N'',
+                      AudioUrl NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      QrImagePath NVARCHAR(1000) NULL,
+                      Status NVARCHAR(30) NOT NULL DEFAULT N'published',
+                      RejectReason NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      OwnerUserId INT NOT NULL DEFAULT 0,
+                      Priority INT NOT NULL DEFAULT 0,
+                      MapLink NVARCHAR(1000) NOT NULL DEFAULT N'',
+                      Price DECIMAL(18,2) NOT NULL DEFAULT 0,
+                      Tag NVARCHAR(100) NOT NULL DEFAULT N'Địa Điểm Du Lịch'
+                    );
+                  END;
 
-                  CREATE TABLE IF NOT EXISTS UserAccount(
-                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    Username TEXT NOT NULL UNIQUE,
-                    PasswordHash TEXT NOT NULL,
-                    DisplayName TEXT NOT NULL,
-                    Role TEXT NOT NULL,
-                    IsLocked INTEGER NOT NULL DEFAULT 0,
-                    RegistrationApproved INTEGER NOT NULL DEFAULT 1
-                  );
+                  IF OBJECT_ID(N'dbo.UserAccount', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.UserAccount(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      Username NVARCHAR(120) NOT NULL UNIQUE,
+                      PasswordHash NVARCHAR(256) NOT NULL,
+                      DisplayName NVARCHAR(200) NOT NULL,
+                      Role NVARCHAR(30) NOT NULL,
+                      IsLocked BIT NOT NULL DEFAULT 0,
+                      RegistrationApproved BIT NOT NULL DEFAULT 1
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristUser', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristUser(
+                      Id INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      Username NVARCHAR(100) NOT NULL UNIQUE,
+                      PasswordHash NVARCHAR(256) NOT NULL,
+                      DisplayName NVARCHAR(200) NOT NULL,
+                      AccountTier NVARCHAR(20) NOT NULL DEFAULT N'free',
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.RefreshToken', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.RefreshToken(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      TokenHash NVARCHAR(256) NOT NULL,
+                      DeviceId NVARCHAR(120) NULL,
+                      UserAgent NVARCHAR(500) NULL,
+                      IpAddress NVARCHAR(64) NULL,
+                      ExpiresAtUtc DATETIME2(0) NOT NULL,
+                      RevokedAtUtc DATETIME2(0) NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                    );
+                    CREATE UNIQUE INDEX UX_RefreshToken_TokenHash ON dbo.RefreshToken(TokenHash);
+                    CREATE INDEX IX_RefreshToken_TouristUserId ON dbo.RefreshToken(TouristUserId, ExpiresAtUtc DESC);
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristAppOpenLog', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristAppOpenLog(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      OpenedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                    );
+                    CREATE INDEX IX_TouristAppOpenLog_Opened ON dbo.TouristAppOpenLog(OpenedAtUtc DESC);
+                    CREATE INDEX IX_TouristAppOpenLog_User ON dbo.TouristAppOpenLog(TouristUserId, OpenedAtUtc DESC);
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristFavorite', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristFavorite(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      PoiId INT NOT NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id),
+                      UNIQUE (TouristUserId, PoiId)
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.TouristVisitHistory', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristVisitHistory(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      PoiId INT NOT NULL,
+                      EventType NVARCHAR(30) NOT NULL DEFAULT N'view',
+                      PlaybackSeconds INT NOT NULL DEFAULT 0,
+                      WatchedPercent DECIMAL(5,2) NOT NULL DEFAULT 0,
+                      Source NVARCHAR(50) NULL,
+                      OccurredAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      FOREIGN KEY (PoiId) REFERENCES dbo.Poi(Id)
+                    );
+                  END;
+
+                  IF OBJECT_ID(N'dbo.PaymentTransaction', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.PaymentTransaction(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      Provider NVARCHAR(50) NOT NULL,
+                      ProviderRef NVARCHAR(150) NOT NULL,
+                      PlanCode NVARCHAR(50) NOT NULL DEFAULT N'premium_monthly',
+                      Currency NVARCHAR(10) NOT NULL DEFAULT N'VND',
+                      Amount DECIMAL(18,2) NOT NULL,
+                      Status NVARCHAR(30) NOT NULL,
+                      PaidAtUtc DATETIME2(0) NULL,
+                      ExpiresAtUtc DATETIME2(0) NULL,
+                      RawPayloadJson NVARCHAR(MAX) NULL,
+                      CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id),
+                      UNIQUE (Provider, ProviderRef)
+                    );
+                  END;
                   """;
 
         await using var command = connection.CreateCommand();
@@ -82,7 +205,11 @@ public sealed class TravelGuideDb
         await command.ExecuteNonQueryAsync();
 
         await EnsurePoiColumnsAsync(connection);
+        await EnsureQrImagePathNullableAsync(connection);
         await EnsureUserAccountColumnsAsync(connection);
+        await EnsureTouristUserAccountTierColumnAsync(connection);
+        await EnsureTouristPoiQrScanLogTableAsync(connection);
+        await EnsureTouristCommentTableAsync(connection);
 
         var hasAdmin = await GetUserByUsernameAsync("admin");
         if (hasAdmin is null)
@@ -92,6 +219,7 @@ public sealed class TravelGuideDb
 
         await EnsureDemoOwnerAccountsAsync();
         await EnsurePhoOwnerDemoPasswordsAsync();
+        await EnsureDemoCommentsAsync();
 
         await SyncPoisWithExtraPlacesFileAsync();
 
@@ -111,8 +239,11 @@ public sealed class TravelGuideDb
         double Radius,
         string ImagePath,
         string AudioUrl,
+        string QrImagePath,
         int Priority,
-        string MapLink);
+        string MapLink,
+        decimal Price,
+        string Tag);
 
     /// <summary>Ánh xạ tên POI (VI) → username chủ quán phố; POI không có trong bảng → <c>OwnerUserId = 0</c> (điểm chung).</summary>
     private static readonly (string NameVi, string OwnerUsername)[] StreetVendorPoiOwners =
@@ -138,8 +269,7 @@ public sealed class TravelGuideDb
         try
         {
             await using var stream = File.OpenRead(path);
-            rows = await JsonSerializer.DeserializeAsync<List<ExtraPlaceJson>>(stream,
-                       new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            rows = await JsonSerializer.DeserializeAsync<List<ExtraPlaceJson>>(stream, CaseInsensitiveJson)
                    ?? [];
         }
         catch
@@ -177,7 +307,7 @@ public sealed class TravelGuideDb
             int existingOwner = 0;
             await using (var q = connection.CreateCommand())
             {
-                q.CommandText = "SELECT Id, OwnerUserId FROM Poi WHERE NameVi = $n LIMIT 1";
+                q.CommandText = "SELECT Id, OwnerUserId FROM Poi WHERE NameVi = $n";
                 q.Parameters.AddWithValue("$n", row.NameVi);
                 await using var reader = await q.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -191,8 +321,8 @@ public sealed class TravelGuideDb
             {
                 await using var ins = connection.CreateCommand();
                 ins.CommandText = """
-                                    INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink)
-                                    VALUES ($nameVi, '', '', '', '', $descVi, '', '', '', '', $lat, $lon, $radius, $imagePath, $audioUrl, 'published', '', $ownerUserId, $priority, $mapLink);
+                                    INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag)
+                                    VALUES ($nameVi, '', '', '', '', $descVi, '', '', '', '', $lat, $lon, $radius, $imagePath, $audioUrl, $qrImagePath, 'published', '', $ownerUserId, $priority, $mapLink, $price, $tag);
                                     """;
                 ins.Parameters.AddWithValue("$nameVi", row.NameVi);
                 ins.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
@@ -201,16 +331,77 @@ public sealed class TravelGuideDb
                 ins.Parameters.AddWithValue("$radius", row.Radius);
                 ins.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
                 ins.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                ins.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
                 ins.Parameters.AddWithValue("$priority", row.Priority);
                 ins.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                ins.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                ins.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 ins.Parameters.AddWithValue("$ownerUserId", mappedOwnerId);
                 await ins.ExecuteNonQueryAsync();
             }
             else if (existingOwner == 0 && mappedOwnerId != 0)
             {
                 await using var up = connection.CreateCommand();
-                up.CommandText = "UPDATE Poi SET OwnerUserId = $oid WHERE Id = $id AND OwnerUserId = 0";
+                up.CommandText = """
+                                 UPDATE Poi SET
+                                   DescVi = $descVi,
+                                   Latitude = $lat,
+                                   Longitude = $lon,
+                                   Radius = $radius,
+                                   ImagePath = $imagePath,
+                                   AudioUrl = $audioUrl,
+                                   QrImagePath = $qrImagePath,
+                                   Priority = $priority,
+                                   MapLink = $mapLink,
+                                   Price = $price,
+                                   Tag = $tag,
+                                   OwnerUserId = $oid
+                                 WHERE Id = $id;
+                                 """;
+                up.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
+                up.Parameters.AddWithValue("$lat", row.Latitude);
+                up.Parameters.AddWithValue("$lon", row.Longitude);
+                up.Parameters.AddWithValue("$radius", row.Radius);
+                up.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
+                up.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                up.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
+                up.Parameters.AddWithValue("$priority", row.Priority);
+                up.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                up.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                up.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 up.Parameters.AddWithValue("$oid", mappedOwnerId);
+                up.Parameters.AddWithValue("$id", existingId.Value);
+                await up.ExecuteNonQueryAsync();
+            }
+            else if (existingId is not null)
+            {
+                await using var up = connection.CreateCommand();
+                up.CommandText = """
+                                 UPDATE Poi SET
+                                   DescVi = $descVi,
+                                   Latitude = $lat,
+                                   Longitude = $lon,
+                                   Radius = $radius,
+                                   ImagePath = $imagePath,
+                                   AudioUrl = $audioUrl,
+                                   QrImagePath = $qrImagePath,
+                                   Priority = $priority,
+                                   MapLink = $mapLink,
+                                   Price = $price,
+                                   Tag = $tag
+                                 WHERE Id = $id;
+                                 """;
+                up.Parameters.AddWithValue("$descVi", row.DescVi ?? "");
+                up.Parameters.AddWithValue("$lat", row.Latitude);
+                up.Parameters.AddWithValue("$lon", row.Longitude);
+                up.Parameters.AddWithValue("$radius", row.Radius);
+                up.Parameters.AddWithValue("$imagePath", row.ImagePath ?? "");
+                up.Parameters.AddWithValue("$audioUrl", row.AudioUrl ?? "");
+                up.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(row.QrImagePath) ? null : row.QrImagePath);
+                up.Parameters.AddWithValue("$priority", row.Priority);
+                up.Parameters.AddWithValue("$mapLink", row.MapLink ?? "");
+                up.Parameters.AddWithValue("$price", row.Price < 0 ? 0 : row.Price);
+                up.Parameters.AddWithValue("$tag", NormalizeTag(row.Tag));
                 up.Parameters.AddWithValue("$id", existingId.Value);
                 await up.ExecuteNonQueryAsync();
             }
@@ -233,7 +424,7 @@ public sealed class TravelGuideDb
         }
 
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi"
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi"
             + (where.Count > 0 ? " WHERE " + string.Join(" AND ", where) : "")
             + " ORDER BY Id";
         if (ownerUserId.HasValue)
@@ -253,7 +444,7 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi WHERE OwnerUserId = $oid ORDER BY Id";
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi WHERE OwnerUserId = $oid ORDER BY Id";
         cmd.Parameters.AddWithValue("$oid", ownerUserId);
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -268,7 +459,7 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText =
-            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink FROM Poi WHERE Id = $id";
+            "SELECT Id, NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag FROM Poi WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) return null;
@@ -293,11 +484,14 @@ public sealed class TravelGuideDb
             reader.GetDouble(13),
             reader.GetString(14),
             reader.GetString(15),
-            reader.GetString(16),
+            reader.IsDBNull(16) ? null : reader.GetString(16),
             reader.GetString(17),
-            reader.GetInt32(18),
+            reader.GetString(18),
             reader.GetInt32(19),
-            reader.GetString(20)
+            reader.GetInt32(20),
+            reader.GetString(21),
+            Convert.ToDecimal(reader.GetDouble(22)),
+            reader.GetString(23)
         );
 
     /// <summary>Thêm POI; admin → published, owner → pending và gán OwnerUserId.</summary>
@@ -307,8 +501,8 @@ public sealed class TravelGuideDb
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                          INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, Status, RejectReason, OwnerUserId, Priority, MapLink)
-                          VALUES ($nameVi, $nameEn, $nameJa, $nameKo, $nameZh, $descVi, $descEn, $descJa, $descKo, $descZh, $lat, $lon, $radius, $imagePath, $audioUrl, $status, $rejectReason, $ownerUserId, $priority, $mapLink);
+                          INSERT INTO Poi(NameVi, NameEn, NameJa, NameKo, NameZh, DescVi, DescEn, DescJa, DescKo, DescZh, Latitude, Longitude, Radius, ImagePath, AudioUrl, QrImagePath, Status, RejectReason, OwnerUserId, Priority, MapLink, Price, Tag)
+                          VALUES ($nameVi, $nameEn, $nameJa, $nameKo, $nameZh, $descVi, $descEn, $descJa, $descKo, $descZh, $lat, $lon, $radius, $imagePath, $audioUrl, $qrImagePath, $status, $rejectReason, $ownerUserId, $priority, $mapLink, $price, $tag);
                           SELECT last_insert_rowid();
                           """;
         BindPoi(cmd, poi);
@@ -316,8 +510,8 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$status", status);
         cmd.Parameters.AddWithValue("$rejectReason", "");
         cmd.Parameters.AddWithValue("$ownerUserId", principal.Role == "owner" ? principal.UserId : 0);
-        var id = (long)(await cmd.ExecuteScalarAsync() ?? 0L);
-        return (int)id;
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is null ? 0 : Convert.ToInt32(scalar);
     }
 
     /// <summary>Cập nhật nội dung/vị trí POI; owner chỉ sửa bản nháp của mình.</summary>
@@ -335,19 +529,61 @@ public sealed class TravelGuideDb
             // Owner được sửa nội dung cả khi đã published (trước đây bị chặn → nút Sửa/Lưu như không hoạt động).
         }
 
+        // Khi nguồn tiếng Việt thay đổi, xóa bản dịch liên quan để luồng auto-translate dịch lại.
+        var normalizedIncomingNameVi = (poi.NameVi ?? "").Trim();
+        var normalizedExistingNameVi = (existing.NameVi ?? "").Trim();
+        var normalizedIncomingDescVi = (poi.DescVi ?? "").Trim();
+        var normalizedExistingDescVi = (existing.DescVi ?? "").Trim();
+
+        var sourceNameChanged = !string.Equals(
+            normalizedIncomingNameVi,
+            normalizedExistingNameVi,
+            StringComparison.Ordinal);
+        var sourceDescChanged = !string.Equals(
+            normalizedIncomingDescVi,
+            normalizedExistingDescVi,
+            StringComparison.Ordinal);
+
+        if (sourceNameChanged || sourceDescChanged)
+        {
+            poi = poi with
+            {
+                NameEn = sourceNameChanged ? "" : poi.NameEn,
+                NameJa = sourceNameChanged ? "" : poi.NameJa,
+                NameKo = sourceNameChanged ? "" : poi.NameKo,
+                NameZh = sourceNameChanged ? "" : poi.NameZh,
+                DescEn = sourceDescChanged ? "" : poi.DescEn,
+                DescJa = sourceDescChanged ? "" : poi.DescJa,
+                DescKo = sourceDescChanged ? "" : poi.DescKo,
+                DescZh = sourceDescChanged ? "" : poi.DescZh
+            };
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
                           UPDATE Poi SET
                             NameVi = $nameVi, NameEn = $nameEn, NameJa = $nameJa, NameKo = $nameKo, NameZh = $nameZh,
                             DescVi = $descVi, DescEn = $descEn, DescJa = $descJa, DescKo = $descKo, DescZh = $descZh,
-                            Latitude = $lat, Longitude = $lon, Radius = $radius, ImagePath = $imagePath, AudioUrl = $audioUrl,
-                            Priority = $priority, MapLink = $mapLink
+                            Latitude = $lat, Longitude = $lon, Radius = $radius, ImagePath = $imagePath, AudioUrl = $audioUrl, QrImagePath = $qrImagePath,
+                            Priority = $priority, MapLink = $mapLink, Price = $price, Tag = $tag
                           WHERE Id = $id;
                           """;
         BindPoi(cmd, poi);
         cmd.Parameters.AddWithValue("$id", id);
         var rows = await cmd.ExecuteNonQueryAsync();
         return rows > 0;
+    }
+
+    /// <summary>Cập nhật đường dẫn/URL ảnh QR (ví dụ sau khi tạo POI và gọi API sinh QR).</summary>
+    public async Task<bool> UpdatePoiQrImagePathAsync(int id, string? qrImagePath)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "UPDATE Poi SET QrImagePath = $qr WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$qr", (object?)qrImagePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
     /// <summary>Xóa POI theo Id (chỉ admin qua endpoint).</summary>
@@ -398,6 +634,48 @@ public sealed class TravelGuideDb
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>Xóa bản dịch hiện có để cho phép gọi auto-translate lại từ nguồn tiếng Việt.</summary>
+    public async Task<bool> ClearTranslationsAsync(int id, string? targetLang = null)
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+
+        var lang = (targetLang ?? "").Trim().ToLowerInvariant();
+        if (lang.Length == 0)
+        {
+            cmd.CommandText = """
+                              UPDATE Poi SET
+                                NameEn = N'', NameJa = N'', NameKo = N'', NameZh = N'',
+                                DescEn = N'', DescJa = N'', DescKo = N'', DescZh = N''
+                              WHERE Id = $id;
+                              """;
+        }
+        else if (lang == "en")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameEn = N'', DescEn = N'' WHERE Id = $id;";
+        }
+        else if (lang == "ja")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameJa = N'', DescJa = N'' WHERE Id = $id;";
+        }
+        else if (lang == "ko")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameKo = N'', DescKo = N'' WHERE Id = $id;";
+        }
+        else if (lang == "zh")
+        {
+            cmd.CommandText = "UPDATE Poi SET NameZh = N'', DescZh = N'' WHERE Id = $id;";
+        }
+        else
+        {
+            return false;
+        }
+
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
     /// <summary>Danh sách Id/NameVi/AudioUrl cho màn quản lý audio.</summary>
     public async Task<List<object>> GetAudioAsync()
     {
@@ -413,16 +691,16 @@ public sealed class TravelGuideDb
     }
 
     private static List<object> ToAudioList(List<PoiDto> pois) =>
-        pois.Select(x => (object)new { x.Id, x.NameVi, x.AudioUrl }).ToList();
+        [.. pois.Select(x => (object)new { x.Id, x.NameVi, x.AudioUrl })];
 
     /// <summary>POI đã publish dạng rút gọn để export JSON.</summary>
     public async Task<List<ExportPoi>> GetExportPlacesAsync()
     {
         var pois = await GetPoisAsync(includeUnpublished: false);
-        return pois.Select(x => new ExportPoi(
+        return [.. pois.Select(x => new ExportPoi(
             x.NameVi, x.DescVi, x.Latitude, x.Longitude, x.Radius, x.ImagePath ?? "",
-            x.AudioUrl ?? "", x.Priority, x.MapLink ?? ""
-        )).ToList();
+            x.AudioUrl ?? "", x.QrImagePath ?? "", x.Priority, x.MapLink ?? "", x.Price, x.Tag
+        ))];
     }
 
     /// <summary>Tất cả user (kèm hash — chỉ dùng nội bộ admin).</summary>
@@ -626,7 +904,7 @@ public sealed class TravelGuideDb
         {
             var pois = await GetPoisAsync();
             if (onlyPoiId.HasValue)
-                pois = pois.Where(p => p.Id == onlyPoiId.Value).ToList();
+                pois = [.. pois.Where(p => p.Id == onlyPoiId.Value)];
 
             foreach (var poi in pois)
             {
@@ -635,9 +913,9 @@ public sealed class TravelGuideDb
 
                 var next = poi with { };
                 var changed = false;
-                var langs = string.IsNullOrWhiteSpace(targetLang)
-                    ? new[] { "en", "ja", "ko", "zh" }
-                    : new[] { targetLang.ToLowerInvariant() };
+                IReadOnlyList<string> langs = string.IsNullOrWhiteSpace(targetLang)
+                    ? ["en", "ja", "ko", "zh"]
+                    : [targetLang.ToLowerInvariant()];
 
                 foreach (var lang in langs)
                 {
@@ -734,6 +1012,21 @@ public sealed class TravelGuideDb
         };
     }
 
+    private static string NormalizeTag(string? rawTag)
+    {
+        var t = (rawTag ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(t)) return "Địa Điểm Du Lịch";
+        var key = t.ToLowerInvariant();
+        return key switch
+        {
+            "quan an" or "quán ăn" => "Quán Ăn",
+            "quan nuoc" or "quán nước" => "Quán Nước",
+            "di tich lich su" or "di tích lịch sử" => "Di Tích Lịch Sử",
+            "dia diem du lich" or "địa điểm du lịch" => "Địa Điểm Du Lịch",
+            _ => t
+        };
+    }
+
     /// <summary>Gán tham số SQL cho INSERT/UPDATE POI.</summary>
     private static void BindPoi(SqliteCommand cmd, PoiDto poi)
     {
@@ -752,8 +1045,11 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$radius", poi.Radius);
         cmd.Parameters.AddWithValue("$imagePath", poi.ImagePath ?? string.Empty);
         cmd.Parameters.AddWithValue("$audioUrl", poi.AudioUrl ?? string.Empty);
+        cmd.Parameters.AddWithValue("$qrImagePath", string.IsNullOrWhiteSpace(poi.QrImagePath) ? null : poi.QrImagePath.Trim());
         cmd.Parameters.AddWithValue("$priority", poi.Priority);
         cmd.Parameters.AddWithValue("$mapLink", poi.MapLink ?? string.Empty);
+        cmd.Parameters.AddWithValue("$price", poi.Price < 0 ? 0 : poi.Price);
+        cmd.Parameters.AddWithValue("$tag", NormalizeTag(poi.Tag));
     }
 
     /// <summary>Chèn vài POI mẫu khi database chưa có dữ liệu.</summary>
@@ -761,9 +1057,9 @@ public sealed class TravelGuideDb
     {
         var seed = new[]
         {
-            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.7595, 106.7012, 80, "gatevinhkhanh.jpg", "", "published", "", 0, 10, ""),
-            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.7588, 106.7018, 50, "ocoanh.jpg", "", "published", "", 0, 5, ""),
-            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", "published", "", 0, 5, "")
+            new PoiDto(0, "Cổng chào Phố Ẩm thực Vĩnh Khánh", "", "", "", "", "Điểm chào đầu tuyến phố ẩm thực Vĩnh Khánh.", "", "", "", "", 10.761918, 106.701914, 80, "gatevinhkhanh.jpg", "", null, "published", "", 0, 10, "", 0, "Địa Điểm Du Lịch"),
+            new PoiDto(0, "Ốc Oanh", "", "", "", "", "Quán ốc nổi tiếng với món càng ghẹ rang muối.", "", "", "", "", 10.761025393958171, 106.7032226711829, 50, "ocoanh.jpg", "", null, "published", "", 0, 5, "", 120000, "Quán Ăn"),
+            new PoiDto(0, "Cafe Era", "", "", "", "", "Không gian cà phê thư giãn giữa tuyến phố.", "", "", "", "", 10.7585, 106.7025, 45, "cafeera.jpg", "", null, "published", "", 0, 5, "", 45000, "Quán Nước")
         };
 
         foreach (var poi in seed)
@@ -778,11 +1074,15 @@ public sealed class TravelGuideDb
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "PRAGMA table_info(Poi);";
+            cmd.CommandText = """
+                              SELECT COLUMN_NAME
+                              FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'Poi';
+                              """;
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                existing.Add(reader.GetString(1));
+                existing.Add(reader.GetString(0));
             }
         }
 
@@ -790,15 +1090,34 @@ public sealed class TravelGuideDb
         {
             if (existing.Contains(name)) return;
             await using var alter = connection.CreateCommand();
-            alter.CommandText = $"ALTER TABLE Poi ADD COLUMN {name} {sqlTypeAndDefault};";
+            // T-SQL: không dùng ADD COLUMN (cú pháp SQLite); SQL Server dùng ADD <tên cột> <kiểu>...
+            alter.CommandText = $"ALTER TABLE dbo.Poi ADD [{name}] {sqlTypeAndDefault};";
             await alter.ExecuteNonQueryAsync();
         }
 
-        await AddColumnIfMissing("Status", "TEXT NOT NULL DEFAULT 'published'");
-        await AddColumnIfMissing("RejectReason", "TEXT NOT NULL DEFAULT ''");
-        await AddColumnIfMissing("OwnerUserId", "INTEGER NOT NULL DEFAULT 0");
-        await AddColumnIfMissing("Priority", "INTEGER NOT NULL DEFAULT 0");
-        await AddColumnIfMissing("MapLink", "TEXT NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("Status", "NVARCHAR(30) NOT NULL DEFAULT 'published'");
+        await AddColumnIfMissing("RejectReason", "NVARCHAR(1000) NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("OwnerUserId", "INT NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("Priority", "INT NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("MapLink", "NVARCHAR(1000) NOT NULL DEFAULT ''");
+        await AddColumnIfMissing("QrImagePath", "NVARCHAR(1000) NULL");
+        await AddColumnIfMissing("Price", "DECIMAL(18,2) NOT NULL DEFAULT 0");
+        await AddColumnIfMissing("Tag", "NVARCHAR(100) NOT NULL DEFAULT N'Địa Điểm Du Lịch'");
+    }
+
+    /// <summary>Cho phép <c>QrImagePath</c> NULL trên DB đã tạo trước khi cột hỗ trợ null.</summary>
+    private static async Task EnsureQrImagePathNullableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            IF EXISTS (
+                              SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'Poi' AND COLUMN_NAME = N'QrImagePath' AND IS_NULLABLE = N'NO')
+                            BEGIN
+                              ALTER TABLE dbo.Poi ALTER COLUMN QrImagePath NVARCHAR(1000) NULL;
+                            END
+                            """;
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static async Task EnsureUserAccountColumnsAsync(SqliteConnection connection)
@@ -806,11 +1125,15 @@ public sealed class TravelGuideDb
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "PRAGMA table_info(UserAccount);";
+            cmd.CommandText = """
+                              SELECT COLUMN_NAME
+                              FROM INFORMATION_SCHEMA.COLUMNS
+                              WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'UserAccount';
+                              """;
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                existing.Add(reader.GetString(1));
+                existing.Add(reader.GetString(0));
             }
         }
 
@@ -818,26 +1141,1508 @@ public sealed class TravelGuideDb
         {
             if (existing.Contains(name)) return;
             await using var alter = connection.CreateCommand();
-            alter.CommandText = $"ALTER TABLE UserAccount ADD COLUMN {name} {sqlTypeAndDefault};";
+            alter.CommandText = $"ALTER TABLE dbo.UserAccount ADD [{name}] {sqlTypeAndDefault};";
             await alter.ExecuteNonQueryAsync();
             existing.Add(name);
         }
 
-        await AddUserColumnIfMissing("IsLocked", "INTEGER NOT NULL DEFAULT 0");
-        await AddUserColumnIfMissing("RegistrationApproved", "INTEGER NOT NULL DEFAULT 1");
+        await AddUserColumnIfMissing("IsLocked", "BIT NOT NULL DEFAULT 0");
+        await AddUserColumnIfMissing("RegistrationApproved", "BIT NOT NULL DEFAULT 1");
     }
 
-    /// <summary>Đọc Id/Status/OwnerUserId để kiểm tra quyền sửa POI.</summary>
+    /// <summary>Bản TouristUser do API tạo trước đó có thể thiếu <c>AccountTier</c> — bổ sung để web đọc được.</summary>
+    private static async Task EnsureTouristUserAccountTierColumnAsync(SqliteConnection connection)
+    {
+        await using var existsTable = connection.CreateCommand();
+        existsTable.CommandText = """
+                                  SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                                  WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'TouristUser';
+                                  """;
+        if (await existsTable.ExecuteScalarAsync() is null) return;
+
+        await using var existsCol = connection.CreateCommand();
+        existsCol.CommandText = """
+                                  SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                                  WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'TouristUser' AND COLUMN_NAME = N'AccountTier';
+                                  """;
+        if (await existsCol.ExecuteScalarAsync() is not null) return;
+
+        await using var alter = connection.CreateCommand();
+        alter.CommandText = """
+                            ALTER TABLE dbo.TouristUser
+                            ADD AccountTier NVARCHAR(20) NOT NULL CONSTRAINT DF_TouristUser_AccountTier DEFAULT N'free';
+                            """;
+        await alter.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Đọc thông tin tối thiểu phục vụ kiểm tra quyền + phát hiện thay đổi nguồn VI.</summary>
     private static async Task<PoiRow?> GetPoiByIdInternalAsync(SqliteConnection connection, int id)
     {
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT Id, Status, OwnerUserId FROM Poi WHERE Id = $id";
+        cmd.CommandText = "SELECT Id, Status, OwnerUserId, NameVi, DescVi FROM Poi WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync()) return null;
-        return new PoiRow(reader.GetInt32(0), reader.GetString(1), reader.GetInt32(2));
+        return new PoiRow(
+            reader.GetInt32(0),
+            reader.GetString(1),
+            reader.GetInt32(2),
+            reader.GetString(3),
+            reader.GetString(4));
     }
 
-    /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật.</summary>
-    private sealed record PoiRow(int Id, string Status, int OwnerUserId);
+    /// <summary>Hàng tối thiểu phục vụ kiểm tra quyền cập nhật và so sánh NameVi/DescVi.</summary>
+    private sealed record PoiRow(int Id, string Status, int OwnerUserId, string NameVi, string DescVi);
+
+    public async Task<object> GetTouristOverviewAsync(DateOnly? visitHistoryChartWeekStart = null, DateOnly? touristWeekChartMonday = null)
+    {
+        // Từng khối tách biệt: thiếu bảng phụ (RefreshToken, …) không làm hỏng danh sách TouristUser.
+        var usersAll = await SafeTouristQuery(GetTouristUsersAsync);
+        var refreshTokensAll = await SafeTouristQuery(GetTouristRefreshTokensAsync);
+        var favoritesAll = await SafeTouristQuery(GetTouristFavoritesAsync);
+        var visitHistoryAll = await SafeTouristQuery(GetTouristVisitHistoryAsync);
+        var paymentsAll = await SafeTouristQuery(GetPaymentTransactionsAsync);
+
+        var users = usersAll
+            .Where(u => IsDeviceManagedTouristUsername(u.Username))
+            .ToList();
+        var allowedUserIds = users.Select(u => u.Id).ToHashSet();
+        var refreshTokens = refreshTokensAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var favorites = favoritesAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var visitHistory = visitHistoryAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+        var payments = paymentsAll.Where(x => allowedUserIds.Contains(x.TouristUserId)).ToList();
+
+        var nowUtc = DateTime.UtcNow;
+        var activeLoginSessions = refreshTokens.Count(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc);
+        var activeLoginAccounts = refreshTokens
+            .Where(x => x.RevokedAtUtc is null && x.ExpiresAtUtc > nowUtc)
+            .Select(x => x.TouristUserId)
+            .Distinct()
+            .Count();
+
+        var weekMondayResolved = touristWeekChartMonday ?? VietnamMondayContaining(VietnamTodayDateOnly());
+        var weekVisitChart = await BuildWeekVisitChartAsync(allowedUserIds, weekMondayResolved);
+        var appOpensTodayVn = await CountAppOpensTodayVnAsync(allowedUserIds);
+
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart, weekVisitChart, appOpensTodayVn);
+        return new
+        {
+            users,
+            refreshTokens,
+            favorites,
+            visitHistory,
+            payments,
+            dashboard
+        };
+    }
+
+    private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
+
+    private static TimeZoneInfo ResolveVietnamTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+        }
+        catch
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+        }
+    }
+
+    private static DateOnly VietnamTodayDateOnly()
+    {
+        var vn = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
+        return DateOnly.FromDateTime(vn.Date);
+    }
+
+    /// <summary>Thứ Hai (lịch dương theo ngày hiển thị tại VN) của tuần chứa <paramref name="vnDay"/>.</summary>
+    private static DateOnly VietnamMondayContaining(DateOnly vnDay)
+    {
+        var dow = ((int)vnDay.DayOfWeek + 6) % 7;
+        return vnDay.AddDays(-dow);
+    }
+
+    private static DateTime VietnamDayStartUtc(DateOnly vnDay)
+    {
+        var local = vnDay.ToDateTime(TimeOnly.MinValue);
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), VietnamTimeZone);
+    }
+
+    private static DateOnly DateOnlyFromUtcInVietnam(DateTime utc)
+    {
+        if (utc.Kind != DateTimeKind.Utc)
+            utc = utc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utc, DateTimeKind.Utc) : utc.ToUniversalTime();
+        var vn = TimeZoneInfo.ConvertTimeFromUtc(utc, VietnamTimeZone);
+        return DateOnly.FromDateTime(vn.Date);
+    }
+
+    /// <summary>00:00 VN Thứ Hai … &lt; 00:00 VN Thứ Hai tuần sau (biên UTC).</summary>
+    private static (DateTime StartUtc, DateTime EndUtc) VietnamWeekUtcRange(DateOnly vnMonday)
+    {
+        var startUtc = VietnamDayStartUtc(vnMonday);
+        var endUtc = VietnamDayStartUtc(vnMonday.AddDays(7));
+        return (startUtc, endUtc);
+    }
+
+    private async Task<object> BuildWeekVisitChartAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    {
+        var empty = Enumerable.Repeat(0, 7).ToArray();
+        if (allowedUserIds.Count == 0)
+        {
+            return new
+            {
+                weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+                weekMondayVn = weekMonday.ToString("yyyy-MM-dd"),
+                currentWeek = empty,
+                previousWeek = empty
+            };
+        }
+
+        var current = await GetAppOpenDayCountsForVietnamWeekAsync(allowedUserIds, weekMonday);
+        var prevMonday = weekMonday.AddDays(-7);
+        var previous = await GetAppOpenDayCountsForVietnamWeekAsync(allowedUserIds, prevMonday);
+        return new
+        {
+            weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+            weekMondayVn = weekMonday.ToString("yyyy-MM-dd"),
+            currentWeek = current,
+            previousWeek = previous
+        };
+    }
+
+    /// <summary>Mỗi dòng TouristAppOpenLog = một lần app báo mở (API analytics/app-open).</summary>
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
+    {
+        if (allowedUserIds.Count == 0)
+            return new int[7];
+
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetAppOpenDayCountsForVietnamWeekSqlServerAsync(allowedUserIds, vnMonday);
+
+        return await GetAppOpenDayCountsForVietnamWeekSqliteAsync(allowedUserIds, vnMonday);
+    }
+
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekSqlServerAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
+    {
+        var counts = new int[7];
+        var (startUtc, endUtc) = VietnamWeekUtcRange(vnMonday);
+        var ids = string.Join(",", allowedUserIds.Order());
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                            SELECT o.TouristUserId, o.OpenedAtUtc
+                            FROM dbo.TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= @start AND o.OpenedAtUtc < @end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("@start", startUtc);
+        cmd.Parameters.AddWithValue("@end", endUtc);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var uid = reader.GetInt32(0);
+            if (!allowedUserIds.Contains(uid))
+                continue;
+            var ts = reader.GetDateTime(1);
+            if (ts.Kind == DateTimeKind.Unspecified)
+                ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
+            var vnDay = DateOnlyFromUtcInVietnam(ts);
+            var idx = vnDay.DayNumber - vnMonday.DayNumber;
+            if (idx is >= 0 and < 7)
+                counts[idx]++;
+        }
+
+        return counts;
+    }
+
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekSqliteAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
+    {
+        var counts = new int[7];
+        var (startUtc, endUtc) = VietnamWeekUtcRange(vnMonday);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            SELECT o.TouristUserId, o.OpenedAtUtc AS Ts
+                            FROM TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= $start AND o.OpenedAtUtc < $end
+                            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var uid = reader.GetInt32(0);
+            if (!allowedUserIds.Contains(uid))
+                continue;
+            var ts = reader.GetDateTime(1);
+            if (ts.Kind == DateTimeKind.Unspecified)
+                ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
+            var vnDay = DateOnlyFromUtcInVietnam(ts);
+            var idx = vnDay.DayNumber - vnMonday.DayNumber;
+            if (idx is >= 0 and < 7)
+                counts[idx]++;
+        }
+
+        return counts;
+    }
+
+    private async Task<int> CountAppOpensTodayVnAsync(HashSet<int> allowedUserIds)
+    {
+        if (allowedUserIds.Count == 0)
+            return 0;
+        var vnToday = VietnamTodayDateOnly();
+        var startUtc = VietnamDayStartUtc(vnToday);
+        var endUtc = VietnamDayStartUtc(vnToday.AddDays(1));
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await CountAppOpensTodayVnSqlServerAsync(allowedUserIds, startUtc, endUtc);
+        return await CountAppOpensTodayVnSqliteAsync(allowedUserIds, startUtc, endUtc);
+    }
+
+    private async Task<int> CountAppOpensTodayVnSqlServerAsync(HashSet<int> allowedUserIds, DateTime startUtc, DateTime endUtc)
+    {
+        var ids = string.Join(",", allowedUserIds.Order());
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                            SELECT COUNT_BIG(*)
+                            FROM dbo.TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= @start AND o.OpenedAtUtc < @end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("@start", startUtc);
+        cmd.Parameters.AddWithValue("@end", endUtc);
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is long l ? (int)Math.Min(int.MaxValue, l) : Convert.ToInt32(scalar ?? 0);
+    }
+
+    private async Task<int> CountAppOpensTodayVnSqliteAsync(HashSet<int> allowedUserIds, DateTime startUtc, DateTime endUtc)
+    {
+        var ids = string.Join(",", allowedUserIds.Order());
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                            SELECT COUNT(*) FROM TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= $start AND o.OpenedAtUtc < $end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            return 0;
+        return Convert.ToInt32(reader.GetInt64(0));
+    }
+
+    /// <summary>Thống kê nhanh + dữ liệu LIVE/sparkline cho tab Dữ liệu du khách.</summary>
+    private static object BuildTouristDashboard(
+        List<TouristUserDto> users,
+        List<TouristRefreshTokenDto> refreshTokens,
+        List<TouristVisitHistoryDto> visitHistory,
+        int activeLoginSessions,
+        int activeLoginAccounts,
+        DateOnly? visitHistoryChartWeekStart,
+        object weekVisitChart,
+        int appOpensTodayVn)
+    {
+        var now = DateTime.UtcNow;
+        var vnToday = VietnamTodayDateOnly();
+        var vnTodayStartUtc = VietnamDayStartUtc(vnToday);
+        var vnTodayEndUtc = VietnamDayStartUtc(vnToday.AddDays(1));
+        var windowStart = now.AddHours(-24);
+        // "Trực tuyến" = token còn hạn VÀ có tín hiệu gần đây (lịch sử xem / đăng nhập lại). Tránh hiển thị online sau khi đã tắt app
+        // nhưng token vẫn còn hạn hàng giờ.
+        var presenceCutoff = now.AddMinutes(-2);
+
+        var lastVisitByUser = visitHistory
+            .GroupBy(h => h.TouristUserId)
+            .ToDictionary(g => g.Key, g => g.Max(x => x.OccurredAtUtc));
+
+        static DateTime PresenceSignal(
+            int touristUserId,
+            List<TouristRefreshTokenDto> tokens,
+            IReadOnlyDictionary<int, DateTime> lastVisits,
+            DateTime utcNow)
+        {
+            var lastVisit = lastVisits.TryGetValue(touristUserId, out var lv) ? lv : DateTime.MinValue;
+            // TravelGuide.API gia hạn ExpiresAtUtc mỗi lần app gọi /me.
+            // Suy ra "last seen" = ExpiresAtUtc - 48h (TTL phiên), fallback về CreatedAtUtc.
+            var newestValidTokenSeen = tokens
+                .Where(t => t.TouristUserId == touristUserId && t.RevokedAtUtc is null && t.ExpiresAtUtc > utcNow)
+                .Select(t =>
+                {
+                    var inferredSeen = t.ExpiresAtUtc.AddHours(-48);
+                    if (inferredSeen < t.CreatedAtUtc) inferredSeen = t.CreatedAtUtc;
+                    if (inferredSeen > utcNow) inferredSeen = utcNow;
+                    return inferredSeen;
+                })
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+            return lastVisit > newestValidTokenSeen ? lastVisit : newestValidTokenSeen;
+        }
+
+        var validTokenUserIds = refreshTokens
+            .Where(t => t.RevokedAtUtc is null && t.ExpiresAtUtc > now)
+            .Select(t => t.TouristUserId)
+            .Distinct()
+            .ToList();
+
+        var onlineCount = validTokenUserIds.Count(uid =>
+            PresenceSignal(uid, refreshTokens, lastVisitByUser, now) >= presenceCutoff);
+
+        var nonRevokedUserIds = refreshTokens
+            .Where(t => t.RevokedAtUtc is null)
+            .Select(t => t.TouristUserId)
+            .ToHashSet();
+
+        var activatedCount = users.Count(u =>
+            nonRevokedUserIds.Contains(u.Id)
+            || string.Equals(u.AccountTier, "premium", StringComparison.OrdinalIgnoreCase));
+
+        var totalAccounts = users.Count;
+
+        var sessionsToday = visitHistory.Count(h =>
+            h.OccurredAtUtc >= vnTodayStartUtc && h.OccurredAtUtc < vnTodayEndUtc);
+        var manualNarrationToday = visitHistory.Count(h =>
+            h.OccurredAtUtc >= vnTodayStartUtc
+            && h.OccurredAtUtc < vnTodayEndUtc
+            && string.Equals((h.EventType ?? string.Empty).Trim(), "poi_manual_narration", StringComparison.OrdinalIgnoreCase));
+
+        var hourly = new int[24];
+        foreach (var h in visitHistory.Where(x => x.OccurredAtUtc >= windowStart))
+        {
+            var slot = (int)Math.Floor((h.OccurredAtUtc - windowStart).TotalHours);
+            if (slot is >= 0 and < 24)
+                hourly[slot]++;
+        }
+
+        var routes = new[] { "/home", "/destinations", "/bookings", "/explore", "/profile" };
+        var liveSessions = new List<object>();
+        var recentValid = refreshTokens
+            .Where(t => t.RevokedAtUtc is null && t.ExpiresAtUtc > now)
+            .GroupBy(t => t.TouristUserId)
+            .Select(g => g.OrderByDescending(t => t.CreatedAtUtc).First())
+            .Where(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now) >= presenceCutoff)
+            .OrderByDescending(t => PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now))
+            .Take(24)
+            .ToList();
+
+        foreach (var t in recentValid)
+        {
+            var u = users.FirstOrDefault(x => x.Id == t.TouristUserId);
+            var uname = u?.Username ?? t.Username;
+            var disp = u?.DisplayName ?? uname;
+            var tierLabel = string.Equals(u?.AccountTier, "premium", StringComparison.OrdinalIgnoreCase) ? "Premium" : "Free";
+            var route = routes[Math.Abs(uname.GetHashCode()) % routes.Length];
+            var signal = PresenceSignal(t.TouristUserId, refreshTokens, lastVisitByUser, now);
+            var mins = Math.Max(1, (int)(now - signal).TotalMinutes);
+            liveSessions.Add(new
+            {
+                username = uname,
+                displayName = disp,
+                tierLabel,
+                route,
+                minutesAgo = mins
+            });
+        }
+
+        return new
+        {
+            onlineCount,
+            totalAccounts,
+            activatedCount,
+            appOpensTodayVn,
+            sessionsToday,
+            manualNarrationToday,
+            hourlyActivity = hourly,
+            visitHistoryTopPoisChart = BuildVisitHistoryTopPoisChart(visitHistory, now, visitHistoryChartWeekStart),
+            liveSessions,
+            activeLoginSessions,
+            activeLoginAccounts,
+            weekVisitChart
+        };
+    }
+
+    private static object BuildVisitHistoryTopPoisChart(
+        List<TouristVisitHistoryDto> visitHistory,
+        DateTime nowUtc,
+        DateOnly? weekStartDate,
+        int topN = 5,
+        int days = 7)
+    {
+        days = days <= 0 ? 7 : days;
+        var vnToday = VietnamTodayDateOnly();
+        var maxEndVnExclusive = vnToday.AddDays(1);
+
+        DateOnly startVn;
+        DateOnly endVnExclusive;
+
+        if (weekStartDate is { } ws)
+        {
+            var year = ws.Year;
+            var yearStart = new DateOnly(year, 1, 1);
+            var lastStartInYear = new DateOnly(year, 12, 31);
+            var clamped = ws;
+            if (clamped < yearStart) clamped = yearStart;
+            if (clamped > lastStartInYear) clamped = lastStartInYear;
+
+            startVn = clamped;
+            endVnExclusive = startVn.AddDays(days);
+            var yearEndExclusive = new DateOnly(year + 1, 1, 1);
+            if (endVnExclusive > yearEndExclusive) endVnExclusive = yearEndExclusive;
+            if (endVnExclusive > maxEndVnExclusive) endVnExclusive = maxEndVnExclusive;
+            if (endVnExclusive <= startVn)
+            {
+                endVnExclusive = maxEndVnExclusive;
+                startVn = endVnExclusive.AddDays(-days);
+                if (startVn < yearStart) startVn = yearStart;
+                if (endVnExclusive > maxEndVnExclusive) endVnExclusive = maxEndVnExclusive;
+            }
+        }
+        else
+        {
+            endVnExclusive = maxEndVnExclusive;
+            startVn = vnToday.AddDays(-(days - 1));
+        }
+
+        var startDate = VietnamDayStartUtc(startVn);
+        var endDateExclusive = VietnamDayStartUtc(endVnExclusive);
+
+        var spanDays = endVnExclusive.DayNumber - startVn.DayNumber;
+        if (spanDays <= 0) spanDays = days;
+        var dayLabels = Enumerable.Range(0, spanDays)
+            .Select(i => startVn.AddDays(i).ToString("dd/MM/yy"))
+            .ToList();
+
+        var scoped = visitHistory
+            .Where(v => v.OccurredAtUtc >= startDate && v.OccurredAtUtc < endDateExclusive)
+            .ToList();
+
+        static string NormalizePoiName(string? name, int poiId)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return $"POI {poiId}";
+            return name.Trim();
+        }
+
+        var topPois = scoped
+            .GroupBy(v => NormalizePoiName(v.PoiNameVi, v.PoiId), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                var poiNameVi = NormalizePoiName(first.PoiNameVi, first.PoiId);
+                return new
+                {
+                    PoiId = g.Min(x => x.PoiId), // giữ 1 id đại diện cho compatibility phía client
+                    PoiNameVi = poiNameVi,
+                    Total = g.Count()
+                };
+            })
+            .OrderByDescending(x => x.Total)
+            .ThenBy(x => x.PoiNameVi)
+            .Take(topN <= 0 ? 5 : topN)
+            .ToList();
+
+        var shortNames = topPois.Select(p =>
+        {
+            var sn = p.PoiNameVi.Length > 26 ? p.PoiNameVi[..23] + "..." : p.PoiNameVi;
+            return (p.PoiId, sn);
+        }).ToList();
+        var duplicateNames = shortNames
+            .GroupBy(x => x.sn, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var series = new List<object>();
+        foreach (var poi in topPois)
+        {
+            var counts = Enumerable.Repeat(0, dayLabels.Count).ToArray();
+            foreach (var row in scoped.Where(v =>
+                string.Equals(
+                    NormalizePoiName(v.PoiNameVi, v.PoiId),
+                    poi.PoiNameVi,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                var vnDay = DateOnlyFromUtcInVietnam(row.OccurredAtUtc);
+                var idx = vnDay.DayNumber - startVn.DayNumber;
+                if (idx >= 0 && idx < counts.Length)
+                    counts[idx]++;
+            }
+
+            var shortName = poi.PoiNameVi.Length > 26
+                ? poi.PoiNameVi[..23] + "..."
+                : poi.PoiNameVi;
+            if (duplicateNames.Contains(shortName))
+                shortName = $"{shortName} (#{poi.PoiId})";
+
+            series.Add(new
+            {
+                poiId = poi.PoiId,
+                poiNameVi = poi.PoiNameVi,
+                shortName,
+                total = poi.Total,
+                dailyCounts = counts
+            });
+        }
+
+        var lastInclusive = endVnExclusive.AddDays(-1);
+        return new
+        {
+            labels = dayLabels,
+            series,
+            weekStartVn = startVn.ToString("yyyy-MM-dd"),
+            weekEndVn = lastInclusive.ToString("yyyy-MM-dd"),
+            weekStartUtc = startVn.ToString("yyyy-MM-dd"),
+            weekEndUtc = lastInclusive.ToString("yyyy-MM-dd"),
+            year = startVn.Year
+        };
+    }
+
+    /// <summary>EventType dùng cho bản ghi “đang trong vùng POI” từ app (GPS/geofence).</summary>
+    internal const string TouristPoiGpsInsideEventType = "poi_gps_inside";
+
+    /// <summary>Cửa sổ thời gian (phút) cho cột GPS trên heatmap admin (QR theo ngày UTC, không dùng hằng này).</summary>
+    internal const int PoiScanHeatmapRecentWindowMinutes = 15;
+
+    /// <summary>Lịch sử quét QR POI + thống kê doanh thu (AmountVnd) cho admin.</summary>
+    public async Task<object> GetTouristPoiScanDashboardAsync()
+    {
+        var logs = await SafeTouristQuery(GetPoiQrScanLogsAsync);
+        var revenueByPoi = await SafeTouristQuery(GetPoiQrScanRevenueByPoiAsync);
+        var totalScans = await SafeCountQuery(GetPoiQrScanTotalCountAsync);
+        decimal grandTotal = 0;
+        foreach (var r in revenueByPoi)
+            grandTotal += r.TotalVnd;
+        return new
+        {
+            logs,
+            revenueByPoi,
+            grandTotalVnd = grandTotal,
+            totalScans,
+            heatmapRecentWindowMinutes = PoiScanHeatmapRecentWindowMinutes,
+            heatmapQrDayUtc = DateTime.UtcNow.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+        };
+    }
+
+    public async Task<CommentListResponseDto> GetCommentsAsync(string? status, string? search, int page = 1, int pageSize = 20)
+    {
+        var statusNorm = NormalizeCommentStatus(status, allowAll: true);
+        var searchNorm = (search ?? "").Trim();
+        page = page <= 0 ? 1 : page;
+        pageSize = Math.Clamp(pageSize <= 0 ? 20 : pageSize, 1, 100);
+        var skip = (page - 1) * pageSize;
+
+        static string BuildWhere(bool filterStatus, bool filterSearch)
+        {
+            var parts = new List<string>();
+            if (filterStatus) parts.Add("Status = $status");
+            if (filterSearch)
+                parts.Add("(Username LIKE $kw OR PoiNameVi LIKE $kw OR Content LIKE $kw OR AdminReply LIKE $kw)");
+            return parts.Count == 0 ? "" : " WHERE " + string.Join(" AND ", parts);
+        }
+
+        var whereSql = BuildWhere(statusNorm != "all", !string.IsNullOrWhiteSpace(searchNorm));
+        var rows = new List<TouristCommentDto>();
+        var totalItems = 0;
+        var stats = new CommentStatsDto(0, 0, 0, 0, 0);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        async Task<int> ReadCountAsync(string sql)
+        {
+            await using var c = connection.CreateCommand();
+            c.CommandText = sql;
+            var raw = await c.ExecuteScalarAsync();
+            return raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+        }
+
+        stats = new CommentStatsDto(
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment;"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'pending';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'approved';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'rejected';"),
+            await ReadCountAsync("SELECT COUNT(*) FROM TouristComment WHERE Status = 'hidden';"));
+
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM TouristComment" + whereSql + ";";
+            if (statusNorm != "all") countCmd.Parameters.AddWithValue("$status", statusNorm);
+            if (!string.IsNullOrWhiteSpace(searchNorm)) countCmd.Parameters.AddWithValue("$kw", "%" + searchNorm + "%");
+            var raw = await countCmd.ExecuteScalarAsync();
+            totalItems = raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+        }
+
+        await using (var listCmd = connection.CreateCommand())
+        {
+            listCmd.CommandText = $"""
+                                   SELECT Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
+                                   FROM TouristComment{whereSql}
+                                   ORDER BY CreatedAtUtc DESC, Id DESC
+                                   OFFSET {skip} ROWS FETCH NEXT {pageSize} ROWS ONLY;
+                                   """;
+            if (statusNorm != "all") listCmd.Parameters.AddWithValue("$status", statusNorm);
+            if (!string.IsNullOrWhiteSpace(searchNorm)) listCmd.Parameters.AddWithValue("$kw", "%" + searchNorm + "%");
+
+            await using var reader = await listCmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                rows.Add(new TouristCommentDto(
+                    reader.GetInt64(0),
+                    reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                    reader.GetString(2),
+                    reader.GetInt32(3),
+                    reader.GetString(4),
+                    reader.GetInt32(5),
+                    reader.GetString(6),
+                    reader.GetString(7),
+                    reader.GetString(8),
+                    reader.GetString(9),
+                    reader.GetDateTime(10),
+                    reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                    reader.GetDateTime(12)));
+            }
+        }
+
+        return new CommentListResponseDto(rows, stats, page, pageSize, totalItems);
+    }
+
+    /// <summary>Bình luận hiển thị trên app (pending + approved), không cần đăng nhập — đồng bộ với <c>TravelGuide.API</c>.</summary>
+    public async Task<List<TouristCommentDto>> GetPublicCommentsByPoiAsync(int poiId, int take = 100)
+    {
+        var rows = new List<TouristCommentDto>();
+        if (poiId <= 0) return rows;
+        var top = Math.Clamp(take, 1, 500);
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var listCmd = connection.CreateCommand();
+        listCmd.CommandText = $"""
+                                 SELECT Id, TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, AdminReplyAtUtc, UpdatedAtUtc
+                                 FROM TouristComment
+                                 WHERE PoiId = $poiId AND LOWER(LTRIM(RTRIM(Status))) IN ('pending', 'approved')
+                                 ORDER BY CreatedAtUtc DESC, Id DESC
+                                 OFFSET 0 ROWS FETCH NEXT {top} ROWS ONLY;
+                                 """;
+        listCmd.Parameters.AddWithValue("$poiId", poiId);
+
+        await using var reader = await listCmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rows.Add(new TouristCommentDto(
+                reader.GetInt64(0),
+                reader.IsDBNull(1) ? null : reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetInt32(5),
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.GetDateTime(10),
+                reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+                reader.GetDateTime(12)));
+        }
+
+        return rows;
+    }
+
+    public async Task<bool> UpdateCommentStatusAsync(long id, string? status, string? reason)
+    {
+        if (id <= 0) return false;
+        var statusNorm = NormalizeCommentStatus(status, allowAll: false);
+        var reasonNorm = statusNorm == "rejected" ? (reason ?? "").Trim() : "";
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristComment
+                          SET Status = $status,
+                              RejectReason = $reason,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$status", statusNorm);
+        cmd.Parameters.AddWithValue("$reason", reasonNorm);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    public async Task<bool> ReplyCommentAsync(long id, string? reply)
+    {
+        if (id <= 0) return false;
+        var replyNorm = (reply ?? "").Trim();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristComment
+                          SET AdminReply = $reply,
+                              AdminReplyAtUtc = CASE WHEN LEN($reply) > 0 THEN SYSUTCDATETIME() ELSE NULL END,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$reply", replyNorm);
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    public async Task<long> CreateCommentAsync(CreateCommentRequest request)
+    {
+        var username = string.IsNullOrWhiteSpace(request.Username) ? "guest" : request.Username.Trim();
+        var poiName = string.IsNullOrWhiteSpace(request.PoiNameVi) ? $"POI #{request.PoiId}" : request.PoiNameVi.Trim();
+        var rating = Math.Clamp(request.Rating, 1, 5);
+        var content = (request.Content ?? "").Trim();
+        if (request.PoiId <= 0 || content.Length == 0) return 0;
+        var status = NormalizeCommentStatus(request.Status, allowAll: false);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          INSERT INTO TouristComment(TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, UpdatedAtUtc, AdminReplyAtUtc)
+                          VALUES ($touristUserId, $username, $poiId, $poiNameVi, $rating, $content, $status, N'', N'', SYSUTCDATETIME(), SYSUTCDATETIME(), NULL);
+                          SELECT CAST(SCOPE_IDENTITY() AS BIGINT);
+                          """;
+        cmd.Parameters.AddWithValue("$touristUserId", request.TouristUserId.HasValue ? request.TouristUserId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$username", username);
+        cmd.Parameters.AddWithValue("$poiId", request.PoiId);
+        cmd.Parameters.AddWithValue("$poiNameVi", poiName);
+        cmd.Parameters.AddWithValue("$rating", rating);
+        cmd.Parameters.AddWithValue("$content", content);
+        cmd.Parameters.AddWithValue("$status", status);
+        var raw = await cmd.ExecuteScalarAsync();
+        return raw is null || raw == DBNull.Value ? 0 : Convert.ToInt64(raw);
+    }
+
+    public async Task<bool> DeleteCommentAsync(long id)
+    {
+        if (id <= 0) return false;
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "DELETE FROM TouristComment WHERE Id = $id;";
+        cmd.Parameters.AddWithValue("$id", id);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    private static string NormalizeCommentStatus(string? status, bool allowAll)
+    {
+        var s = (status ?? "").Trim().ToLowerInvariant();
+        return s switch
+        {
+            "pending" => "pending",
+            "approved" => "approved",
+            "rejected" => "rejected",
+            "hidden" => "hidden",
+            "all" when allowAll => "all",
+            _ => allowAll ? "all" : "pending"
+        };
+    }
+
+    private static async Task EnsureTouristPoiQrScanLogTableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          IF OBJECT_ID(N'dbo.TouristPoiQrScanLog', N'U') IS NULL
+                          BEGIN
+                            CREATE TABLE dbo.TouristPoiQrScanLog(
+                              Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                              TouristUserId INT NOT NULL,
+                              Username NVARCHAR(100) NOT NULL,
+                              PoiId INT NOT NULL,
+                              PoiNameVi NVARCHAR(300) NOT NULL DEFAULT N'',
+                              EventType NVARCHAR(40) NOT NULL DEFAULT N'poi_qr_access',
+                              AmountVnd DECIMAL(18,2) NOT NULL DEFAULT 0,
+                              DeviceId NVARCHAR(120) NULL,
+                              DeviceModel NVARCHAR(200) NULL,
+                              AppPlatform NVARCHAR(40) NULL,
+                              CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                            );
+                            CREATE INDEX IX_TouristPoiQrScanLog_Created ON dbo.TouristPoiQrScanLog(CreatedAtUtc DESC);
+                            CREATE INDEX IX_TouristPoiQrScanLog_Poi ON dbo.TouristPoiQrScanLog(PoiId);
+                          END;
+                          """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task EnsureTouristCommentTableAsync(SqliteConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          IF OBJECT_ID(N'dbo.TouristComment', N'U') IS NULL
+                          BEGIN
+                            CREATE TABLE dbo.TouristComment(
+                              Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                              TouristUserId INT NULL,
+                              Username NVARCHAR(100) NOT NULL,
+                              PoiId INT NOT NULL,
+                              PoiNameVi NVARCHAR(300) NOT NULL DEFAULT N'',
+                              Rating INT NOT NULL DEFAULT 5,
+                              Content NVARCHAR(MAX) NOT NULL,
+                              Status NVARCHAR(20) NOT NULL DEFAULT N'pending',
+                              AdminReply NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              RejectReason NVARCHAR(1000) NOT NULL DEFAULT N'',
+                              CreatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                              AdminReplyAtUtc DATETIME2(0) NULL,
+                              UpdatedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME()
+                            );
+                            CREATE INDEX IX_TouristComment_Status ON dbo.TouristComment(Status, CreatedAtUtc DESC);
+                            CREATE INDEX IX_TouristComment_Poi ON dbo.TouristComment(PoiId, CreatedAtUtc DESC);
+                          END;
+                          """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task EnsureDemoCommentsAsync()
+    {
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM TouristComment;";
+            var raw = await countCmd.ExecuteScalarAsync();
+            var count = raw is null || raw == DBNull.Value ? 0 : Convert.ToInt32(raw);
+            if (count > 0) return;
+        }
+
+        var demos = new (string User, int PoiId, string PoiName, int Rating, string Content, string Status, string Reply)[]
+        {
+            ("tranngoc", 1, "Nhà hàng Hải Sản Phú Quốc", 5, "Nhà hàng cực kỳ tươi ngon, hải sản được lấy trực tiếp từ biển mỗi sáng.", "pending", ""),
+            ("minhlong", 2, "Cà phê Sân Thượng Đà Lạt", 4, "View đẹp, đồ uống ổn. Cuối tuần hơi đông nhưng đáng trải nghiệm.", "approved", "Cảm ơn bạn đã chia sẻ trải nghiệm."),
+            ("hoanglinh", 3, "Khu du lịch Bà Nà Hills", 3, "Khá đông khách và xếp hàng lâu, giá vé hơi cao.", "pending", ""),
+            ("vantung", 4, "Phố cổ Hội An", 5, "Hội An về đêm rất lung linh, không khí dễ chịu.", "approved", ""),
+            ("phuchau", 5, "Khách sạn Mường Thanh Nha Trang", 1, "Nội dung bị ẩn do vi phạm chính sách bình luận.", "rejected", "")
+        };
+
+        foreach (var x in demos)
+        {
+            await using var ins = connection.CreateCommand();
+            ins.CommandText = """
+                              INSERT INTO TouristComment(TouristUserId, Username, PoiId, PoiNameVi, Rating, Content, Status, AdminReply, RejectReason, CreatedAtUtc, UpdatedAtUtc, AdminReplyAtUtc)
+                              VALUES (NULL, $u, $poiId, $poiName, $rating, $content, $status, $reply, CASE WHEN $status = 'rejected' THEN N'Vi phạm quy tắc cộng đồng' ELSE N'' END, SYSUTCDATETIME(), SYSUTCDATETIME(), CASE WHEN LEN($reply) > 0 THEN SYSUTCDATETIME() ELSE NULL END);
+                              """;
+            ins.Parameters.AddWithValue("$u", x.User);
+            ins.Parameters.AddWithValue("$poiId", x.PoiId);
+            ins.Parameters.AddWithValue("$poiName", x.PoiName);
+            ins.Parameters.AddWithValue("$rating", x.Rating);
+            ins.Parameters.AddWithValue("$content", x.Content);
+            ins.Parameters.AddWithValue("$status", x.Status);
+            ins.Parameters.AddWithValue("$reply", x.Reply);
+            await ins.ExecuteNonQueryAsync();
+        }
+    }
+
+    private async Task<List<PoiQrScanLogDto>> GetPoiQrScanLogsAsync()
+    {
+        var result = new List<PoiQrScanLogDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 Id, TouristUserId, Username, PoiId, PoiNameVi, EventType, AmountVnd,
+                                 DeviceId, DeviceModel, AppPlatform, CreatedAtUtc
+                          FROM dbo.TouristPoiQrScanLog
+                          ORDER BY Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var amt = reader.IsDBNull(6) ? 0m : reader.GetDecimal(6);
+            result.Add(new PoiQrScanLogDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                amt,
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) ? null : reader.GetString(9),
+                reader.GetDateTime(10)));
+        }
+
+        return result;
+    }
+
+    private async Task<List<PoiQrScanRevenueDto>> GetPoiQrScanRevenueByPoiAsync()
+    {
+        var result = new List<PoiQrScanRevenueDto>();
+        var sinceUtc = DateTime.UtcNow.AddMinutes(-PoiScanHeatmapRecentWindowMinutes);
+        var dayStartUtc = DateTime.UtcNow.Date;
+        var nextDayUtc = dayStartUtc.AddDays(1);
+        var gpsEt = TouristPoiGpsInsideEventType;
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT PoiId,
+                                 MAX(PoiNameVi) AS PoiNameVi,
+                                 SUM(AmountVnd) AS TotalVnd,
+                                 SUM(CASE WHEN LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS ScanCount,
+                                 SUM(CASE WHEN CreatedAtUtc >= @sinceUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) = LOWER(@gpsEt) THEN 1 ELSE 0 END) AS RecentGpsHits,
+                                 SUM(CASE WHEN CreatedAtUtc >= @dayStartUtc AND CreatedAtUtc < @nextDayUtc AND LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt) THEN 1 ELSE 0 END) AS QrScansTodayUtc
+                          FROM dbo.TouristPoiQrScanLog
+                          GROUP BY PoiId
+                          ORDER BY TotalVnd DESC;
+                          """;
+        cmd.Parameters.AddWithValue("@sinceUtc", sinceUtc);
+        cmd.Parameters.AddWithValue("@dayStartUtc", dayStartUtc);
+        cmd.Parameters.AddWithValue("@nextDayUtc", nextDayUtc);
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var totalVnd = reader.IsDBNull(2) ? 0m : Convert.ToDecimal(reader.GetValue(2));
+            result.Add(new PoiQrScanRevenueDto(
+                reader.GetInt32(0),
+                reader.IsDBNull(1) ? "" : reader.GetString(1),
+                totalVnd,
+                reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt32(5)));
+        }
+
+        return result;
+    }
+
+    private async Task<int> GetPoiQrScanTotalCountAsync()
+    {
+        var gpsEt = TouristPoiGpsInsideEventType;
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog
+                            WHERE LOWER(LTRIM(RTRIM(ISNULL(EventType, N'')))) <> LOWER(@gpsEt);
+                            """;
+        cmd.Parameters.AddWithValue("@gpsEt", gpsEt);
+        var raw = await cmd.ExecuteScalarAsync();
+        if (raw is null || raw == DBNull.Value) return 0;
+        return Convert.ToInt32(raw);
+    }
+
+    private static async Task<List<T>> SafeTouristQuery<T>(Func<Task<List<T>>> query)
+    {
+        try
+        {
+            return await query();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TravelGuideDb] GetTouristOverviewAsync: {ex.Message}");
+            return [];
+        }
+    }
+
+    private static async Task<int> SafeCountQuery(Func<Task<int>> query)
+    {
+        try
+        {
+            return await query();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TravelGuideDb] SafeCountQuery: {ex.Message}");
+            return 0;
+        }
+    }
+
+    private static bool LooksLikeSqlServerConnection(string cs)
+    {
+        if (string.IsNullOrWhiteSpace(cs)) return false;
+        if (cs.Contains("localdb", StringComparison.OrdinalIgnoreCase)) return true;
+        if (cs.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase)) return true;
+        return cs.Contains("Server=", StringComparison.OrdinalIgnoreCase)
+               && cs.Contains("Database=", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<List<TouristUserDto>> GetTouristUsersAsync()
+    {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristUsersSqlServerAsync();
+
+        var result = new List<TouristUserDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
+                                 IFNULL((SELECT COUNT(*) FROM TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + IFNULL((SELECT COUNT(*) FROM TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
+                                 IFNULL((SELECT COUNT(*) FROM RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > $nowUtc), 0) AS activeSessions
+                          FROM TouristUser u
+                          ORDER BY u.Id DESC;
+                          """;
+        cmd.Parameters.AddWithValue("$nowUtc", DateTime.UtcNow);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristUserDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristUserDto>> GetTouristUsersSqlServerAsync()
+    {
+        var result = new List<TouristUserDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 u.Id, u.Username, u.DisplayName, u.AccountTier, u.CreatedAtUtc,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.TouristVisitHistory h WHERE h.TouristUserId = u.Id), 0)
+                                 + ISNULL((SELECT COUNT(*) FROM dbo.TouristPoiQrScanLog l WHERE l.TouristUserId = u.Id), 0) AS visitCount,
+                                 ISNULL((SELECT COUNT(*) FROM dbo.RefreshToken r WHERE r.TouristUserId = u.Id AND r.RevokedAtUtc IS NULL AND r.ExpiresAtUtc > SYSUTCDATETIME()), 0) AS activeSessions
+                          FROM dbo.TouristUser u
+                          ORDER BY u.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristUserDto(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.GetInt32(5),
+                reader.GetInt32(6)));
+        }
+        return result;
+    }
+
+    /// <summary>Phiên RefreshToken còn hạn và chưa revoke — mỗi dòng ~ một máy/phiên đăng nhập cùng lúc.</summary>
+    private async Task<(int ActiveSessions, int DistinctAccounts)> CountActiveTouristLoginStatsAsync()
+    {
+        try
+        {
+            if (LooksLikeSqlServerConnection(_connectionString))
+                return await CountActiveTouristLoginStatsSqlServerAsync();
+
+            await using var connection = new SqliteConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                              SELECT
+                                (SELECT COUNT(*) FROM RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > $nowUtc),
+                                (SELECT COUNT(DISTINCT TouristUserId) FROM RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > $nowUtc);
+                              """;
+            cmd.Parameters.AddWithValue("$nowUtc", DateTime.UtcNow);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return (0, 0);
+            return (reader.GetInt32(0), reader.GetInt32(1));
+        }
+        catch
+        {
+            return (0, 0);
+        }
+    }
+
+    private async Task<(int ActiveSessions, int DistinctAccounts)> CountActiveTouristLoginStatsSqlServerAsync()
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT
+                            (SELECT COUNT(*) FROM dbo.RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME()),
+                            (SELECT COUNT(DISTINCT TouristUserId) FROM dbo.RefreshToken WHERE RevokedAtUtc IS NULL AND ExpiresAtUtc > SYSUTCDATETIME());
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return (0, 0);
+        return (reader.GetInt32(0), reader.GetInt32(1));
+    }
+
+    /// <summary>Admin đổi tier cho tài khoản du khách (chỉ <c>free</c>/<c>premium</c>).</summary>
+    public async Task<bool> UpdateTouristUserTierAsync(int touristUserId, string? accountTier)
+    {
+        if (touristUserId <= 0) return false;
+        var tier = NormalizeTouristTier(accountTier);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          UPDATE TouristUser
+                          SET AccountTier = $tier,
+                              UpdatedAtUtc = SYSUTCDATETIME()
+                          WHERE Id = $id;
+                          """;
+        cmd.Parameters.AddWithValue("$tier", tier);
+        cmd.Parameters.AddWithValue("$id", touristUserId);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    private static string NormalizeTouristTier(string? tier)
+    {
+        var normalized = (tier ?? "free").Trim().ToLowerInvariant();
+        return normalized == "premium" ? "premium" : "free";
+    }
+
+    /// <summary>
+    /// Xóa vật lý toàn bộ tài khoản du khách cũ (không theo chuẩn đăng nhập bằng thiết bị)
+    /// cùng dữ liệu liên quan (token, lịch sử, favorite, giao dịch, comment, log QR).
+    /// </summary>
+    public async Task<object> PurgeLegacyTouristUsersAsync()
+    {
+        var allUsers = await GetTouristUsersAsync();
+        var legacyUsers = allUsers
+            .Where(u => !IsDeviceManagedTouristUsername(u.Username))
+            .Select(u => (u.Id, u.Username))
+            .ToList();
+
+        if (legacyUsers.Count == 0)
+        {
+            return new
+            {
+                removedUsers = 0,
+                removedRefreshTokens = 0,
+                removedFavorites = 0,
+                removedVisitHistory = 0,
+                removedPayments = 0,
+                removedComments = 0,
+                removedPoiScanLogs = 0
+            };
+        }
+
+        return LooksLikeSqlServerConnection(_connectionString)
+            ? await PurgeLegacyTouristUsersSqlServerAsync(legacyUsers)
+            : await PurgeLegacyTouristUsersSqliteAsync(legacyUsers);
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqliteAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqliteAsync(connection, "DELETE FROM RefreshToken WHERE TouristUserId = $id;", id);
+            _ = await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristAppOpenLog WHERE TouristUserId = $id;", id);
+            removedFavorites += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristFavorite WHERE TouristUserId = $id;", id);
+            removedVisitHistory += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristVisitHistory WHERE TouristUserId = $id;", id);
+            removedPayments += await ExecDeleteSqliteAsync(connection, "DELETE FROM PaymentTransaction WHERE TouristUserId = $id;", id);
+            removedComments += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristComment WHERE TouristUserId = $id;", id);
+            removedPoiScanLogs += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristPoiQrScanLog WHERE TouristUserId = $id;", id);
+            removedUsers += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristUser WHERE Id = $id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqliteAsync(SqliteConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$id", userId);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<object> PurgeLegacyTouristUsersSqlServerAsync(List<(int Id, string Username)> legacyUsers)
+    {
+        var removedRefreshTokens = 0;
+        var removedFavorites = 0;
+        var removedVisitHistory = 0;
+        var removedPayments = 0;
+        var removedComments = 0;
+        var removedPoiScanLogs = 0;
+        var removedUsers = 0;
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+
+        foreach (var u in legacyUsers)
+        {
+            var id = u.Id;
+            removedRefreshTokens += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.RefreshToken WHERE TouristUserId = @id;", id);
+            _ = await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristAppOpenLog WHERE TouristUserId = @id;", id);
+            removedFavorites += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristFavorite WHERE TouristUserId = @id;", id);
+            removedVisitHistory += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristVisitHistory WHERE TouristUserId = @id;", id);
+            removedPayments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.PaymentTransaction WHERE TouristUserId = @id;", id);
+            removedComments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristComment WHERE TouristUserId = @id;", id);
+            removedPoiScanLogs += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristPoiQrScanLog WHERE TouristUserId = @id;", id);
+            removedUsers += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristUser WHERE Id = @id;", id);
+        }
+
+        return new
+        {
+            removedUsers,
+            removedRefreshTokens,
+            removedFavorites,
+            removedVisitHistory,
+            removedPayments,
+            removedComments,
+            removedPoiScanLogs
+        };
+    }
+
+    private static async Task<int> ExecDeleteSqlServerAsync(SqlConnection connection, string sql, int userId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("@id", userId);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensAsync()
+    {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristRefreshTokensSqlServerAsync();
+
+        var result = new List<TouristRefreshTokenDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT r.Id, r.TouristUserId, u.Username, COALESCE(r.DeviceId, ''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
+                          FROM RefreshToken r
+                          INNER JOIN TouristUser u ON u.Id = r.TouristUserId
+                          ORDER BY r.Id DESC
+                          LIMIT 500;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristRefreshTokenDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                reader.GetDateTime(6)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristRefreshTokenDto>> GetTouristRefreshTokensSqlServerAsync()
+    {
+        var result = new List<TouristRefreshTokenDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 500 r.Id, r.TouristUserId, u.Username, ISNULL(r.DeviceId, N''), r.ExpiresAtUtc, r.RevokedAtUtc, r.CreatedAtUtc
+                          FROM dbo.RefreshToken r
+                          INNER JOIN dbo.TouristUser u ON u.Id = r.TouristUserId
+                          ORDER BY r.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristRefreshTokenDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetDateTime(4),
+                reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                reader.GetDateTime(6)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristFavoriteDto>> GetTouristFavoritesAsync()
+    {
+        var result = new List<TouristFavoriteDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 200 f.Id, f.TouristUserId, u.Username, f.PoiId, p.NameVi, f.CreatedAtUtc
+                          FROM TouristFavorite f
+                          INNER JOIN TouristUser u ON u.Id = f.TouristUserId
+                          INNER JOIN Poi p ON p.Id = f.PoiId
+                          ORDER BY f.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristFavoriteDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetDateTime(5)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristVisitHistoryDto>> GetTouristVisitHistoryAsync()
+    {
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await GetTouristVisitHistorySqlServerAsync();
+
+        var result = new List<TouristVisitHistoryDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT v.Id, v.TouristUserId, v.Username, v.PoiId, v.PoiNameVi, v.EventType, v.PlaybackSeconds, v.WatchedPercent, v.OccurredAtUtc
+                          FROM (
+                            SELECT h.Id AS Id,
+                                   h.TouristUserId,
+                                   u.Username,
+                                   h.PoiId,
+                                   p.NameVi AS PoiNameVi,
+                                   h.EventType,
+                                   h.PlaybackSeconds,
+                                   h.WatchedPercent,
+                                   h.OccurredAtUtc
+                            FROM TouristVisitHistory h
+                            INNER JOIN TouristUser u ON u.Id = h.TouristUserId
+                            INNER JOIN Poi p ON p.Id = h.PoiId
+                            UNION ALL
+                            SELECT (l.Id + 900000000000) AS Id,
+                                   l.TouristUserId,
+                                   u.Username,
+                                   l.PoiId,
+                                   COALESCE(NULLIF(TRIM(l.PoiNameVi), ''), COALESCE(p.NameVi, '')) AS PoiNameVi,
+                                   COALESCE(NULLIF(TRIM(l.EventType), ''), 'poi_qr_access') AS EventType,
+                                   0 AS PlaybackSeconds,
+                                   0.0 AS WatchedPercent,
+                                   l.CreatedAtUtc AS OccurredAtUtc
+                            FROM TouristPoiQrScanLog l
+                            INNER JOIN TouristUser u ON u.Id = l.TouristUserId
+                            LEFT JOIN Poi p ON p.Id = l.PoiId
+                          ) v
+                          ORDER BY v.OccurredAtUtc DESC, v.Id DESC
+                          LIMIT 300;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristVisitHistoryDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetInt32(6),
+                Convert.ToDecimal(reader.GetDouble(7)),
+                reader.GetDateTime(8)));
+        }
+        return result;
+    }
+
+    private async Task<List<TouristVisitHistoryDto>> GetTouristVisitHistorySqlServerAsync()
+    {
+        var result = new List<TouristVisitHistoryDto>();
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 300 v.Id, v.TouristUserId, v.Username, v.PoiId, v.PoiNameVi, v.EventType, v.PlaybackSeconds, v.WatchedPercent, v.OccurredAtUtc
+                          FROM (
+                            SELECT CAST(h.Id AS BIGINT) AS Id,
+                                   h.TouristUserId,
+                                   u.Username,
+                                   h.PoiId,
+                                   p.NameVi AS PoiNameVi,
+                                   h.EventType,
+                                   h.PlaybackSeconds,
+                                   h.WatchedPercent,
+                                   h.OccurredAtUtc
+                            FROM dbo.TouristVisitHistory h
+                            INNER JOIN dbo.TouristUser u ON u.Id = h.TouristUserId
+                            INNER JOIN dbo.Poi p ON p.Id = h.PoiId
+                            UNION ALL
+                            SELECT CAST(l.Id + 900000000000 AS BIGINT) AS Id,
+                                   l.TouristUserId,
+                                   u.Username,
+                                   l.PoiId,
+                                   ISNULL(NULLIF(LTRIM(RTRIM(l.PoiNameVi)), N''), ISNULL(p.NameVi, N'')) AS PoiNameVi,
+                                   ISNULL(NULLIF(LTRIM(RTRIM(l.EventType)), N''), N'poi_qr_access') AS EventType,
+                                   CAST(0 AS INT) AS PlaybackSeconds,
+                                   CAST(0 AS DECIMAL(5,2)) AS WatchedPercent,
+                                   l.CreatedAtUtc AS OccurredAtUtc
+                            FROM dbo.TouristPoiQrScanLog l
+                            INNER JOIN dbo.TouristUser u ON u.Id = l.TouristUserId
+                            LEFT JOIN dbo.Poi p ON p.Id = l.PoiId
+                          ) v
+                          ORDER BY v.OccurredAtUtc DESC, v.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new TouristVisitHistoryDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetInt32(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetInt32(6),
+                reader.GetDecimal(7),
+                reader.GetDateTime(8)));
+        }
+
+        return result;
+    }
+
+    private async Task<List<PaymentTransactionDto>> GetPaymentTransactionsAsync()
+    {
+        var result = new List<PaymentTransactionDto>();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                          SELECT TOP 200 t.Id, t.TouristUserId, u.Username, t.Provider, t.ProviderRef, t.PlanCode, t.Currency, t.Amount, t.Status, t.CreatedAtUtc
+                          FROM PaymentTransaction t
+                          INNER JOIN TouristUser u ON u.Id = t.TouristUserId
+                          ORDER BY t.Id DESC;
+                          """;
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new PaymentTransactionDto(
+                reader.GetInt64(0),
+                reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6),
+                Convert.ToDecimal(reader.GetDouble(7)),
+                reader.GetString(8),
+                reader.GetDateTime(9)));
+        }
+        return result;
+    }
 }

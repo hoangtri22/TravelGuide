@@ -86,9 +86,7 @@ public partial class AudioPage : ContentPage
     {
         base.OnAppearing();
 
-        // Kết nối MiniPlayer với NarrationEngine để hiển thị trạng thái phát
-        MiniPlayer.Attach(_narrationEngine);
-
+        _dbService.ClearCache();
         await LoadAsync();
     }
 
@@ -173,9 +171,6 @@ public partial class AudioPage : ContentPage
     {
         if (e.Parameter is not AudioItem item) return;
 
-        // Dừng hoàn toàn bất kỳ bài nào đang phát
-        await _narrationEngine.StopAsync();
-
         // Reset icon tất cả item về trạng thái dừng
         ResetAllItems();
 
@@ -186,15 +181,8 @@ public partial class AudioPage : ContentPage
         _isPlaying = true;
         UpdatePlayAllBtn(true);
 
-        // Phát TTS cho item này (không dùng queue, phát đơn lẻ)
-        await _narrationEngine.SpeakAsync(item.Place);
-
-        // Chờ TTS phát xong item này (polling mỗi 200ms)
-        while (_narrationEngine.IsSpeaking &&
-               _narrationEngine.CurrentPlace?.Id == item.Place.Id)
-        {
-            await Task.Delay(200);
-        }
+        // Phát đúng item này (hủy hàng đợi geofence / bài khác)
+        await _narrationEngine.SpeakExclusiveAsync(item.Place);
 
         // Kết thúc → reset UI
         SetItemState(item, false);
@@ -282,16 +270,7 @@ public partial class AudioPage : ContentPage
                 SetItemState(item, true);
                 UpdateNowPlaying(item.Name);
 
-                // Đưa địa điểm vào queue của NarrationEngine và chờ phát xong
-                await _narrationEngine.SpeakAsync(item.Place);
-
-                // Polling chờ TTS engine hoàn thành item này
-                while (_narrationEngine.IsSpeaking &&
-                       _narrationEngine.CurrentPlace?.Id == item.Place.Id &&
-                       !_cts.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(200);
-                }
+                await _narrationEngine.SpeakExclusiveAsync(item.Place);
 
                 SetItemState(item, false);
 
@@ -318,14 +297,7 @@ public partial class AudioPage : ContentPage
         SetItemState(item, true);
         UpdateNowPlaying(item.Name);
 
-        await _narrationEngine.SpeakAsync(item.Place);
-
-        // Chờ item này phát xong
-        while (_narrationEngine.IsSpeaking &&
-               _narrationEngine.CurrentPlace?.Id == item.Place.Id)
-        {
-            await Task.Delay(200);
-        }
+        await _narrationEngine.SpeakExclusiveAsync(item.Place);
 
         StopPlayback();
     }

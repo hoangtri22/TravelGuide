@@ -1,0 +1,33 @@
+@startuml
+title SE DuKhach XemLichSuQuet
+skinparam shadowing false
+skinparam monochrome true
+hide footbox
+actor "Du khách" as U
+participant "QrScanHistoryPage\nOnAppearing()" as UI
+participant "QrScanHistoryPage\nReloadAsync()" as RELOAD
+participant "TouristAuthService\nIsLoggedInAsync()" as LOGIN
+participant "TouristAuthService\nGetMyScanHistoryAsync()" as HIST
+participant "QrScanHistoryPage\nOnItemSelected()" as SELECT
+participant "DatabaseService\nGetPlacesAsync()" as DB
+participant "PlaceDetailPage\nLoadPlace()" as DETAIL
+U -> UI : Mở QrScanHistoryPage
+UI -> RELOAD : await ReloadAsync()
+RELOAD -> LOGIN : await IsLoggedInAsync()
+RELOAD -> HIST : await GetMyScanHistoryAsync()
+HIST --> RELOAD : MyScanHistoryRow list
+RELOAD -> RELOAD : HistoryList.ItemsSource = ScanHistoryVm...
+U -> SELECT : CollectionView SelectionChanged
+SELECT -> DB : await GetPlacesAsync()
+DB --> SELECT : List<TouristPlace>
+alt tìm thấy POI
+  U -[hidden]-> UI
+  SELECT -[hidden]-> DETAIL
+  SELECT -> DETAIL : detailPage.LoadPlace(place)
+  SELECT -> SELECT : await Navigation.PushAsync(detailPage)
+else không tìm thấy
+  U -[hidden]-> UI
+  SELECT -[hidden]-> DETAIL
+  SELECT -> SELECT : DisplayAlert(..., ScanHistoryPlaceMissing, ...)
+end
+@enduml
