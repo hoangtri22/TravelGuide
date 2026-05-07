@@ -45,6 +45,9 @@ ApplySharedSqlConnection(builder.Configuration);
 builder.Services.AddSingleton<AuthStore>();
 builder.Services.AddSingleton<TravelGuideDb>();
 builder.Services.AddHttpClient();
+builder.Services.Configure<TtsQueueOptions>(builder.Configuration.GetSection("TtsQueue"));
+builder.Services.AddSingleton<ITtsQueue, TtsQueue>();
+builder.Services.AddHostedService<TtsQueueWorker>();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     o.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -736,6 +739,53 @@ app.MapDelete("/api/comments/{id:long}", async (HttpContext context, long id, Tr
     if (principal.Role != "admin") return Results.Forbid();
     var ok = await db.DeleteCommentAsync(id);
     return ok ? Results.Ok(new { message = "Đã xóa bình luận." }) : Results.NotFound("Không tìm thấy bình luận.");
+});
+
+app.MapPost("/api/tts/queue", async (HttpContext context, TtsQueueEnqueueRequest request, ITtsQueue queue, AuthStore authStore) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Text))
+    {
+        return Results.BadRequest("Text không được rỗng.");
+    }
+
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+
+    var job = new TtsQueueJob
+    {
+        Text = request.Text.Trim(),
+        Voice = string.IsNullOrWhiteSpace(request.Voice) ? "vi-VN" : request.Voice.Trim()
+    };
+
+    var accepted = await queue.EnqueueAsync(job, context.RequestAborted);
+    if (!accepted)
+    {
+        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    }
+
+    return Results.Accepted($"/api/tts/queue/{job.Id}", new
+    {
+        jobId = job.Id,
+        status = job.Status
+    });
+});
+
+app.MapGet("/api/tts/queue/metrics", (HttpContext context, ITtsQueue queue, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+
+    return Results.Ok(queue.GetMetricsSnapshot());
+});
+
+app.MapGet("/api/tts/queue/{id:guid}", (HttpContext context, Guid id, ITtsQueue queue, AuthStore authStore) =>
+{
+    var principal = AuthHelper.Authenticate(context, authStore);
+    if (principal is null) return Results.Unauthorized();
+
+    return queue.TryGetJob(id, out var job) && job is not null
+        ? Results.Ok(job)
+        : Results.NotFound();
 });
 
 app.Run();
