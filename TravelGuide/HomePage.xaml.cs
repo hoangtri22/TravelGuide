@@ -61,6 +61,7 @@ public partial class HomePage : ContentPage
         UpdateLanguageButton(AppLanguage.Current);
         UpdateLocalizedChrome();
         await RefreshTouristAuthUiAsync(force: true);
+        _touristAuthService.ReportAppOpenIfNeeded();
         _dbService.ClearCache();
         await LoadPlacesAsync();
     }

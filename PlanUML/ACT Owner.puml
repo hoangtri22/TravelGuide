@@ -1,15 +1,15 @@
 @startuml
-title ACT Owner
+title ACT Owner — TravelGuide.AdminWeb (role owner)
 start
-:Mở WEB/index.html;
+:Mở TravelGuide.AdminWeb/WEB/index.html;
 :byId("loginForm").addEventListener("submit", ...);
 if (POST /api/auth/login OK?) then (Có)
   :sessionStorage.setItem(...token/role...);
   :applyRoleChrome() role=owner;
   if (Chọn module?) then (Quản lý POI quán)
     :loadPois() -> GET /api/pois (owner scope);
-    :Mở poi-create.html?id=...;
-    :poi-create.js submit -> POST /api/pois hoặc PUT /api/pois/{id};
+    :Mở WEB/poi-create.html?id=...;
+    :poi-create.js: imageFile → POST /api/upload/poi-image;\naudioFile → POST /api/upload/audio;\nsubmit → POST /api/pois hoặc PUT /api/pois/{id};
   elseif (Bản dịch)
     :loadTranslation(id) -> GET /api/translations/{id}?lang=...;
     :translationForm submit -> PUT /api/translations/{id};

@@ -137,6 +137,18 @@ public sealed class TravelGuideDb
                     CREATE INDEX IX_RefreshToken_TouristUserId ON dbo.RefreshToken(TouristUserId, ExpiresAtUtc DESC);
                   END;
 
+                  IF OBJECT_ID(N'dbo.TouristAppOpenLog', N'U') IS NULL
+                  BEGIN
+                    CREATE TABLE dbo.TouristAppOpenLog(
+                      Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                      TouristUserId INT NOT NULL,
+                      OpenedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                      FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                    );
+                    CREATE INDEX IX_TouristAppOpenLog_Opened ON dbo.TouristAppOpenLog(OpenedAtUtc DESC);
+                    CREATE INDEX IX_TouristAppOpenLog_User ON dbo.TouristAppOpenLog(TouristUserId, OpenedAtUtc DESC);
+                  END;
+
                   IF OBJECT_ID(N'dbo.TouristFavorite', N'U') IS NULL
                   BEGIN
                     CREATE TABLE dbo.TouristFavorite(
@@ -498,8 +510,8 @@ public sealed class TravelGuideDb
         cmd.Parameters.AddWithValue("$status", status);
         cmd.Parameters.AddWithValue("$rejectReason", "");
         cmd.Parameters.AddWithValue("$ownerUserId", principal.Role == "owner" ? principal.UserId : 0);
-        var id = (long)(await cmd.ExecuteScalarAsync() ?? 0L);
-        return (int)id;
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is null ? 0 : Convert.ToInt32(scalar);
     }
 
     /// <summary>Cập nhật nội dung/vị trí POI; owner chỉ sửa bản nháp của mình.</summary>
@@ -1208,10 +1220,11 @@ public sealed class TravelGuideDb
             .Distinct()
             .Count();
 
-        var weekMondayResolved = touristWeekChartMonday ?? UtcCalendarMondayContaining(DateOnly.FromDateTime(DateTime.UtcNow));
+        var weekMondayResolved = touristWeekChartMonday ?? VietnamMondayContaining(VietnamTodayDateOnly());
         var weekVisitChart = await BuildWeekVisitChartAsync(allowedUserIds, weekMondayResolved);
+        var appOpensTodayVn = await CountAppOpensTodayVnAsync(allowedUserIds);
 
-        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart, weekVisitChart);
+        var dashboard = BuildTouristDashboard(users, refreshTokens, visitHistory, activeLoginSessions, activeLoginAccounts, visitHistoryChartWeekStart, weekVisitChart, appOpensTodayVn);
         return new
         {
             users,
@@ -1223,12 +1236,53 @@ public sealed class TravelGuideDb
         };
     }
 
-    /// <summary>Thứ Hai (lịch UTC) của tuần chứa <paramref name="day"/> — T2…CN.</summary>
-    private static DateOnly UtcCalendarMondayContaining(DateOnly day)
+    private static readonly TimeZoneInfo VietnamTimeZone = ResolveVietnamTimeZone();
+
+    private static TimeZoneInfo ResolveVietnamTimeZone()
     {
-        var utcMidnight = DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var dow = ((int)utcMidnight.DayOfWeek + 6) % 7;
-        return DateOnly.FromDateTime(utcMidnight.AddDays(-dow));
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+        }
+        catch
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+        }
+    }
+
+    private static DateOnly VietnamTodayDateOnly()
+    {
+        var vn = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, VietnamTimeZone);
+        return DateOnly.FromDateTime(vn.Date);
+    }
+
+    /// <summary>Thứ Hai (lịch dương theo ngày hiển thị tại VN) của tuần chứa <paramref name="vnDay"/>.</summary>
+    private static DateOnly VietnamMondayContaining(DateOnly vnDay)
+    {
+        var dow = ((int)vnDay.DayOfWeek + 6) % 7;
+        return vnDay.AddDays(-dow);
+    }
+
+    private static DateTime VietnamDayStartUtc(DateOnly vnDay)
+    {
+        var local = vnDay.ToDateTime(TimeOnly.MinValue);
+        return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), VietnamTimeZone);
+    }
+
+    private static DateOnly DateOnlyFromUtcInVietnam(DateTime utc)
+    {
+        if (utc.Kind != DateTimeKind.Utc)
+            utc = utc.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(utc, DateTimeKind.Utc) : utc.ToUniversalTime();
+        var vn = TimeZoneInfo.ConvertTimeFromUtc(utc, VietnamTimeZone);
+        return DateOnly.FromDateTime(vn.Date);
+    }
+
+    /// <summary>00:00 VN Thứ Hai … &lt; 00:00 VN Thứ Hai tuần sau (biên UTC).</summary>
+    private static (DateTime StartUtc, DateTime EndUtc) VietnamWeekUtcRange(DateOnly vnMonday)
+    {
+        var startUtc = VietnamDayStartUtc(vnMonday);
+        var endUtc = VietnamDayStartUtc(vnMonday.AddDays(7));
+        return (startUtc, endUtc);
     }
 
     private async Task<object> BuildWeekVisitChartAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
@@ -1239,88 +1293,84 @@ public sealed class TravelGuideDb
             return new
             {
                 weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+                weekMondayVn = weekMonday.ToString("yyyy-MM-dd"),
                 currentWeek = empty,
                 previousWeek = empty
             };
         }
 
-        var current = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, weekMonday);
+        var current = await GetAppOpenDayCountsForVietnamWeekAsync(allowedUserIds, weekMonday);
         var prevMonday = weekMonday.AddDays(-7);
-        var previous = await GetVisitDayCountsForUtcWeekAsync(allowedUserIds, prevMonday);
+        var previous = await GetAppOpenDayCountsForVietnamWeekAsync(allowedUserIds, prevMonday);
         return new
         {
             weekMondayUtc = weekMonday.ToString("yyyy-MM-dd"),
+            weekMondayVn = weekMonday.ToString("yyyy-MM-dd"),
             currentWeek = current,
             previousWeek = previous
         };
     }
 
-    private async Task<int[]> GetVisitDayCountsForUtcWeekAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    /// <summary>Mỗi dòng TouristAppOpenLog = một lần app báo mở (API analytics/app-open).</summary>
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
     {
         if (allowedUserIds.Count == 0)
             return new int[7];
 
         if (LooksLikeSqlServerConnection(_connectionString))
-            return await GetVisitDayCountsForUtcWeekSqlServerAsync(allowedUserIds, weekMonday);
+            return await GetAppOpenDayCountsForVietnamWeekSqlServerAsync(allowedUserIds, vnMonday);
 
-        return await GetVisitDayCountsForUtcWeekSqliteAsync(allowedUserIds, weekMonday);
+        return await GetAppOpenDayCountsForVietnamWeekSqliteAsync(allowedUserIds, vnMonday);
     }
 
-    private async Task<int[]> GetVisitDayCountsForUtcWeekSqlServerAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekSqlServerAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
     {
         var counts = new int[7];
-        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var endUtc = startUtc.AddDays(7);
+        var (startUtc, endUtc) = VietnamWeekUtcRange(vnMonday);
         var ids = string.Join(",", allowedUserIds.Order());
 
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = $"""
-                             WITH ev AS (
-                               SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM dbo.TouristVisitHistory h
-                               UNION ALL
-                               SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM dbo.TouristPoiQrScanLog l
-                             )
-                             SELECT DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) AS Di,
-                                    COUNT_BIG(*) AS Cnt
-                             FROM ev v
-                             WHERE v.Ts >= @weekStart AND v.Ts < @weekEnd
-                               AND v.TouristUserId IN ({ids})
-                               AND DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE)) BETWEEN 0 AND 6
-                             GROUP BY DATEDIFF(DAY, CAST(@weekStart AS DATE), CAST(v.Ts AS DATE))
-                             """;
-        cmd.Parameters.AddWithValue("@weekStart", startUtc);
-        cmd.Parameters.AddWithValue("@weekEnd", endUtc);
+                            SELECT o.TouristUserId, o.OpenedAtUtc
+                            FROM dbo.TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= @start AND o.OpenedAtUtc < @end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("@start", startUtc);
+        cmd.Parameters.AddWithValue("@end", endUtc);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var di = reader.GetInt32(0);
-            var cnt = (int)reader.GetInt64(1);
-            if (di is >= 0 and < 7)
-                counts[di] = cnt;
+            var uid = reader.GetInt32(0);
+            if (!allowedUserIds.Contains(uid))
+                continue;
+            var ts = reader.GetDateTime(1);
+            if (ts.Kind == DateTimeKind.Unspecified)
+                ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
+            var vnDay = DateOnlyFromUtcInVietnam(ts);
+            var idx = vnDay.DayNumber - vnMonday.DayNumber;
+            if (idx is >= 0 and < 7)
+                counts[idx]++;
         }
 
         return counts;
     }
 
-    private async Task<int[]> GetVisitDayCountsForUtcWeekSqliteAsync(HashSet<int> allowedUserIds, DateOnly weekMonday)
+    private async Task<int[]> GetAppOpenDayCountsForVietnamWeekSqliteAsync(HashSet<int> allowedUserIds, DateOnly vnMonday)
     {
         var counts = new int[7];
-        var startUtc = DateTime.SpecifyKind(weekMonday.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-        var endUtc = startUtc.AddDays(7);
+        var (startUtc, endUtc) = VietnamWeekUtcRange(vnMonday);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-                            SELECT v.TouristUserId, v.Ts FROM (
-                              SELECT h.TouristUserId, h.OccurredAtUtc AS Ts FROM TouristVisitHistory h
-                              UNION ALL
-                              SELECT l.TouristUserId, l.CreatedAtUtc AS Ts FROM TouristPoiQrScanLog l
-                            ) v
-                            WHERE v.Ts >= $start AND v.Ts < $end
+                            SELECT o.TouristUserId, o.OpenedAtUtc AS Ts
+                            FROM TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= $start AND o.OpenedAtUtc < $end
                             """;
         cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
@@ -1334,14 +1384,62 @@ public sealed class TravelGuideDb
             var ts = reader.GetDateTime(1);
             if (ts.Kind == DateTimeKind.Unspecified)
                 ts = DateTime.SpecifyKind(ts, DateTimeKind.Utc);
-            if (ts < startUtc || ts >= endUtc)
-                continue;
-            var idx = (int)Math.Floor((ts - startUtc).TotalDays);
+            var vnDay = DateOnlyFromUtcInVietnam(ts);
+            var idx = vnDay.DayNumber - vnMonday.DayNumber;
             if (idx is >= 0 and < 7)
                 counts[idx]++;
         }
 
         return counts;
+    }
+
+    private async Task<int> CountAppOpensTodayVnAsync(HashSet<int> allowedUserIds)
+    {
+        if (allowedUserIds.Count == 0)
+            return 0;
+        var vnToday = VietnamTodayDateOnly();
+        var startUtc = VietnamDayStartUtc(vnToday);
+        var endUtc = VietnamDayStartUtc(vnToday.AddDays(1));
+        if (LooksLikeSqlServerConnection(_connectionString))
+            return await CountAppOpensTodayVnSqlServerAsync(allowedUserIds, startUtc, endUtc);
+        return await CountAppOpensTodayVnSqliteAsync(allowedUserIds, startUtc, endUtc);
+    }
+
+    private async Task<int> CountAppOpensTodayVnSqlServerAsync(HashSet<int> allowedUserIds, DateTime startUtc, DateTime endUtc)
+    {
+        var ids = string.Join(",", allowedUserIds.Order());
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                            SELECT COUNT_BIG(*)
+                            FROM dbo.TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= @start AND o.OpenedAtUtc < @end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("@start", startUtc);
+        cmd.Parameters.AddWithValue("@end", endUtc);
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is long l ? (int)Math.Min(int.MaxValue, l) : Convert.ToInt32(scalar ?? 0);
+    }
+
+    private async Task<int> CountAppOpensTodayVnSqliteAsync(HashSet<int> allowedUserIds, DateTime startUtc, DateTime endUtc)
+    {
+        var ids = string.Join(",", allowedUserIds.Order());
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"""
+                            SELECT COUNT(*) FROM TouristAppOpenLog o
+                            WHERE o.OpenedAtUtc >= $start AND o.OpenedAtUtc < $end
+                              AND o.TouristUserId IN ({ids})
+                            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("o"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("o"));
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            return 0;
+        return Convert.ToInt32(reader.GetInt64(0));
     }
 
     /// <summary>Thống kê nhanh + dữ liệu LIVE/sparkline cho tab Dữ liệu du khách.</summary>
@@ -1352,10 +1450,13 @@ public sealed class TravelGuideDb
         int activeLoginSessions,
         int activeLoginAccounts,
         DateOnly? visitHistoryChartWeekStart,
-        object weekVisitChart)
+        object weekVisitChart,
+        int appOpensTodayVn)
     {
         var now = DateTime.UtcNow;
-        var today = now.Date;
+        var vnToday = VietnamTodayDateOnly();
+        var vnTodayStartUtc = VietnamDayStartUtc(vnToday);
+        var vnTodayEndUtc = VietnamDayStartUtc(vnToday.AddDays(1));
         var windowStart = now.AddHours(-24);
         // "Trực tuyến" = token còn hạn VÀ có tín hiệu gần đây (lịch sử xem / đăng nhập lại). Tránh hiển thị online sau khi đã tắt app
         // nhưng token vẫn còn hạn hàng giờ.
@@ -1408,10 +1509,11 @@ public sealed class TravelGuideDb
 
         var totalAccounts = users.Count;
 
-        var sessionsToday = visitHistory.Count(h => h.OccurredAtUtc >= today && h.OccurredAtUtc < today.AddDays(1));
+        var sessionsToday = visitHistory.Count(h =>
+            h.OccurredAtUtc >= vnTodayStartUtc && h.OccurredAtUtc < vnTodayEndUtc);
         var manualNarrationToday = visitHistory.Count(h =>
-            h.OccurredAtUtc >= today
-            && h.OccurredAtUtc < today.AddDays(1)
+            h.OccurredAtUtc >= vnTodayStartUtc
+            && h.OccurredAtUtc < vnTodayEndUtc
             && string.Equals((h.EventType ?? string.Empty).Trim(), "poi_manual_narration", StringComparison.OrdinalIgnoreCase));
 
         var hourly = new int[24];
@@ -1457,6 +1559,7 @@ public sealed class TravelGuideDb
             onlineCount,
             totalAccounts,
             activatedCount,
+            appOpensTodayVn,
             sessionsToday,
             manualNarrationToday,
             hourlyActivity = hourly,
@@ -1476,44 +1579,47 @@ public sealed class TravelGuideDb
         int days = 7)
     {
         days = days <= 0 ? 7 : days;
-        var maxEndExclusive = nowUtc.Date.AddDays(1);
+        var vnToday = VietnamTodayDateOnly();
+        var maxEndVnExclusive = vnToday.AddDays(1);
 
-        DateTime startDate;
-        DateTime endDateExclusive;
+        DateOnly startVn;
+        DateOnly endVnExclusive;
+
         if (weekStartDate is { } ws)
         {
             var year = ws.Year;
-            var yearStart = new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-            var yearEndExclusive = new DateTime(year, 12, 31, 0, 0, 0, DateTimeKind.Utc).AddDays(1);
-            // Cho phép chọn đến 31/12 (tuần cuối năm có thể ngắn hơn 7 ngày sau khi cắt theo maxEndExclusive).
+            var yearStart = new DateOnly(year, 1, 1);
             var lastStartInYear = new DateOnly(year, 12, 31);
             var clamped = ws;
-            if (clamped < new DateOnly(year, 1, 1)) clamped = new DateOnly(year, 1, 1);
+            if (clamped < yearStart) clamped = yearStart;
             if (clamped > lastStartInYear) clamped = lastStartInYear;
 
-            startDate = DateTime.SpecifyKind(clamped.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-            endDateExclusive = startDate.AddDays(days);
-            if (startDate < yearStart) startDate = yearStart;
-            if (endDateExclusive > yearEndExclusive) endDateExclusive = yearEndExclusive;
-            if (endDateExclusive > maxEndExclusive) endDateExclusive = maxEndExclusive;
-            if (endDateExclusive <= startDate)
+            startVn = clamped;
+            endVnExclusive = startVn.AddDays(days);
+            var yearEndExclusive = new DateOnly(year + 1, 1, 1);
+            if (endVnExclusive > yearEndExclusive) endVnExclusive = yearEndExclusive;
+            if (endVnExclusive > maxEndVnExclusive) endVnExclusive = maxEndVnExclusive;
+            if (endVnExclusive <= startVn)
             {
-                endDateExclusive = maxEndExclusive;
-                startDate = endDateExclusive.AddDays(-days);
-                if (startDate < yearStart) startDate = yearStart;
-                if (endDateExclusive > maxEndExclusive) endDateExclusive = maxEndExclusive;
+                endVnExclusive = maxEndVnExclusive;
+                startVn = endVnExclusive.AddDays(-days);
+                if (startVn < yearStart) startVn = yearStart;
+                if (endVnExclusive > maxEndVnExclusive) endVnExclusive = maxEndVnExclusive;
             }
         }
         else
         {
-            endDateExclusive = maxEndExclusive;
-            startDate = endDateExclusive.AddDays(-days);
+            endVnExclusive = maxEndVnExclusive;
+            startVn = vnToday.AddDays(-(days - 1));
         }
 
-        var spanDays = (int)(endDateExclusive - startDate).TotalDays;
+        var startDate = VietnamDayStartUtc(startVn);
+        var endDateExclusive = VietnamDayStartUtc(endVnExclusive);
+
+        var spanDays = endVnExclusive.DayNumber - startVn.DayNumber;
         if (spanDays <= 0) spanDays = days;
         var dayLabels = Enumerable.Range(0, spanDays)
-            .Select(i => startDate.AddDays(i).ToString("dd/MM/yy"))
+            .Select(i => startVn.AddDays(i).ToString("dd/MM/yy"))
             .ToList();
 
         var scoped = visitHistory
@@ -1565,7 +1671,8 @@ public sealed class TravelGuideDb
                     poi.PoiNameVi,
                     StringComparison.OrdinalIgnoreCase)))
             {
-                var idx = (int)(row.OccurredAtUtc.Date - startDate.Date).TotalDays;
+                var vnDay = DateOnlyFromUtcInVietnam(row.OccurredAtUtc);
+                var idx = vnDay.DayNumber - startVn.DayNumber;
                 if (idx >= 0 && idx < counts.Length)
                     counts[idx]++;
             }
@@ -1586,13 +1693,16 @@ public sealed class TravelGuideDb
             });
         }
 
+        var lastInclusive = endVnExclusive.AddDays(-1);
         return new
         {
             labels = dayLabels,
             series,
-            weekStartUtc = startDate.ToString("yyyy-MM-dd"),
-            weekEndUtc = endDateExclusive.AddDays(-1).ToString("yyyy-MM-dd"),
-            year = startDate.Year
+            weekStartVn = startVn.ToString("yyyy-MM-dd"),
+            weekEndVn = lastInclusive.ToString("yyyy-MM-dd"),
+            weekStartUtc = startVn.ToString("yyyy-MM-dd"),
+            weekEndUtc = lastInclusive.ToString("yyyy-MM-dd"),
+            year = startVn.Year
         };
     }
 
@@ -2233,6 +2343,7 @@ public sealed class TravelGuideDb
         {
             var id = u.Id;
             removedRefreshTokens += await ExecDeleteSqliteAsync(connection, "DELETE FROM RefreshToken WHERE TouristUserId = $id;", id);
+            _ = await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristAppOpenLog WHERE TouristUserId = $id;", id);
             removedFavorites += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristFavorite WHERE TouristUserId = $id;", id);
             removedVisitHistory += await ExecDeleteSqliteAsync(connection, "DELETE FROM TouristVisitHistory WHERE TouristUserId = $id;", id);
             removedPayments += await ExecDeleteSqliteAsync(connection, "DELETE FROM PaymentTransaction WHERE TouristUserId = $id;", id);
@@ -2278,6 +2389,7 @@ public sealed class TravelGuideDb
         {
             var id = u.Id;
             removedRefreshTokens += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.RefreshToken WHERE TouristUserId = @id;", id);
+            _ = await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristAppOpenLog WHERE TouristUserId = @id;", id);
             removedFavorites += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristFavorite WHERE TouristUserId = @id;", id);
             removedVisitHistory += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.TouristVisitHistory WHERE TouristUserId = @id;", id);
             removedPayments += await ExecDeleteSqlServerAsync(connection, "DELETE FROM dbo.PaymentTransaction WHERE TouristUserId = @id;", id);

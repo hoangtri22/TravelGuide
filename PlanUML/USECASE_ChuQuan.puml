@@ -3,16 +3,15 @@ left to right direction
 skinparam shadowing false
 skinparam monochrome true
 actor "Chủ quán" as O
-rectangle "Owner Web" {
-  usecase "Đăng ký tài khoản chủ quán\n(chờ admin duyệt)" as O0
-  usecase "Đăng nhập\n(JWT trong sessionStorage)" as O1
-  usecase "Quản lý POI của quán" as O2
-  usecase "Mở form sửa/tạo POI\n(poi-create.html)" as O3
-  usecase "Quản lý bản dịch POI" as O4
-  usecase "Quản lý nguồn audio/map link" as O5
+rectangle "Owner Web (cùng TravelGuide.AdminWeb/WEB/index.html)" {
+  usecase "Đăng ký chủ quán chờ duyệt\nPOST /api/auth/register" as O0
+  usecase "Đăng nhập JWT sessionStorage\nPOST /api/auth/login" as O1
+  usecase "Quản lý POI quán (scope owner)\nGET /api/pois" as O2
+  usecase "Form tạo/sửa POI\nTravelGuide.AdminWeb/WEB/poi-create.html\nPOST /api/upload/poi-image\nPOST /api/upload/audio\nPOST|PUT /api/pois" as O3
+  usecase "Bản dịch POI\n/api/translations/{id}" as O4
+  usecase "Audio + map link tab\nPOST /api/upload/audio\nPUT /api/pois/{id}" as O5
 }
 
-' Ep layout để gần giống sơ đồ mẫu
 O0 -[hidden]down- O1
 O1 -[hidden]down- O2
 O2 -[hidden]down- O4

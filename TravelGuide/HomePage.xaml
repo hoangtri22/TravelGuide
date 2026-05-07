@@ -132,7 +132,7 @@
                             <DataTemplate>
                                 <Border WidthRequest="220" StrokeThickness="0" BackgroundColor="White" StrokeShape="RoundRectangle 18">
                                     <Grid RowDefinitions="140,Auto">
-                                        <Grid Grid.Row="0">
+                                        <Grid Grid.Row="0" BackgroundColor="#E8ECF0">
                                             <Image Source="{Binding ImageSource}" Aspect="AspectFill"/>
                                             <Border BackgroundColor="#E8391D" StrokeThickness="0" StrokeShape="RoundRectangle 12" Padding="8,4" Margin="10,10,0,0" HorizontalOptions="Start" VerticalOptions="Start">
                                                 <Label Text="{Binding HotLabel}" FontSize="11" FontAttributes="Bold" TextColor="White"/>

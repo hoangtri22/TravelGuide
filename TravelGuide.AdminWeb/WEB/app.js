@@ -10,9 +10,9 @@ let commentSearchTimer = null;
 let visitHistoryLineChart = null;
 const visitHistoryLineHidden = new Set();
 let touristWeekVisitsChart = null;
-/** Monday 00:00 UTC của tuần đang xem (biểu đồ lượt truy cập tuần). */
+/** 00:00 giờ Việt Nam (instant UTC) của Thứ Hai tuần đang xem — biểu đồ phiên đăng nhập tuần. */
 let touristWeekVisitsMondayMs = null;
-/** yyyy-MM-dd (UTC) — gửi lên API để server gom đủ lịch sử (không giới hạn 300 dòng). */
+/** yyyy-MM-dd (ngày lịch VN, Thứ Hai tuần) — gửi API để server gom dữ liệu tuần. */
 let touristWeekChartMondayParam = null;
 const TOURIST_WEEK_VISIT_DAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const commentState = {
@@ -283,7 +283,7 @@ const fmtDateUtc = (v) => {
 };
 
 const visitHistoryState = { sortKey: "id", sortDir: -1, page: 1, pageSize: 10, query: "", userFilter: "" };
-/** yyyy-MM-dd (UTC calendar) — null = 7 ngày gần nhất theo server */
+/** yyyy-MM-dd (ngày lịch VN) — null = 7 ngày gần nhất theo server */
 const visitHistoryChartState = { customWeekStart: null };
 
 /** Leaflet + heatmap tab (admin). */
@@ -1312,12 +1312,17 @@ function renderVisitHistoryTopPoisLineChart(dashboard) {
   const hint = byId("vhLineRangeHint");
   if (!card || !legendRoot || !canvas) return;
   const chartData = dashboard?.visitHistoryTopPoisChart ?? dashboard?.VisitHistoryTopPoisChart;
-  const w0 = chartData?.weekStartUtc ?? chartData?.WeekStartUtc;
-  const w1 = chartData?.weekEndUtc ?? chartData?.WeekEndUtc;
+  const w0 =
+    chartData?.weekStartVn ??
+    chartData?.WeekStartVn ??
+    chartData?.weekStartUtc ??
+    chartData?.WeekStartUtc;
+  const w1 =
+    chartData?.weekEndVn ?? chartData?.WeekEndVn ?? chartData?.weekEndUtc ?? chartData?.WeekEndUtc;
   if (hint && w0 && w1) {
-    hint.textContent = `Top 5 POI — ${w0} → ${w1} (UTC, 7 ngày)`;
+    hint.textContent = `Top 5 POI — ${w0} → ${w1} (giờ VN, 7 ngày)`;
   } else if (hint) {
-    hint.textContent = "Top 5 POI — 7 ngày (mặc định: 7 ngày gần nhất, UTC)";
+    hint.textContent = "Top 5 POI — 7 ngày (mặc định: 7 ngày gần nhất, giờ VN)";
   }
   const labels = Array.isArray(chartData?.labels) ? chartData.labels : [];
   const rawSeries = Array.isArray(chartData?.series) ? chartData.series : [];
@@ -1421,38 +1426,88 @@ function renderVisitHistoryTopPoisLineChart(dashboard) {
   });
 }
 
-function getUtcMondayMs(d = new Date()) {
-  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = (x.getUTCDay() + 6) % 7;
-  x.setUTCDate(x.getUTCDate() - day);
-  x.setUTCHours(0, 0, 0, 0);
-  return x.getTime();
-}
-
-function ymdUtcFromMondayMs(ms) {
-  const x = new Date(ms);
-  const y = x.getUTCFullYear();
-  const mo = x.getUTCMonth() + 1;
-  const d = x.getUTCDate();
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-
-function utcMidnightMsFromYmd(ymd) {
+/** Instant UTC tương ứng 00:00 ngày yyyy-mm-dd tại Asia/Ho_Chi_Minh. */
+function vnMidnightUtcMsFromYmd(ymd) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || "").trim());
-  if (!m) return getUtcMondayMs();
-  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (!m) return NaN;
+  return Date.parse(`${m[1]}-${m[2]}-${m[3]}T00:00:00+07:00`);
 }
 
+/** yyyy-mm-dd theo lịch Việt Nam của một instant UTC. */
+function ymdVnFromUtcMs(ms) {
+  if (!Number.isFinite(ms)) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(ms));
+  const y = parts.find((p) => p.type === "year")?.value;
+  const mo = parts.find((p) => p.type === "month")?.value;
+  const d = parts.find((p) => p.type === "day")?.value;
+  if (!y || !mo || !d) return null;
+  return `${y}-${mo}-${d}`;
+}
+
+function addCalendarDaysIsoYmd(isoYmd, deltaDays) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoYmd || "").trim());
+  if (!m) return null;
+  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + deltaDays);
+  const x = new Date(t);
+  return `${x.getUTCFullYear()}-${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
+}
+
+function daysBetweenIsoYmd(a, b) {
+  const ma = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(a || "").trim());
+  const mb = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(b || "").trim());
+  if (!ma || !mb) return NaN;
+  const ta = Date.UTC(Number(ma[1]), Number(ma[2]) - 1, Number(ma[3]));
+  const tb = Date.UTC(Number(mb[1]), Number(mb[2]) - 1, Number(mb[3]));
+  return Math.round((tb - ta) / 86400000);
+}
+
+/** Thứ Hai (ngày lịch VN) của tuần chứa “hôm nay” theo VN. */
+function getVietnamMondayMs(ref = new Date()) {
+  const ymdStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(ref);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymdStr);
+  if (!m) return vnMidnightUtcMsFromYmd("1970-01-01");
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const utcMid = Date.UTC(y, mo - 1, d);
+  const dow = (new Date(utcMid).getUTCDay() + 6) % 7;
+  const mon = new Date(utcMid - dow * 86400000);
+  const yy = mon.getUTCFullYear();
+  const mm = mon.getUTCMonth() + 1;
+  const dd = mon.getUTCDate();
+  return vnMidnightUtcMsFromYmd(`${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`);
+}
+
+function ymdVnFromMondayMs(ms) {
+  return ymdVnFromUtcMs(ms) || "";
+}
+
+/** ISO tuần: Thứ Hai dương lịch của tuần ISO — 00:00 VN. */
 function mondayUtcFromYW(year, week) {
   const jan4 = Date.UTC(year, 0, 4);
   const dow = (new Date(jan4).getUTCDay() + 6) % 7;
   const monW1 = jan4 - dow * 86400000;
-  return monW1 + (week - 1) * 7 * 86400000;
+  const monUtcMs = monW1 + (week - 1) * 7 * 86400000;
+  const cal = new Date(monUtcMs);
+  const y = cal.getUTCFullYear();
+  const mo = cal.getUTCMonth() + 1;
+  const d = cal.getUTCDate();
+  return vnMidnightUtcMsFromYmd(`${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
 }
 
 function touristWeekInputFromMondayMs(mondayMs) {
-  const thuMs = mondayMs + 3 * 86400000;
-  const yGuess = new Date(thuMs).getUTCFullYear();
+  const midYmd = ymdVnFromUtcMs(mondayMs + 3 * 86400000);
+  const yGuess = midYmd ? Number(midYmd.slice(0, 4)) : new Date().getFullYear();
   for (const tryY of [yGuess, yGuess - 1, yGuess + 1]) {
     for (let w = 1; w <= 53; w++) {
       if (mondayUtcFromYW(tryY, w) === mondayMs) {
@@ -1465,29 +1520,27 @@ function touristWeekInputFromMondayMs(mondayMs) {
 
 function touristMondayMsFromWeekInput(val) {
   const m = /^(\d{4})-W(\d{2})$/.exec(String(val || "").trim());
-  if (!m) return getUtcMondayMs();
+  if (!m) return getVietnamMondayMs();
   return mondayUtcFromYW(Number(m[1]), Number(m[2]));
 }
 
-function touristWeekVisitCountsForRange(historyRows, mondayUtcMs) {
-  const counts = [0, 0, 0, 0, 0, 0, 0];
-  const start = mondayUtcMs;
-  const end = mondayUtcMs + 7 * 86400000;
-  const arr = Array.isArray(historyRows) ? historyRows : [];
-  for (const x of arr) {
-    const raw = touristPick(x, "occurredAtUtc", "OccurredAtUtc");
-    if (!raw) continue;
-    const t = new Date(raw).getTime();
-    if (!Number.isFinite(t) || t < start || t >= end) continue;
-    const idx = Math.floor((t - start) / 86400000);
-    if (idx >= 0 && idx < 7) counts[idx] += 1;
-  }
-  return counts;
+/** Fallback khi API không trả weekVisitChart: không có dữ liệu AppOpen cục bộ → hiển thị 0. */
+function touristWeekAppOpenFallbackZeros() {
+  return [0, 0, 0, 0, 0, 0, 0];
 }
 
 function touristWeekVisitAxisLabels(mondayMs) {
+  const ymd0 = ymdVnFromUtcMs(mondayMs);
+  if (!ymd0) {
+    return TOURIST_WEEK_VISIT_DAYS.map((label) => label);
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd0);
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d0 = Number(m[3]);
   return TOURIST_WEEK_VISIT_DAYS.map((label, i) => {
-    const d = new Date(mondayMs + i * 86400000);
+    const utcMid = Date.UTC(y, mo - 1, d0 + i);
+    const d = new Date(utcMid);
     return `${label} ${d.getUTCDate()}/${d.getUTCMonth() + 1}`;
   });
 }
@@ -1495,12 +1548,17 @@ function touristWeekVisitAxisLabels(mondayMs) {
 function touristWeekVisitTitleLine(mondayMs) {
   const wk = touristWeekInputFromMondayMs(mondayMs);
   const wNum = wk.split("-W")[1];
-  const y = wk.split("-W")[0];
-  const d0 = new Date(mondayMs);
-  const d6 = new Date(mondayMs + 6 * 86400000);
-  const first = `${d0.getUTCDate()}/${d0.getUTCMonth() + 1}`;
+  const yy = wk.split("-W")[0];
+  const ymd0 = ymdVnFromUtcMs(mondayMs);
+  if (!ymd0) return `Tuần ${wNum} · —/${yy}`;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd0);
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d0 = Number(m[3]);
+  const first = `${d0}/${mo}`;
+  const d6 = new Date(Date.UTC(y, mo - 1, d0 + 6));
   const last = `${d6.getUTCDate()}/${d6.getUTCMonth() + 1}`;
-  return `Tuần ${wNum} · ${first} – ${last}/${y}`;
+  return `Tuần ${wNum} · ${first} – ${last}/${yy}`;
 }
 
 function ensureTouristWeekVisitsEventsBound() {
@@ -1509,12 +1567,12 @@ function ensureTouristWeekVisitsEventsBound() {
   root.dataset.twvBound = "1";
   root.addEventListener("click", (e) => {
     if (e.target.closest("#twvPrev")) {
-      const ms = (touristWeekVisitsMondayMs ?? getUtcMondayMs()) - 7 * 86400000;
-      touristWeekChartMondayParam = ymdUtcFromMondayMs(ms);
+      const cur = ymdVnFromUtcMs(touristWeekVisitsMondayMs ?? getVietnamMondayMs());
+      touristWeekChartMondayParam = cur ? addCalendarDaysIsoYmd(cur, -7) || "" : "";
       loadTouristOverview().catch((err) => alert(err?.message || String(err)));
     } else if (e.target.closest("#twvNext")) {
-      const ms = (touristWeekVisitsMondayMs ?? getUtcMondayMs()) + 7 * 86400000;
-      touristWeekChartMondayParam = ymdUtcFromMondayMs(ms);
+      const cur = ymdVnFromUtcMs(touristWeekVisitsMondayMs ?? getVietnamMondayMs());
+      touristWeekChartMondayParam = cur ? addCalendarDaysIsoYmd(cur, 7) || "" : "";
       loadTouristOverview().catch((err) => alert(err?.message || String(err)));
     }
   });
@@ -1522,12 +1580,12 @@ function ensureTouristWeekVisitsEventsBound() {
     if (e.target?.id !== "twvWeekPick") return;
     const v = e.target.value;
     if (!v) return;
-    touristWeekChartMondayParam = ymdUtcFromMondayMs(touristMondayMsFromWeekInput(v));
+    touristWeekChartMondayParam = ymdVnFromMondayMs(touristMondayMsFromWeekInput(v));
     loadTouristOverview().catch((err) => alert(err?.message || String(err)));
   });
 }
 
-function renderTouristWeekVisitsChart(historyRows, mondayMs, serverWeek) {
+function renderTouristWeekVisitsChart(mondayMs, serverWeek) {
   if (typeof Chart === "undefined") return;
   const canvas = byId("twvCanvas");
   const labelEl = byId("twvLabel");
@@ -1536,7 +1594,7 @@ function renderTouristWeekVisitsChart(historyRows, mondayMs, serverWeek) {
 
   const sw = serverWeek ?? null;
   let curMonday = Number(mondayMs);
-  if (!Number.isFinite(curMonday)) curMonday = getUtcMondayMs();
+  if (!Number.isFinite(curMonday)) curMonday = getVietnamMondayMs();
 
   let curr;
   let prev;
@@ -1549,16 +1607,15 @@ function renderTouristWeekVisitsChart(historyRows, mondayMs, serverWeek) {
   ) {
     curr = sw.currentWeek.map((n) => Number(n) || 0);
     prev = sw.previousWeek.map((n) => Number(n) || 0);
-    const wmu = sw.weekMondayUtc ?? sw.WeekMondayUtc;
+    const wmu = sw.weekMondayVn ?? sw.WeekMondayVn ?? sw.weekMondayUtc ?? sw.WeekMondayUtc;
     if (wmu) {
-      curMonday = utcMidnightMsFromYmd(wmu);
+      curMonday = vnMidnightUtcMsFromYmd(wmu);
       touristWeekVisitsMondayMs = curMonday;
     }
   } else {
     touristWeekVisitsMondayMs = curMonday;
-    const prevMonday = curMonday - 7 * 86400000;
-    curr = touristWeekVisitCountsForRange(historyRows, curMonday);
-    prev = touristWeekVisitCountsForRange(historyRows, prevMonday);
+    curr = touristWeekAppOpenFallbackZeros();
+    prev = touristWeekAppOpenFallbackZeros();
   }
 
   const labels = touristWeekVisitAxisLabels(curMonday);
@@ -1624,7 +1681,11 @@ function renderTouristWeekVisitsChart(historyRows, mondayMs, serverWeek) {
         },
         y: {
           grid: { color: "rgba(136,135,128,0.1)" },
-          ticks: { font: { size: 12 }, color: "#888" },
+          ticks: {
+            font: { size: 12 },
+            color: "#888",
+            callback: (v) => (Number.isFinite(v) ? `${v} lượt` : v)
+          },
           beginAtZero: true
         }
       }
@@ -1789,7 +1850,8 @@ async function loadComments() {
 function syncVisitHistoryChartYearSelect() {
   const sel = byId("vhChartYear");
   if (!sel) return;
-  const y = new Date().getUTCFullYear();
+  const ymdT = ymdVnFromUtcMs(Date.now());
+  const y = ymdT ? Number(ymdT.slice(0, 4)) : new Date().getFullYear();
   const minY = y - 5;
   const prev = sel.value;
   const opts = [];
@@ -1803,18 +1865,16 @@ function syncVisitHistoryChartDateInputBounds() {
   const yearSel = byId("vhChartYear");
   const dateIn = byId("vhChartWeekStart");
   if (!yearSel || !dateIn) return;
-  const year = Number(yearSel.value || new Date().getUTCFullYear());
+  const ymdT = ymdVnFromUtcMs(Date.now());
+  const yearVn = ymdT ? Number(ymdT.slice(0, 4)) : new Date().getFullYear();
+  const year = Number(yearSel.value || yearVn);
   const jan1 = `${year}-01-01`;
   const dec31 = `${year}-12-31`;
-  const now = new Date();
-  const uy = now.getUTCFullYear();
-  const um = String(now.getUTCMonth() + 1).padStart(2, "0");
-  const ud = String(now.getUTCDate()).padStart(2, "0");
-  const todayUtcStr = `${uy}-${um}-${ud}`;
-  /** Ngày bắt đầu tối đa: cuối năm dương lịch, và không sau hôm nay UTC (tuần gần hiện tại có thể < 7 ngày). */
+  const todayVnStr = ymdT || "";
+  /** Ngày bắt đầu tối đa: cuối năm dương lịch, và không sau hôm nay theo giờ VN. */
   let maxStart = dec31;
-  if (year === uy) maxStart = todayUtcStr < dec31 ? todayUtcStr : dec31;
-  else if (year > uy) maxStart = jan1;
+  if (year === yearVn) maxStart = todayVnStr && todayVnStr < dec31 ? todayVnStr : dec31;
+  else if (year > yearVn) maxStart = jan1;
   if (maxStart < jan1) maxStart = jan1;
   dateIn.min = jan1;
   dateIn.max = maxStart;
@@ -1835,7 +1895,7 @@ function ensureVisitHistoryChartControlsBound() {
   byId("vhChartApply")?.addEventListener("click", () => {
     const v = byId("vhChartWeekStart")?.value?.trim();
     if (!v) {
-      alert("Chọn ngày bắt đầu (tối đa 7 ngày; gần hôm nay có thể ít hơn, theo UTC).");
+      alert("Chọn ngày bắt đầu (tối đa 7 ngày; gần hôm nay có thể ít hơn — theo ngày lịch Việt Nam).");
       return;
     }
     visitHistoryChartState.customWeekStart = v;
@@ -1864,6 +1924,7 @@ async function loadTouristOverview() {
   touristOverview = oRes.value;
 
   const hisArr = touristArray(touristOverview, "visitHistory", "VisitHistory");
+  const tokArr = touristArray(touristOverview, "refreshTokens", "RefreshTokens");
   window.__tgVisitHistoryForWeekChart = hisArr;
   const dash = touristOverview.dashboard ?? touristOverview.Dashboard ?? {};
   const statsLine = byId("touristLoginStatsLine");
@@ -1885,6 +1946,7 @@ async function loadTouristOverview() {
     const online = Number(touristPick(dash, "onlineCount", "OnlineCount") ?? 0).toLocaleString("vi-VN");
     const totalAcc = Number(touristPick(dash, "totalAccounts", "TotalAccounts") ?? 0).toLocaleString("vi-VN");
     const activated = Number(touristPick(dash, "activatedCount", "ActivatedCount") ?? 0).toLocaleString("vi-VN");
+    const appOpensTodayVn = Number(touristPick(dash, "appOpensTodayVn", "AppOpensTodayVn") ?? 0).toLocaleString("vi-VN");
     const sessToday = Number(touristPick(dash, "sessionsToday", "SessionsToday") ?? 0).toLocaleString("vi-VN");
     const manualNarrationToday = Number(touristPick(dash, "manualNarrationToday", "ManualNarrationToday") ?? 0).toLocaleString("vi-VN");
     const actSess = Number(touristPick(dash, "activeLoginSessions", "ActiveLoginSessions") ?? 0).toLocaleString("vi-VN");
@@ -1896,10 +1958,11 @@ async function loadTouristOverview() {
     dashExtra.innerHTML = `
       <div class="tourist-dash-kpis" aria-label="Chỉ số nhanh">
         ${pill(online, "Trực tuyến (~2′)", "tourist-dash-pill--tone-sky")}
-        ${pill(totalAcc, "Lượt truy cập", "tourist-dash-pill--tone-slate")}
+        ${pill(totalAcc, "Tài khoản du khách", "tourist-dash-pill--tone-slate")}
         ${pill(activated, "Đã kích hoạt / Premium", "tourist-dash-pill--tone-emerald")}
-        ${pill(sessToday, "Visit history (hôm nay)", "tourist-dash-pill--tone-amber")}
-        ${pill(manualNarrationToday, "Nghe thuyết minh (hôm nay)", "tourist-dash-pill--tone-indigo")}
+        ${pill(appOpensTodayVn, "Lượt mở app (hôm nay, VN)", "tourist-dash-pill--tone-amber")}
+        ${pill(sessToday, "Sự kiện VisitHistory (hôm nay, VN)", "tourist-dash-pill--tone-violet")}
+        ${pill(manualNarrationToday, "Nghe thuyết minh (hôm nay, VN)", "tourist-dash-pill--tone-indigo")}
       </div>
       <section class="tourist-dash-sessions" aria-labelledby="tourist-live-heading">
         <div class="tourist-dash-sessions__head">
@@ -1909,8 +1972,8 @@ async function loadTouristOverview() {
         ${touristLiveSessionsHtml(live)}
       </section>
       <section class="tourist-week-visits-card" id="touristWeekVisitsCard" aria-labelledby="tourist-week-visits-heading">
-        <h4 id="tourist-week-visits-heading" class="tourist-week-visits-title">Biểu đồ lượt truy cập tuần</h4>
-        <p class="hint tourist-week-visits-sub">Tổng lượt (VisitHistory + log QR) theo ngày lịch UTC; server gom đủ dữ liệu DB cho tuần chọn. Bảng Visit history bên dưới vẫn chỉ hiện tối đa 300 dòng gần nhất.</p>
+        <h4 id="tourist-week-visits-heading" class="tourist-week-visits-title">Biểu đồ lượt mở app (tuần)</h4>
+        <p class="hint tourist-week-visits-sub">Số lượt mở app (bảng TouristAppOpenLog, OpenedAtUtc) theo ngày lịch Việt Nam (Asia/Ho_Chi_Minh); server gom đủ DB cho tuần chọn. Bảng Phiên đăng nhập bên dưới vẫn hiển thị tối đa 500 phiên gần nhất (RefreshToken).</p>
         <div class="tourist-week-visits-nav">
           <button type="button" class="secondary tourist-week-visits-nav-btn" id="twvPrev" aria-label="Tuần trước">←</button>
           <div class="tourist-week-visits-nav-center">
@@ -1930,14 +1993,14 @@ async function loadTouristOverview() {
     `;
     ensureTouristWeekVisitsEventsBound();
     const weekVis = dash.weekVisitChart ?? dash.WeekVisitChart;
-    const wmuChart = weekVis?.weekMondayUtc ?? weekVis?.WeekMondayUtc;
+    const wmuChart = weekVis?.weekMondayVn ?? weekVis?.WeekMondayVn ?? weekVis?.weekMondayUtc ?? weekVis?.WeekMondayUtc;
     if (wmuChart) {
-      touristWeekVisitsMondayMs = utcMidnightMsFromYmd(wmuChart);
+      touristWeekVisitsMondayMs = vnMidnightUtcMsFromYmd(wmuChart);
       touristWeekChartMondayParam = String(wmuChart);
     } else if (touristWeekVisitsMondayMs == null) {
-      touristWeekVisitsMondayMs = getUtcMondayMs();
+      touristWeekVisitsMondayMs = getVietnamMondayMs();
     }
-    renderTouristWeekVisitsChart(hisArr, touristWeekVisitsMondayMs, weekVis);
+    renderTouristWeekVisitsChart(touristWeekVisitsMondayMs, weekVis);
   }
   const chartMeta = dash?.visitHistoryTopPoisChart ?? dash?.VisitHistoryTopPoisChart;
   const chartYear = chartMeta?.year ?? chartMeta?.Year;
@@ -1953,7 +2016,6 @@ async function loadTouristOverview() {
   renderVisitHistoryTopPoisLineChart(dash);
 
   const usersArr = touristArray(touristOverview, "users", "Users");
-  const tokArr = touristArray(touristOverview, "refreshTokens", "RefreshTokens");
 
   const setMeta = (id, text) => {
     const el = byId(id);

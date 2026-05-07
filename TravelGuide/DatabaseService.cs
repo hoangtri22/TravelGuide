@@ -330,7 +330,7 @@ public class DatabaseService
                     return (false, new List<TouristPlace>());
                 }
 
-                var list = apiPois.Select(MapFromApi).ToList();
+                var list = apiPois.Select(p => MapFromApi(p, baseUrl)).ToList();
                 return (true, list);
             }
             catch (Exception ex)
@@ -457,8 +457,48 @@ public class DatabaseService
             }
         }
 
+        /// <summary>
+        /// Audio/QR: đường dẫn tương đối trên host (vd. <c>audio/a.mp3</c>) → URL đầy đủ để tải qua mạng.
+        /// </summary>
+        private static string NormalizePoiMediaUrl(string apiBaseTrimmed, string? path)
+        {
+            var s = (path ?? "").Trim();
+            if (s.Length == 0) return "";
+            if (Uri.TryCreate(s, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                return s;
+            if (apiBaseTrimmed.Length == 0) return s;
+            return s.StartsWith('/') ? apiBaseTrimmed + s : $"{apiBaseTrimmed}/{s}";
+        }
+
+        /// <summary>
+        /// Ảnh từ API: chỉ tên file (vd. <c>endroad.jpg</c>) → giữ nguyên để MAUI load từ <c>MauiImage</c> / bundle.
+        /// Có thư mục hoặc <c>/...</c> (vd. upload <c>images/a.jpg</c>) → ghép base URL host static.
+        /// Ép mọi path thành URL khi file không có trên server sẽ làm hỏng toàn bộ ảnh bundle.
+        /// </summary>
+        private static string NormalizePoiImagePath(string apiBaseTrimmed, string? path)
+        {
+            var s = (path ?? "").Trim();
+            if (s.Length == 0) return "";
+            if (Uri.TryCreate(s, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                return s;
+            if (s.IndexOf('/') < 0 && s.IndexOf('\\') < 0)
+                return s;
+            if (apiBaseTrimmed.Length == 0) return s;
+            return s.StartsWith('/') ? apiBaseTrimmed + s : $"{apiBaseTrimmed}/{s}";
+        }
+
+        private static string? NormalizePoiMediaUrlNullable(string apiBaseTrimmed, string? path)
+        {
+            var s = (path ?? "").Trim();
+            if (s.Length == 0) return null;
+            var full = NormalizePoiMediaUrl(apiBaseTrimmed, s);
+            return string.IsNullOrEmpty(full) ? null : full;
+        }
+
         /// <summary>Ánh xạ DTO JSON API → entity app.</summary>
-        private static TouristPlace MapFromApi(ApiPoi p)
+        private static TouristPlace MapFromApi(ApiPoi p, string apiBaseTrimmed)
         {
             return new TouristPlace
             {
@@ -476,11 +516,11 @@ public class DatabaseService
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 Radius = p.Radius <= 0 ? 50 : p.Radius,
-                ImagePath = p.ImagePath ?? "",
-                AudioUrl = string.IsNullOrWhiteSpace(p.AudioUrl) ? null : p.AudioUrl.Trim(),
+                ImagePath = NormalizePoiImagePath(apiBaseTrimmed, p.ImagePath),
+                AudioUrl = NormalizePoiMediaUrlNullable(apiBaseTrimmed, p.AudioUrl),
                 Priority = p.Priority,
                 MapLink = string.IsNullOrWhiteSpace(p.MapLink) ? null : p.MapLink.Trim(),
-                QrImagePath = string.IsNullOrWhiteSpace(p.QrImagePath) ? null : p.QrImagePath.Trim(),
+                QrImagePath = NormalizePoiMediaUrlNullable(apiBaseTrimmed, p.QrImagePath),
                 Price = p.Price < 0 ? 0 : p.Price,
                 Tag = NormalizeTag(p.Tag)
             };

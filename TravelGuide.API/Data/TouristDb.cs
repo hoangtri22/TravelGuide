@@ -43,7 +43,42 @@ public sealed class TouristDb
         await EnsureTouristPoiQrScanLogTableAsync(connection);
         await EnsureTouristCommentTableAsync(connection);
         await EnsureRefreshTokenTableAsync(connection);
+        await EnsureTouristAppOpenLogTableAsync(connection);
         await SeedDefaultPremiumClaimAsync(connection);
+    }
+
+    private static async Task EnsureTouristAppOpenLogTableAsync(SqlConnection connection)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            IF OBJECT_ID(N'dbo.TouristAppOpenLog', N'U') IS NULL
+                            BEGIN
+                              CREATE TABLE dbo.TouristAppOpenLog(
+                                Id BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                TouristUserId INT NOT NULL,
+                                OpenedAtUtc DATETIME2(0) NOT NULL DEFAULT SYSUTCDATETIME(),
+                                CONSTRAINT FK_TouristAppOpenLog_User FOREIGN KEY (TouristUserId) REFERENCES dbo.TouristUser(Id)
+                              );
+                              CREATE INDEX IX_TouristAppOpenLog_Opened ON dbo.TouristAppOpenLog(OpenedAtUtc DESC);
+                              CREATE INDEX IX_TouristAppOpenLog_User ON dbo.TouristAppOpenLog(TouristUserId, OpenedAtUtc DESC);
+                            END;
+                            """;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Ghi một lượt mở app (admin thống kê theo ngày VN).</summary>
+    public async Task RecordAppOpenAsync(int touristUserId)
+    {
+        if (touristUserId <= 0) return;
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+                            INSERT INTO dbo.TouristAppOpenLog(TouristUserId, OpenedAtUtc)
+                            VALUES(@uid, SYSUTCDATETIME());
+                            """;
+        cmd.Parameters.AddWithValue("@uid", touristUserId);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static async Task EnsureRefreshTokenTableAsync(SqlConnection connection)

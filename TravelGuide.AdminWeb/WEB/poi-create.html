@@ -34,7 +34,14 @@
       <form id="poiForm" class="grid-form">
         <input type="hidden" id="poiId">
         <div><label for="nameVi">Tên (VI)</label><input id="nameVi" required></div>
-        <div><label for="imagePath">ImagePath</label><input id="imagePath" placeholder="ocoanh.jpg"></div>
+        <div class="full">
+          <label for="imageFile">Ảnh POI — chọn file</label>
+          <input id="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif">
+        </div>
+        <div class="full">
+          <label for="imagePath">Đường dẫn ảnh: </label>
+          <input id="imagePath" placeholder="Để trống nếu chỉ dùng upload; hoặc https://...">
+        </div>
         <div class="full"><label for="descVi">Mô tả (VI)</label><textarea id="descVi" required></textarea></div>
         <div><label for="lat">Latitude</label><input id="lat" type="number" step="any" required></div>
         <div><label for="lon">Longitude</label><input id="lon" type="number" step="any" required></div>
@@ -64,6 +71,6 @@
       </form>
     </div>
   </div>
-  <script src="poi-create.js?v=3"></script>
+  <script src="poi-create.js?v=4"></script>
 </body>
 </html>
